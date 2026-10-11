@@ -20,7 +20,8 @@ use language::language_settings::{AllLanguageSettings, SoftWrap};
 use language::{Bias, Point};
 pub use scroll_amount::ScrollAmount;
 use settings::Settings;
-use std::{cmp::Ordering, time::Duration};
+use std::{cmp::Ordering, sync::Arc, time::Duration};
+use text::Selection;
 use ui::scrollbars::ScrollbarAutoHide;
 use util::ResultExt;
 use workspace::{ItemId, WorkspaceId};
@@ -28,6 +29,30 @@ use workspace::{ItemId, WorkspaceId};
 const SCROLLBAR_SHOW_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct WasScrolled(pub(crate) bool);
+
+pub(crate) struct SelectionsState {
+    disjoint: Arc<[Selection<Anchor>]>,
+    pending: Option<Selection<Anchor>>,
+}
+
+impl SelectionsState {
+    pub(crate) fn new(editor: &Editor) -> Self {
+        Self {
+            disjoint: editor.selections.disjoint_anchors_arc(),
+            pending: editor.selections.pending_anchor().cloned(),
+        }
+    }
+
+    fn is_unchanged(&self, current: &Self) -> bool {
+        Arc::ptr_eq(&self.disjoint, &current.disjoint) && self.pending == current.pending
+    }
+}
+
+struct ProvisionalAutoscroll {
+    request: (Autoscroll, bool),
+    selections: SelectionsState,
+    anchor: ScrollAnchor,
+}
 
 pub type ScrollOffset = f64;
 pub type ScrollPixelOffset = f64;
@@ -150,6 +175,7 @@ pub struct ScrollManager {
     /// (true) or remote (false). Local requests are initiated by user actions,
     /// while remote requests come from external sources.
     autoscroll_request: Option<(Autoscroll, bool)>,
+    provisional_autoscroll: Option<ProvisionalAutoscroll>,
     last_autoscroll: Option<(
         gpui::Point<ScrollOffset>,
         ScrollOffset,
@@ -178,6 +204,7 @@ impl ScrollManager {
             scroll_max_x: None,
             ongoing: OngoingScroll::default(),
             autoscroll_request: None,
+            provisional_autoscroll: None,
             show_scrollbars: true,
             hide_scrollbar_task: None,
             active_scrollbar: None,
@@ -215,6 +242,7 @@ impl ScrollManager {
             this.display_map_id = Some(my_snapshot.display_map_id);
         });
         self.ongoing = other.ongoing;
+        self.provisional_autoscroll.take();
     }
 
     pub fn offset(&self, cx: &App) -> gpui::Point<f64> {
@@ -397,6 +425,9 @@ impl ScrollManager {
 
         self.scroll_max_x.take();
         self.autoscroll_request.take();
+        if !autoscroll {
+            self.provisional_autoscroll.take();
+        }
 
         let current = self.anchor.read(cx);
         if current.scroll_anchor == adjusted_anchor {
@@ -470,9 +501,51 @@ impl ScrollManager {
         self.autoscroll_request.take()
     }
 
+    pub(crate) fn retain_provisional_autoscroll(
+        &mut self,
+        request: (Autoscroll, bool),
+        selections: SelectionsState,
+        cx: &App,
+    ) {
+        let Some(request) = self.resolve_next_autoscroll(request) else {
+            return;
+        };
+        self.provisional_autoscroll = Some(ProvisionalAutoscroll {
+            request,
+            selections,
+            anchor: self.anchor.read(cx).scroll_anchor,
+        });
+    }
+
+    pub(crate) fn take_provisional_autoscroll(
+        &mut self,
+        selections: &SelectionsState,
+        cx: &App,
+    ) -> Option<(Autoscroll, bool)> {
+        let provisional = self.provisional_autoscroll.take()?;
+        (provisional.selections.is_unchanged(selections)
+            && provisional.anchor == self.anchor.read(cx).scroll_anchor)
+            .then_some(provisional.request)
+    }
+
     pub fn restore_autoscroll_request(&mut self, request: Option<(Autoscroll, bool)>) {
         if self.autoscroll_request.is_none() {
             self.autoscroll_request = request;
+        }
+    }
+
+    pub(crate) fn restore_autoscroll(
+        &mut self,
+        requested: Option<(Autoscroll, bool)>,
+        request: Option<(Autoscroll, bool)>,
+        selections: SelectionsState,
+        cx: &App,
+    ) {
+        if let Some(requested) = requested {
+            let requested = self.resolve_next_autoscroll(requested).unwrap_or(requested);
+            self.restore_autoscroll_request(Some(requested));
+        } else if let Some(request) = request {
+            self.retain_provisional_autoscroll(request, selections, cx);
         }
     }
 
@@ -579,6 +652,16 @@ impl ScrollManager {
 
     pub fn forbid_vertical_scroll(&self) -> bool {
         self.forbid_vertical_scroll
+    }
+
+    fn resolve_next_autoscroll(&self, request: (Autoscroll, bool)) -> Option<(Autoscroll, bool)> {
+        match request {
+            (Autoscroll::Next, local) => self
+                .last_autoscroll
+                .as_ref()
+                .map(|(_, _, _, strategy)| (Autoscroll::Strategy(*strategy, None), local)),
+            request => Some(request),
+        }
     }
 }
 

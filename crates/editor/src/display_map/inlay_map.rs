@@ -236,6 +236,7 @@ pub struct InlayChunks<'a> {
     highlight_styles: HighlightStyles,
     highlights: Highlights<'a>,
     snapshot: &'a InlaySnapshot,
+    edit_prediction_whitespace: Option<(InlayId, bool)>,
 }
 
 #[derive(Clone)]
@@ -337,7 +338,15 @@ impl<'a> Iterator for InlayChunks<'a> {
                 let mut renderer = None;
                 let mut highlight_style = match inlay.id {
                     InlayId::EditPrediction(_) => self.highlight_styles.edit_prediction.map(|s| {
-                        if inlay.text().chars().all(|c| c.is_whitespace()) {
+                        let is_whitespace = match self.edit_prediction_whitespace {
+                            Some((id, is_whitespace)) if id == inlay.id => is_whitespace,
+                            _ => {
+                                let is_whitespace = inlay.text().chars().all(|c| c.is_whitespace());
+                                self.edit_prediction_whitespace = Some((inlay.id, is_whitespace));
+                                is_whitespace
+                            }
+                        };
+                        if is_whitespace {
                             s.whitespace
                         } else {
                             s.insertion
@@ -1206,7 +1215,7 @@ impl InlaySnapshot {
         summary
     }
 
-    pub fn has_inlays_matching(
+    pub(super) fn has_inlays_matching(
         &self,
         range: Range<InlayPoint>,
         mut predicate: impl FnMut(&Inlay, Range<usize>) -> bool,
@@ -1306,6 +1315,7 @@ impl InlaySnapshot {
             highlight_styles: highlights.styles,
             highlights,
             snapshot: self,
+            edit_prediction_whitespace: None,
         }
     }
 
