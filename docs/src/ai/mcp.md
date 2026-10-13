@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Model Context Protocol (MCP) in Zed
 description: Install and configure MCP servers in Zed to extend your AI agent with external tools, data sources, and integrations.
@@ -34,7 +36,7 @@ Check out the [MCP Server Extensions](../extensions/mcp-extensions.md) page to l
 Many MCP servers are available as extensions. Find them via:
 
 1. [the Zed website](https://zed.dev/extensions?filter=context-servers)
-2. in the app, open the Command Palette and run the {#action zed::Extensions} action
+2. in the app, open the Command Palette and run the `zed::Extensions` action
 3. in the app, open **Settings → AI → MCP Servers**, click `Add Server`, and choose `Install from Extensions`
 
 Popular servers available as an extension include:
@@ -51,7 +53,7 @@ Popular servers available as an extension include:
 ### As Custom Servers
 
 Creating an extension is not the only way to use MCP servers in Zed.
-You can connect both local and remote MCP servers from **[Settings → AI → MCP Servers](./agent-settings.md)** (also accessible via the {#action agent::OpenSettings} action, then selecting `MCP Servers`). Click `Add Server` in the page header, then choose `Add Local Server` or `Add Remote Server`. Your specified configuration will create entries in your settings file (which you can open with {#action zed::OpenSettingsFile}) similar to the ones below:
+You can connect both local and remote MCP servers from **[Settings → AI → MCP Servers](./agent-settings.md)** (also accessible via the `agent::OpenSettings` action, then selecting `MCP Servers`). Click `Add Server` in the page header, then choose `Add Local Server` or `Add Remote Server`. Your specified configuration will create entries in your settings file (which you can open with `zed::OpenSettingsFile`) similar to the ones below:
 
 ```json [settings]
 {

@@ -117,7 +117,7 @@ fn run_migrations(text: &str, migrations: &[MigrationType]) -> Result<Option<Str
     Ok(result.filter(|new_text| text != new_text))
 }
 
-pub fn migrate_keymap(text: &str) -> Result<Option<String>> {
+fn migrate_legacy_keymap(text: &str) -> Result<Option<String>> {
     let migrations: &[MigrationType] = &[
         MigrationType::TreeSitter(
             migrations::m_2025_01_29::KEYMAP_PATTERNS,
@@ -156,7 +156,7 @@ enum MigrationType<'a> {
     Json(fn(&mut serde_json::Value) -> Result<()>),
 }
 
-pub fn migrate_settings(text: &str) -> Result<Option<String>> {
+fn migrate_legacy_settings(text: &str) -> Result<Option<String>> {
     let migrations: &[MigrationType] = &[
         MigrationType::TreeSitter(
             migrations::m_2025_01_02::SETTINGS_PATTERNS,
@@ -413,6 +413,11 @@ static EDIT_PREDICTION_SETTINGS_MIGRATION_QUERY: LazyLock<Query> = LazyLock::new
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Historical fixtures verify the upstream migration chain independently.
+    // End-to-end fork migration coverage lives in m_2026_10_13::tests.
+    use super::{
+        migrate_legacy_keymap as migrate_keymap, migrate_legacy_settings as migrate_settings,
+    };
     use indoc::indoc;
 
     #[track_caller]
@@ -5442,4 +5447,28 @@ mod tests {
             "#}),
         );
     }
+}
+
+/// Migrates the upstream configuration before converting it to workspace terminals.
+pub fn migrate_settings(text: &str) -> Result<Option<String>> {
+    let legacy = migrate_legacy_settings(text)?;
+    let migrated = run_migrations(
+        legacy.as_deref().unwrap_or(text),
+        &[MigrationType::Json(
+            migrations::m_2026_10_13::migrate_workspace_terminals,
+        )],
+    )?;
+    Ok(migrated.or(legacy).filter(|migrated| migrated != text))
+}
+
+/// Migrates the upstream configuration before converting it to workspace terminals.
+pub fn migrate_keymap(text: &str) -> Result<Option<String>> {
+    let legacy = migrate_legacy_keymap(text)?;
+    let migrated = run_migrations(
+        legacy.as_deref().unwrap_or(text),
+        &[MigrationType::Json(
+            migrations::m_2026_10_13::migrate_terminal_keymap,
+        )],
+    )?;
+    Ok(migrated.or(legacy).filter(|migrated| migrated != text))
 }

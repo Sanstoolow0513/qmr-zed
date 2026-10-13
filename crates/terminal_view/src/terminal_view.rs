@@ -1,8 +1,11 @@
 mod persistence;
 pub mod terminal_element;
+pub mod terminal_metadata_store;
+mod terminal_notification;
 pub mod terminal_panel;
 mod terminal_path_like_target;
 pub mod terminal_scrollbar;
+pub mod workspace_terminal_panel;
 
 use editor::{
     Editor, EditorSettings, actions::SelectAll, blink_manager::BlinkManager,
@@ -60,7 +63,6 @@ use workspace::{
         Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
     },
 };
-use zed_actions::{agent::AddSelectionToThread, assistant::InlineAssist};
 
 struct ImeState {
     marked_text: String,
@@ -565,15 +567,10 @@ impl TerminalView {
     pub fn deploy_context_menu(
         &mut self,
         position: GpuiPoint<Pixels>,
-        has_selection: bool,
+        _has_selection: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let assistant_enabled = self
-            .workspace
-            .upgrade()
-            .and_then(|workspace| workspace.read(cx).panel::<TerminalPanel>(cx))
-            .is_some_and(|terminal_panel| terminal_panel.read(cx).assistant_enabled());
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
@@ -596,18 +593,6 @@ impl TerminalView {
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| menu.action("Clear", Box::new(Clear)),
-                )
-                .when(
-                    assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| {
-                        menu.separator()
-                            .when(!self.read_only, |menu| {
-                                menu.action("Inline Assist", Box::new(InlineAssist::default()))
-                            })
-                            .when(has_selection && self.shows_workspace_actions(), |menu| {
-                                menu.action("Add to Agent Thread", Box::new(AddSelectionToThread))
-                            })
-                    },
                 )
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator().action(

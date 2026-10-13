@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: AI Agent Tools - Zed
 description: Built-in tools for Zed's AI agent including file editing, code search, terminal commands, web search, skills, and diagnostics.

@@ -5,7 +5,7 @@ description: Get started with Zed, the fast open-source code editor. Essential c
 
 # Getting Started
 
-Zed is an open-source code editor with built-in collaboration and AI tools.
+qmr-zed is an open-source code editor with collaboration, Git, debugging and terminal tools. Built-in AI features are not included.
 
 This guide covers the essential commands, environment setup, and navigation basics.
 
@@ -27,7 +27,7 @@ zed ~/projects/my-app
 
 Or use `Cmd+O` (macOS) / `Ctrl+O` (Linux/Windows) to open a folder from within Zed.
 
-By default, new projects open in your current window's threads sidebar. To open in a new window instead, use `zed -n ~/projects/my-app` or press `Cmd+Enter` when selecting from Open Recent. See [Windows & Projects](./windows-and-projects.md) for more details.
+By default, new projects open in your current window's workspace sidebar. To open in a new window instead, use `zed -n ~/projects/my-app` or press `Cmd+Enter` when selecting from Open Recent. See [Windows & Projects](./windows-and-projects.md) for more details.
 
 ### 2. Learn the Essential Commands
 
@@ -44,7 +44,7 @@ The [command palette](./command-palette.md) (`Cmd+Shift+P`) is your gateway to e
 
 ### Panel Layout
 
-Use **Panel Layout > Agentic** from the user menu in the title bar (or the {#action workspace::UseAgenticLayout} action) when you want the [Agent Panel](./ai/agent-panel.md) and Threads Sidebar next to each other on the left. Use **Panel Layout > Classic** (or {#action workspace::UseClassicLayout}) to restore the editor-oriented layout.
+Use the [Workspace Terminals](./workspace-terminals.md) settings to place the workspace sidebar and terminal panel on either side of the editor.
 
 ### 3. Configure Your Editor
 
@@ -66,11 +66,9 @@ Zed includes built-in support for many languages. For others, install the extens
 
 See [Languages](./languages.md) for language-specific setup instructions.
 
-### 5. Try AI Features
+### 5. Open Workspace Terminals
 
-Zed includes built-in AI assistance. Open the Agent Panel with `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Linux/Windows) to start a conversation, or use `Cmd+Enter` (macOS) / `Ctrl+Enter` (Linux/Windows) for inline assistance.
-
-See [AI Overview](./ai/overview.md) to configure providers and learn what's possible.
+Use the **+** beside a project in the workspace sidebar to create a terminal. Switch between projects and terminals without losing live shell sessions. See [Workspace Terminals](./workspace-terminals.md) for settings and shortcuts.
 
 ## Coming from Another Editor?
 

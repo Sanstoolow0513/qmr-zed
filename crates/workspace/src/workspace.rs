@@ -32,10 +32,11 @@ mod workspace_settings;
 pub use dock::Panel;
 pub use multi_workspace::{
     CloseWorkspaceSidebar, DraggedSidebar, FocusWorkspaceSidebar, MoveProjectDown,
-    MoveProjectToNewWindow, MoveProjectUp, MultiWorkspace, MultiWorkspaceEvent, NewThread,
-    NextProject, NextThread, PreviousProject, PreviousThread, ProjectGroup, ProjectGroupKey,
-    RemovalIntent, SerializedProjectGroupState, Sidebar, SidebarEvent, SidebarHandle,
-    SidebarRenderState, SidebarSide, ToggleWorkspaceSidebar, sidebar_side_context_menu,
+    MoveProjectToNewWindow, MoveProjectUp, MultiWorkspace, MultiWorkspaceEvent,
+    NewWorkspaceTerminal, NextProject, NextWorkspaceTerminal, PreviousProject,
+    PreviousWorkspaceTerminal, ProjectGroup, ProjectGroupKey, RemovalIntent,
+    SerializedProjectGroupState, Sidebar, SidebarEvent, SidebarHandle, SidebarRenderState,
+    SidebarSide, ToggleWorkspaceSidebar, sidebar_side_context_menu,
 };
 pub use path_list::{PathList, SerializedPathList};
 pub use remote::{
@@ -43,7 +44,6 @@ pub use remote::{
 };
 pub use toast_layer::{ToastAction, ToastLayer, ToastView};
 
-use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, anyhow};
 use client::{
     ChannelId, Client, ErrorExt, ParticipantIndex, Status, TypedEnvelope, User, UserStore,
@@ -75,7 +75,7 @@ pub use item::{
     ProjectItem, SerializableItem, SerializableItemHandle, WeakItemHandle,
 };
 use itertools::Itertools;
-use language::{Buffer, LanguageRegistry, Rope, language_settings::all_language_settings};
+use language::{Buffer, LanguageRegistry, Rope};
 pub use modal_layer::*;
 use node_runtime::NodeRuntime;
 use notifications::{
@@ -116,7 +116,6 @@ use serde::Deserialize;
 use session::AppSession;
 use settings::{
     CenteredPaddingSettings, DefaultOpenBehavior, Settings, SettingsLocation, SettingsStore,
-    update_settings_file,
 };
 
 use sqlez::{
@@ -161,7 +160,8 @@ use uuid::Uuid;
 pub use workspace_settings::{
     AccessibleMode, AutosaveSetting, BottomDockLayout, EncodingDisplayOptions, FocusFollowsMouse,
     RestoreOnStartupBehavior, StatusBarSettings, TabBarSettings, WorkspaceSettings,
-    closing_last_window_quits_app, observe_accessible_mode,
+    WorkspaceSidebarSettings, WorkspaceTerminalSettings, closing_last_window_quits_app,
+    observe_accessible_mode,
 };
 use zed_actions::{Spawn, feedback::FileBugReport, theme::ToggleMode};
 
@@ -471,7 +471,7 @@ actions!(
         /// Toggles centered layout mode.
         ToggleCenteredLayout,
         /// Toggles edit prediction feature globally for all files.
-        ToggleEditPrediction,
+
         /// Toggles the left dock.
         ToggleLeftDock,
         /// Toggles the right dock.
@@ -1410,6 +1410,12 @@ impl AppState {
         use node_runtime::NodeRuntime;
         use session::Session;
         use settings::SettingsStore;
+
+        // Window IDs restart in each test App, so persisted window state must not
+        // share the fallback database with concurrently running tests.
+        if !cx.has_global::<db::AppDatabase>() {
+            cx.set_global(db::AppDatabase::test_new());
+        }
 
         if !cx.has_global::<SettingsStore>() {
             let settings_store = SettingsStore::test(cx);
@@ -8085,7 +8091,6 @@ impl Workspace {
             .on_action(cx.listener(Self::move_item_to_pane_at_index))
             .on_action(cx.listener(Self::move_focused_panel_to_next_position))
             .on_action(cx.listener(Self::reopen_last_picker))
-            .on_action(cx.listener(Self::toggle_edit_predictions_all_files))
             .on_action(cx.listener(Self::toggle_theme_mode))
             .on_action(cx.listener(|workspace, _: &Unfollow, window, cx| {
                 let pane = workspace.active_pane().clone();
@@ -9023,19 +9028,6 @@ impl Workspace {
         let size = new_size.min(self.bounds.bottom() - RESIZE_HANDLE_SIZE - self.bounds.top());
         self.bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.resize_panel_sizes(Some(size), None, window, cx);
-        });
-    }
-
-    fn toggle_edit_predictions_all_files(
-        &mut self,
-        _: &ToggleEditPrediction,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let fs = self.project().read(cx).fs().clone();
-        let show_edit_predictions = all_language_settings(None, cx).show_edit_predictions(None, cx);
-        update_settings_file(fs, cx, move |file, _| {
-            file.project.all_languages.defaults.show_edit_predictions = Some(!show_edit_predictions)
         });
     }
 
@@ -11237,7 +11229,7 @@ pub fn open_paths(
                     open_options.requesting_window = Some(window);
                     window
                         .update(cx, |multi_workspace, _, cx| {
-                            if AgentSettings::get_global(cx).threads_sidebar.auto_open {
+                            if WorkspaceSidebarSettings::get_global(cx).auto_open {
                                 multi_workspace.open_sidebar(cx);
                             } else {
                                 // Opening the sidebar is also what pins the

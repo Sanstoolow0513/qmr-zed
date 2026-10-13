@@ -1,3 +1,5 @@
+> **qmr-zed:** The former terminal threads now use the independent workspace terminal panel. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Terminal Threads - Zed
 description: Run agent CLIs and TUIs directly in terminal-backed threads in Zed.
@@ -54,9 +56,9 @@ You can also configure this from the Settings UI under **AI**, via the "Terminal
 
 ## Terminal Thread Titles {#terminal-thread-titles}
 
-The terminal title in the toolbar updates automatically to reflect the running shell or process. You can set a custom name by clicking the title or the pencil icon that appears on hover. In the Threads Sidebar, right-click a Terminal Thread and select **Rename Title**, or select it and press {#kb agent::RenameSelectedThread}.
+The terminal title in the toolbar updates automatically to reflect the running shell or process. You can set a custom name by clicking the title or the pencil icon that appears on hover. In the Threads Sidebar, right-click a Terminal Thread and select **Rename Title**, or select it and press `agent::RenameSelectedThread`.
 
-To edit the title of the active Terminal Thread from the Agent Panel, custom-map {#action agent::RenameSelectedThread} in your `keymap.json`. Its default binding is scoped to the Threads Sidebar.
+To edit the title of the active Terminal Thread from the Agent Panel, custom-map `agent::RenameSelectedThread` in your `keymap.json`. Its default binding is scoped to the Threads Sidebar.
 
 ## Notifications {#terminal-thread-notifications}
 
@@ -66,7 +68,7 @@ The same `agent.notify_when_agent_waiting` and `agent.play_sound_when_agent_done
 
 ## Closing Terminal Threads {#closing-terminal-threads}
 
-Unlike agent threads, Terminal Threads are closed rather than archived. They do not go to Thread History. To close one, hover over it in the Threads Sidebar and click the **×** button, or select it and press {#kb agent::ArchiveSelectedThread}.
+Unlike agent threads, Terminal Threads are closed rather than archived. They do not go to Thread History. To close one, hover over it in the Threads Sidebar and click the **×** button, or select it and press `agent::ArchiveSelectedThread`.
 
 ## CLI/TUI Setup Notes {#cli-setup}
 

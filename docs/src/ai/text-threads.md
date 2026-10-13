@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Text Threads (Removed)
 description: Text threads have been removed from Zed. Use the Agent Panel for all AI conversations.

@@ -129,7 +129,7 @@ actions!(
         /// Toggles whether the commit message editor is shown in the git panel.
         ToggleCommitEditor,
         /// Generates a commit message using AI.
-        GenerateCommitMessage,
+
         /// Initializes a new git repository.
         Init,
         /// Opens all modified files in the editor.

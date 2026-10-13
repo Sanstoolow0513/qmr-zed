@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Agent Skills - Zed
 description: Extend Zed's AI agent with reusable, on-demand skill files for specialized tasks.
@@ -15,9 +17,9 @@ A skill is a folder containing a `SKILL.md` file with metadata and instructions.
 
 Zed includes a built-in `create-skill` skill — invoke it with `/create-skill` and the agent walks you through the process.
 
-You can also open the Skills Manager from the Agent Panel using {#kb agent::ManageSkills}, or by clicking `...` and selecting **Skills**. Outside the panel, use the {#action agent::OpenSkillCreator} action from the command palette, or click **Create Skill** on the **AI > Skills** settings page. The creator opens as a page in the settings window where you fill in the skill's name, description, body, and optionally toggle `disable-model-invocation`. The skill is saved to the scope of the settings file selected in the settings window — the **User** tab creates a global skill, while a **Project** tab creates a project-local skill — and the form shows exactly where the file will be written.
+You can also open the Skills Manager from the Agent Panel using `agent::ManageSkills`, or by clicking `...` and selecting **Skills**. Outside the panel, use the `agent::OpenSkillCreator` action from the command palette, or click **Create Skill** on the **AI > Skills** settings page. The creator opens as a page in the settings window where you fill in the skill's name, description, body, and optionally toggle `disable-model-invocation`. The skill is saved to the scope of the settings file selected in the settings window — the **User** tab creates a global skill, while a **Project** tab creates a project-local skill — and the form shows exactly where the file will be written.
 
-Lastly, it's also possible to add a skill through importing it from an existing GitHub Markdown file. Open the command palette and look for the {#action agent::CreateSkillFromUrl} action. If your clipboard contains a supported GitHub `.md` URL, Zed pre-fills and fetches it automatically.
+Lastly, it's also possible to add a skill through importing it from an existing GitHub Markdown file. Open the command palette and look for the `agent::CreateSkillFromUrl` action. If your clipboard contains a supported GitHub `.md` URL, Zed pre-fills and fetches it automatically.
 
 See [Skill format](#skill-format) below for the full format reference.
 

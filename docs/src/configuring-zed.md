@@ -142,5 +142,5 @@ These are useful for sharing configuration tips or linking from documentation.
 
 - [Appearance](./appearance.md) — Themes, fonts, and visual customization
 - [Key bindings](./key-bindings.md) — Customize keyboard shortcuts
-- [AI Quick Start](./ai/quick-start.md) — Set up AI providers, models, and agent settings
+- [Workspace Terminals](./workspace-terminals.md) — Configure project switching and terminal sessions
 - [All Settings](./reference/all-settings.md) — Complete settings reference

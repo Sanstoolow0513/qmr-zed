@@ -531,6 +531,12 @@ impl Dock {
     }
 
     pub fn panel_index_for_persistent_name(&self, ui_name: &str, _cx: &App) -> Option<usize> {
+        // Existing installations stored workspace terminals under the former panel name.
+        let ui_name = if ui_name == "AgentPanel" {
+            "WorkspaceTerminalPanel"
+        } else {
+            ui_name
+        };
         self.panel_entries
             .iter()
             .position(|entry| entry.panel.persistent_name() == ui_name)

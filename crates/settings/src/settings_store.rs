@@ -3227,7 +3227,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_agent_profile_tool_schema(cx: &mut App) {
+    fn test_terminal_settings_schema_has_no_ai(cx: &mut App) {
         SettingsStore::test(cx);
 
         let schema = SettingsStore::json_schema(&SettingsJsonSchemaParams {
@@ -3241,34 +3241,23 @@ mod tests {
             deprecations: &HashMap::default(),
             deprecation_messages: &HashMap::default(),
         });
-        let tools = schema
-            .pointer("/$defs/AgentProfileContent/properties/tools")
-            .expect("agent profile tools schema should exist");
-        let properties = tools
-            .get("properties")
-            .and_then(Value::as_object)
-            .expect("agent profile tools should have named properties");
-        let boolean_schema = serde_json::json!({ "type": "boolean" });
-        for tool_schema in properties.values() {
-            assert_eq!(tool_schema, &boolean_schema);
+        let properties = schema.get("properties").and_then(Value::as_object).unwrap();
+        assert!(properties.contains_key("workspace_sidebar"));
+        assert!(properties.contains_key("workspace_terminal"));
+        for removed in [
+            "agent",
+            "agent_servers",
+            "language_models",
+            "context_servers",
+            "edit_predictions",
+            "disable_ai",
+        ] {
+            assert!(
+                !properties.contains_key(removed),
+                "{removed} must not be advertised"
+            );
         }
-        assert_eq!(tools.get("additionalProperties"), Some(&Value::Bool(false)));
-
-        let defaults: Value = crate::parse_json_with_comments(default_settings().as_ref())
-            .expect("default settings should parse");
-        for profile in ["write", "ask"] {
-            let path = format!("/agent/profiles/{profile}/tools");
-            let default_tools = defaults
-                .pointer(&path)
-                .and_then(Value::as_object)
-                .expect("built-in profile should have tools");
-            for tool_name in default_tools.keys() {
-                assert!(
-                    properties.contains_key(tool_name),
-                    "{profile} tool {tool_name} should be suggested in the schema"
-                );
-            }
-        }
+        assert!(schema.pointer("/$defs/AgentProfileContent").is_none());
     }
 
     #[gpui::test]

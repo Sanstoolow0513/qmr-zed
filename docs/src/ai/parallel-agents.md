@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Parallel Agents - Zed
 description: Run multiple agent threads and Terminal Threads concurrently using the Threads Sidebar, manage them across projects, and isolate work using Git worktrees.
@@ -7,9 +9,9 @@ description: Run multiple agent threads and Terminal Threads concurrently using 
 
 Parallel Agents lets you run multiple agent threads and Terminal Threads at once from the Threads Sidebar. Each thread works independently with its own agent, context window, and conversation history. Terminal Threads appear alongside agent threads in the same sidebar, so you can switch between them without leaving the Agent Panel.
 
-Open the Threads Sidebar with {#kb multi_workspace::ToggleWorkspaceSidebar}.
+Open the Threads Sidebar with `multi_workspace::ToggleWorkspaceSidebar`.
 
-Use **Panel Layout > Agentic** from the user menu in the title bar (or the {#action workspace::UseAgenticLayout} action) to place the Agent Panel and Threads Sidebar on the left, with the Project Panel, Git Panel, and other panels on the right. Use **Panel Layout > Classic** (or {#action workspace::UseClassicLayout}) to restore the editor-oriented layout. You can still rearrange individual panels by right-clicking any panel icon.
+Use **Panel Layout > Agentic** from the user menu in the title bar (or the `workspace::UseAgenticLayout` action) to place the Agent Panel and Threads Sidebar on the left, with the Project Panel, Git Panel, and other panels on the right. Use **Panel Layout > Classic** (or `workspace::UseClassicLayout`) to restore the editor-oriented layout. You can still rearrange individual panels by right-clicking any panel icon.
 
 ## Threads Sidebar {#threads-sidebar}
 
@@ -17,7 +19,7 @@ The sidebar shows your threads grouped by project. Each project gets its own sec
 
 Terminal Threads also appear as entries in the sidebar alongside agent threads, identified by a terminal icon. Click one to switch to it.
 
-To focus the sidebar without toggling it, use {#kb multi_workspace::FocusWorkspaceSidebar}. To search your threads, press {#kb agents_sidebar::FocusSidebarFilter} while the sidebar is focused.
+To focus the sidebar without toggling it, use `multi_workspace::FocusWorkspaceSidebar`. To search your threads, press `agents_sidebar::FocusSidebarFilter` while the sidebar is focused.
 
 To change the sidebar’s position, open the Settings Editor and search for “Threads Sidebar Position”, which writes `agent.threads_sidebar.position`. To change its default width, search for “Threads Sidebar Default Width”. See [`agent.threads_sidebar.default_width`](../reference/all-settings.md#agent-threads-sidebar-default-width) for values and a configuration example.
 
@@ -29,13 +31,13 @@ The “Threads Sidebar Auto Open” setting controls whether opening a folder in
 
 Click any thread in the sidebar to switch to it. The Agent Panel updates to show that thread's conversation.
 
-For quick switching without opening the sidebar, use the thread switcher: press {#kb agents_sidebar::ToggleThreadSwitcher} to cycle forward through recent threads, or hold `Shift` while pressing that binding to go backward. This works from both the Agent Panel and the Threads Sidebar.
+For quick switching without opening the sidebar, use the thread switcher: press `agents_sidebar::ToggleThreadSwitcher` to cycle forward through recent threads, or hold `Shift` while pressing that binding to go backward. This works from both the Agent Panel and the Threads Sidebar.
 
 ### Thread History {#threads-history}
 
-To remove a thread from the sidebar, you can archive it by hovering over it and clicking the archive icon that appears. You can also select a thread and press {#kb agent::ArchiveSelectedThread}. Running threads cannot be moved to history until they finish.
+To remove a thread from the sidebar, you can archive it by hovering over it and clicking the archive icon that appears. You can also select a thread and press `agent::ArchiveSelectedThread`. Running threads cannot be moved to history until they finish.
 
-The Thread History view holds all your threads, including ones that you have archived. Toggle it with {#kb agents_sidebar::ToggleThreadHistory} or by clicking the clock icon in the sidebar bottom bar, next to the sidebar toggle.
+The Thread History view holds all your threads, including ones that you have archived. Toggle it with `agents_sidebar::ToggleThreadHistory` or by clicking the clock icon in the sidebar bottom bar, next to the sidebar toggle.
 
 To restore a thread, open Thread History and click the thread you want to bring back. Zed moves it back to the thread list and opens it in the Agent Panel. If the thread was running in a Git worktree that was removed, Zed restores the worktree automatically.
 
@@ -51,7 +53,7 @@ If you have External Agents installed, Zed will detect whether you have existing
 
 ## Running Multiple Threads {#running-multiple-threads}
 
-Each thread runs independently, so you can send a prompt, open a second thread, and give it a different task while the first continues working. To scope a new thread to a specific project, hover over that project's header in the Threads Sidebar and click the `+` button, or use {#action agents_sidebar::NewThreadInGroup} from the keyboard. See [Creating New Threads](./agent-panel.md#new-thread) for the other entry points.
+Each thread runs independently, so you can send a prompt, open a second thread, and give it a different task while the first continues working. To scope a new thread to a specific project, hover over that project's header in the Threads Sidebar and click the `+` button, or use `agents_sidebar::NewThreadInGroup` from the keyboard. See [Creating New Threads](./agent-panel.md#new-thread) for the other entry points.
 
 Each thread can use a different agent, so you can run Zed's built-in agent in one thread and an [External Agent](./external-agents.md) like Claude Code or Codex in another.
 

@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: External Agents - Zed
 description: Install and use ACP-integrated External Agents such as Claude, Codex, OpenCode, Copilot, Cursor, and Pi Coding Agent in Zed.
@@ -17,7 +19,7 @@ For Zed-hosted models and Zed-managed AI features, see [AI Privacy](./privacy-an
 
 The ACP Registry is the primary way to install common External Agents in Zed.
 
-Open the registry with {#action zed::AcpRegistry}, or open [Agent Settings](./agent-settings.md) with {#action agent::OpenSettings}, go to the **External Agents** page, click `Add Agent`, and choose `Install from Registry`.
+Open the registry with `zed::AcpRegistry`, or open [Agent Settings](./agent-settings.md) with `agent::OpenSettings`, go to the **External Agents** page, click `Add Agent`, and choose `Install from Registry`.
 
 After installation, the agent appears in the new-thread menu in the Agent Panel and Threads Sidebar.
 
@@ -118,7 +120,7 @@ See [Poolside's Zed documentation](https://docs.poolside.ai/tools/zed) for more 
 
 Open the [Agent Panel](./agent-panel.md), then use the agent selector or the new-thread menu to start a thread with an installed External Agent.
 
-You can also create keybindings for specific agents with {#action agent::NewExternalAgentThread}.
+You can also create keybindings for specific agents with `agent::NewExternalAgentThread`.
 
 ## Configuration Boundaries {#configuration-boundaries}
 
@@ -187,7 +189,7 @@ For details, see [Agent Server Extensions](../extensions/agent-servers.md).
 
 Zed can import existing threads from configured External Agents so they appear in your [Thread History](./agent-panel.md#multiple-threads) alongside the rest of your threads.
 
-Open the Threads Sidebar with {#kb multi_workspace::ToggleWorkspaceSidebar}, then open Thread History by clicking the clock icon at the bottom of the sidebar or running {#action agents_sidebar::ToggleThreadHistory} from the Command Palette. Click **Import Threads**, choose the agents you want to import from, then click **Import Threads** again.
+Open the Threads Sidebar with `multi_workspace::ToggleWorkspaceSidebar`, then open Thread History by clicking the clock icon at the bottom of the sidebar or running `agents_sidebar::ToggleThreadHistory` from the Command Palette. Click **Import Threads**, choose the agents you want to import from, then click **Import Threads** again.
 
 Zed connects to each selected agent over ACP and adds sessions that are not already in your history. Imported threads are archived entries; open one to restore it and continue where you left off.
 
@@ -201,6 +203,6 @@ If an MCP tool does not appear in an External Agent, check both Zed's MCP server
 
 ## Debugging {#debugging-agents}
 
-Use {#action dev::OpenAcpLogs} from the Command Palette to inspect messages between Zed and an External Agent.
+Use `dev::OpenAcpLogs` from the Command Palette to inspect messages between Zed and an External Agent.
 
 Include ACP logs when reporting issues with External Agents.

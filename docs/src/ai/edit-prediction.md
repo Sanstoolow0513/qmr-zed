@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: AI Code Completion in Zed - Zeta, Copilot, Codestral, Mercury Coder
 description: Set up AI code completions in Zed with Zeta (built-in), GitHub Copilot, Codestral, or Mercury Coder. Multi-line predictions as you type.
@@ -62,10 +64,10 @@ Or directly via the UI through the status bar menu:
 
 On all platforms, you can accept edit predictions with `alt-tab`. On Linux and Windows, `alt-tab` is often used by the system for switching windows, so `alt-l` is also bound as a default key binding for edit predictions on those platforms.
 
-In `eager` mode, you can also use the `tab` key to accept edit predictions, unless the completion menu is open, in which case `tab` accepts LSP completions. To use `tab` to insert whitespace, you need to dismiss the prediction with {#kb editor::Cancel} before hitting `tab`.
+In `eager` mode, you can also use the `tab` key to accept edit predictions, unless the completion menu is open, in which case `tab` accepts LSP completions. To use `tab` to insert whitespace, you need to dismiss the prediction with `editor::Cancel` before hitting `tab`.
 
-{#action editor::AcceptNextWordEditPrediction} ({#kb editor::AcceptNextWordEditPrediction}) can be used to accept the current edit prediction up to the next word boundary.
-{#action editor::AcceptNextLineEditPrediction} ({#kb editor::AcceptNextLineEditPrediction}) can be used to accept the current edit prediction up to the new line boundary.
+`editor::AcceptNextWordEditPrediction` (`editor::AcceptNextWordEditPrediction`) can be used to accept the current edit prediction up to the next word boundary.
+`editor::AcceptNextLineEditPrediction` (`editor::AcceptNextLineEditPrediction`) can be used to accept the current edit prediction up to the new line boundary.
 
 ## Configuring Edit Prediction Keybindings {#edit-predictions-keybinding}
 
@@ -73,7 +75,7 @@ In `eager` mode, you can also use the `tab` key to accept edit predictions, unle
 
 To always use `tab` for accepting edit predictions, regardless of whether the LSP completions menu is open, you can add the following to your keymap:
 
-Open the [keymap editor](../key-bindings.md) with {#action zed::OpenKeymap} ({#kb zed::OpenKeymap}), search for `AcceptEditPrediction`, right click on the binding for `tab` and hit `edit`. Then change the context the binding is active in to just `Editor && edit_prediction` and save it.
+Open the [keymap editor](../key-bindings.md) with `zed::OpenKeymap` (`zed::OpenKeymap`), search for `AcceptEditPrediction`, right click on the binding for `tab` and hit `edit`. Then change the context the binding is active in to just `Editor && edit_prediction` and save it.
 
 Alternatively, you can put the following in your `keymap.json`:
 
@@ -88,13 +90,13 @@ Alternatively, you can put the following in your `keymap.json`:
 ]
 ```
 
-After that, {#kb editor::ComposeCompletion} remains available for accepting LSP completions.
+After that, `editor::ComposeCompletion` remains available for accepting LSP completions.
 
 ### Keybinding Example: Always Use Alt-Tab
 
 To stop using `tab` for accepting edit predictions and always use `alt-tab` instead, unbind the default `tab` binding in the eager edit prediction context:
 
-Open the keymap editor with {#action zed::OpenKeymap} ({#kb zed::OpenKeymap}), search for `AcceptEditPrediction`, right click on the binding for `tab` and delete it.
+Open the keymap editor with `zed::OpenKeymap` (`zed::OpenKeymap`), search for `AcceptEditPrediction`, right click on the binding for `tab` and delete it.
 
 Alternatively, you can put the following in your `keymap.json`:
 
@@ -115,7 +117,7 @@ After that, `alt-tab` remains available for accepting edit predictions, and on L
 
 To move both default accept bindings to something else, unbind them and add your replacement:
 
-Open the keymap editor with {#action zed::OpenKeymap} ({#kb zed::OpenKeymap}), search for `AcceptEditPrediction`, right click on the binding for `tab` and delete it. Then right click on the binding for `alt-tab`, select "Edit", and record your desired keystrokes before saving.
+Open the keymap editor with `zed::OpenKeymap` (`zed::OpenKeymap`), search for `AcceptEditPrediction`, right click on the binding for `tab` and delete it. Then right click on the binding for `alt-tab`, select "Edit", and record your desired keystrokes before saving.
 
 Alternatively, you can put the following in your `keymap.json`:
 
@@ -172,7 +174,7 @@ The default debounce depends on the provider:
 | Ollama                |    0 ms |
 | OpenAI-compatible API |    0 ms |
 
-Set `prediction_debounce` to `0` to disable the additional delay. Normal request throttling can still apply. Explicitly requesting a prediction with {#action editor::ShowEditPrediction} bypasses the configured debounce.
+Set `prediction_debounce` to `0` to disable the additional delay. Normal request throttling can still apply. Explicitly requesting a prediction with `editor::ShowEditPrediction` bypasses the configured debounce.
 
 ## Disabling Automatic Edit Prediction
 
@@ -191,7 +193,7 @@ To not have predictions appear automatically as you type, set this in your setti
 ```
 
 This hides every indication that there is a prediction available, regardless of [the display mode](#switching-modes) you're in.
-Still, you can trigger edit predictions manually by executing {#action editor::ShowEditPrediction} or hitting {#kb editor::ShowEditPrediction}.
+Still, you can trigger edit predictions manually by executing `editor::ShowEditPrediction` or hitting `editor::ShowEditPrediction`.
 
 ### For Specific Languages
 
@@ -270,14 +272,14 @@ All other Copilot features and usage remain the same.
 
 Copilot can provide multiple completion alternatives, and these can be navigated with the following actions:
 
-- {#action editor::NextEditPrediction} ({#kb editor::NextEditPrediction}): To cycle to the next edit prediction
-- {#action editor::PreviousEditPrediction} ({#kb editor::PreviousEditPrediction}): To cycle to the previous edit prediction
+- `editor::NextEditPrediction` (`editor::NextEditPrediction`): To cycle to the next edit prediction
+- `editor::PreviousEditPrediction` (`editor::PreviousEditPrediction`): To cycle to the previous edit prediction
 
 ### Mercury Coder {#mercury-coder}
 
 To use [Mercury Coder](https://www.inceptionlabs.ai/) by Inception Labs as your provider:
 
-1. Open the Settings Editor ({#kb zed::OpenSettings})
+1. Open the Settings Editor (`zed::OpenSettings`)
 2. Search for "Edit Predictions" and click **Configure Providers**
 3. Find the Mercury section and enter your API key from the
    [Inception Labs dashboard](https://platform.inceptionlabs.ai/dashboard/api-keys)
