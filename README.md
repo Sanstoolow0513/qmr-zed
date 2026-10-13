@@ -1,20 +1,39 @@
 > [!IMPORTANT]
 > Remove this line to confirm you've reviewed this PR before submitting.
-# Zed
+# QMR Zed
 
 This qmr-zed fork focuses on software development without built-in AI. Projects
 and terminal sessions use the independent [workspace sidebar](docs/src/workspace-terminals.md).
 Editing, language servers, Git, debugging, collaboration and remote development
 remain available.
 
+### QMR Zed Windows distribution
+
+Build the independent Windows x64 release with PowerShell 7, the MSVC Rust
+toolchain, and Visual Studio C++ and CMake tools:
+
+```powershell
+pwsh -File script/bundle-qmr-windows.ps1
+```
+
+The script builds optimized Release binaries and writes an extract-and-run ZIP,
+the corresponding source ZIP, and SHA-256 checksums to `target/qmr-dist`. Run
+`QMRZed.exe`, or use `bin/qmrzed.exe` from a terminal. The package is unsigned.
+Settings live in `%APPDATA%\QMRZed`, and data/logs in `%LOCALAPPDATA%\QMRZed`,
+separate from official Zed. Updates are manual from this fork's
+[releases](https://github.com/Sanstoolow0513/qmr-zed/releases); official Zed
+automatic updates are disabled. The build manifest records the base commit and
+any uncommitted source changes. macOS and Linux packaging still uses upstream
+templates and has not been adapted for this distribution.
+
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+QMR Zed is based on Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
 
 ---
 
-### Installation
+### Upstream Zed installation
 
 On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
 
