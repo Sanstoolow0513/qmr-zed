@@ -1654,6 +1654,7 @@ pub struct Workspace {
     persisted_recent_navigation_history: Vec<PathBuf>,
     last_active_project_path: Option<ProjectPath>,
     restoring_workspace: bool,
+    is_remote_connection_placeholder: bool,
 }
 
 impl EventEmitter<Event> for Workspace {}
@@ -2156,6 +2157,7 @@ impl Workspace {
             persisted_recent_navigation_history: Vec::new(),
             last_active_project_path: None,
             restoring_workspace: false,
+            is_remote_connection_placeholder: false,
         }
     }
 
@@ -3351,6 +3353,10 @@ impl Workspace {
 
     pub fn open_in_dev_container(&self) -> bool {
         self.open_in_dev_container
+    }
+
+    pub fn set_remote_connection_placeholder(&mut self, is_placeholder: bool) {
+        self.is_remote_connection_placeholder = is_placeholder;
     }
 
     pub fn set_dev_container_task(&mut self, task: Task<Result<()>>) {
@@ -10840,6 +10846,9 @@ fn workspace_is_at_location(
     location: &SerializedWorkspaceLocation,
     cx: &App,
 ) -> bool {
+    if workspace.read(cx).is_remote_connection_placeholder {
+        return false;
+    }
     let WorkspaceLocation::Location(workspace_location, _) =
         workspace.read(cx).workspace_location(cx)
     else {
@@ -10865,10 +10874,9 @@ pub fn workspace_windows_for_location(
         .filter_map(|window| window.downcast::<MultiWorkspace>())
         .filter(|multi_workspace| {
             multi_workspace.read(cx).is_ok_and(|multi_workspace| {
-                !multi_workspace.is_remote_connection_placeholder
-                    && multi_workspace.workspaces().any(|workspace| {
-                        workspace_is_at_location(workspace, serialized_location, cx)
-                    })
+                multi_workspace
+                    .workspaces()
+                    .any(|workspace| workspace_is_at_location(workspace, serialized_location, cx))
             })
         })
         .collect()
@@ -11485,6 +11493,7 @@ pub fn open_remote_project_with_existing_connection(
     cx: &mut AsyncApp,
 ) -> Task<Result<(Entity<Workspace>, Vec<Option<Box<dyn ItemHandle>>>)>> {
     cx.spawn(async move |cx| {
+        window.update(cx, |_, window, _| window.activate_window())?;
         let (workspace_id, serialized_workspace) =
             deserialize_remote_project(connection_options.clone(), paths.clone(), cx).await?;
 

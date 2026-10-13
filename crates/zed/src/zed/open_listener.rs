@@ -639,6 +639,13 @@ pub async fn handle_cli_connection(
                 if paths.is_empty()
                     && diff_paths.is_empty()
                     && open_behavior != cli::OpenBehavior::AlwaysNew
+                    && cx.update(|cx| {
+                        matches!(
+                            workspace::WorkspaceSettings::get_global(cx).restore_on_startup,
+                            workspace::RestoreOnStartupBehavior::LastSession
+                                | workspace::RestoreOnStartupBehavior::LastWorkspace
+                        )
+                    })
                     && workspace::activate_any_workspace_window(cx).is_some()
                 {
                     cx.update(|cx| cx.activate(true));
@@ -2834,7 +2841,7 @@ mod tests {
 
             let (status, prompt_shown) = run_cli_with_zed_handler(
                 cx,
-                app_state,
+                app_state.clone(),
                 make_cli_open_request(Vec::new(), cli::OpenBehavior::AlwaysNew),
                 None,
             );
@@ -2842,6 +2849,23 @@ mod tests {
             assert!(!prompt_shown);
             assert_eq!(cx.windows().len(), 2);
             assert!(cx.read(|cx| restored_window.read(cx).is_ok()));
+
+            cx.update(|cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store.update_user_settings(cx, |settings| {
+                        settings.workspace.restore_on_startup =
+                            Some(workspace::RestoreOnStartupBehavior::EmptyTab);
+                    });
+                });
+            });
+            let (status, _) = run_cli_with_zed_handler(
+                cx,
+                app_state,
+                make_cli_open_request(Vec::new(), cli::OpenBehavior::Default),
+                Some(cli::CliBehaviorSetting::NewWindow),
+            );
+            assert_eq!(status, 0);
+            assert_eq!(cx.windows().len(), 3);
         }
     }
 
