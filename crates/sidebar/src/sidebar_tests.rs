@@ -6316,9 +6316,9 @@ async fn test_draft_title_updates_from_editor_text(cx: &mut TestAppContext) {
     // — important for Phase 2 below, which exercises the kvp fallback.
     agent_ui::test_support::type_draft_prompt(&panel, "Fix the login bug", cx);
 
-    // Park the draft by pressing Cmd-N while it has content.
+    // Park the draft by opening another thread while it has content.
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     cx.run_until_parked();
 
@@ -6396,7 +6396,7 @@ async fn test_thread_switcher_includes_parked_draft(cx: &mut TestAppContext) {
     agent_ui::test_support::type_draft_prompt(&panel, "Fix the login bug", cx);
 
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     cx.run_until_parked();
 
@@ -6446,7 +6446,7 @@ async fn test_plus_button_reuses_empty_draft(cx: &mut TestAppContext) {
 
     // Cmd-N with an empty draft should reuse it.
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     cx.run_until_parked();
 
@@ -6511,7 +6511,7 @@ async fn test_plus_button_parks_nonempty_draft(cx: &mut TestAppContext) {
 
     // Cmd-N parks the first draft and creates a new empty draft.
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     cx.run_until_parked();
 
@@ -6621,7 +6621,7 @@ async fn test_remove_draft_deletes_metadata_row(cx: &mut TestAppContext) {
     let draft_id = panel.read_with(cx, |panel, cx| panel.active_thread_id(cx).unwrap());
     agent_ui::test_support::type_draft_prompt(&panel, "will be discarded", cx);
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     cx.run_until_parked();
 
@@ -6725,10 +6725,10 @@ async fn test_sending_message_from_draft_promotes_in_place(cx: &mut TestAppConte
 
 #[gpui::test]
 async fn test_cmd_n_shows_new_thread_entry(cx: &mut TestAppContext) {
-    // When the user presses Cmd-N (NewThread action) while viewing a
-    // non-empty thread, the panel should switch to the draft thread and
-    // the sidebar should surface a "New {agent} Thread" placeholder row
-    // that mirrors the active empty draft.
+    // Creating another draft while viewing a non-empty thread switches the
+    // panel to that draft. The sidebar surfaces a "New {agent} Thread"
+    // placeholder row that mirrors the active empty draft. The NewThread
+    // action itself now opens a terminal.
     let project = init_test_project_with_agent_panel("/my-project", cx).await;
     let (multi_workspace, cx) =
         cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
@@ -6758,7 +6758,7 @@ async fn test_cmd_n_shows_new_thread_entry(cx: &mut TestAppContext) {
     // Simulate cmd-n
     let workspace = multi_workspace.read_with(cx, |mw, _cx| mw.workspace().clone());
     panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     workspace.update_in(cx, |workspace, window, cx| {
         workspace.focus_panel::<AgentPanel>(window, cx);
@@ -6880,7 +6880,7 @@ async fn test_cmd_n_shows_new_thread_entry_in_absorbed_worktree(cx: &mut TestApp
 
     // Simulate Cmd-N in the worktree workspace.
     worktree_panel.update_in(cx, |panel, window, cx| {
-        panel.new_thread(&NewThread, window, cx);
+        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
     });
     worktree_workspace.update_in(cx, |workspace, window, cx| {
         workspace.focus_panel::<AgentPanel>(window, cx);
@@ -13398,7 +13398,7 @@ mod property_test {
                     workspace.read_with(cx, |workspace, cx| workspace.panel::<AgentPanel>(cx));
                 if let Some(panel) = panel {
                     panel.update_in(cx, |panel, window, cx| {
-                        panel.new_thread(&NewThread, window, cx);
+                        panel.activate_new_thread(true, AgentThreadSource::Sidebar, window, cx);
                     });
                     cx.run_until_parked();
                 }
