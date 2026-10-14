@@ -122,6 +122,13 @@ impl From<f32> for SvgSize {
 impl SvgRenderer {
     /// Creates a new SVG renderer with the provided asset source.
     pub fn new(asset_source: Arc<dyn AssetSource>) -> Self {
+        Self::with_font_defaults(asset_source, None)
+    }
+
+    pub(crate) fn with_font_defaults(
+        asset_source: Arc<dyn AssetSource>,
+        defaults: Option<crate::FontDefaults>,
+    ) -> Self {
         static SYSTEM_FONT_DB: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
             let mut db = usvg::fontdb::Database::new();
             db.load_system_fonts();
@@ -141,8 +148,36 @@ impl SvgRenderer {
                 if db.is_empty() {
                     let fontdb = enriched_fontdb.get_or_init(|| {
                         let mut db = (**SYSTEM_FONT_DB).clone();
-                        load_bundled_fonts(&*asset_source, &mut db);
-                        fix_generic_font_families(&mut db);
+                        if let Some(defaults) = defaults.as_ref() {
+                            match asset_source.list(&defaults.asset_directory) {
+                                Ok(paths) => {
+                                    for path in
+                                        paths.into_iter().filter(|path| path.ends_with(".ttf"))
+                                    {
+                                        match asset_source.load(&path) {
+                                            Ok(Some(data)) => db.load_font_data(data.into_owned()),
+                                            Ok(None) => {
+                                                log::error!("Bundled font not found: {path}")
+                                            }
+                                            Err(error) => {
+                                                log::error!("Failed to load font {path}: {error}")
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(error) => {
+                                    log::error!("Failed to list application fonts: {error}")
+                                }
+                            }
+                            db.set_sans_serif_family(defaults.proportional.to_string());
+                            db.set_serif_family(defaults.proportional.to_string());
+                            db.set_cursive_family(defaults.proportional.to_string());
+                            db.set_fantasy_family(defaults.proportional.to_string());
+                            db.set_monospace_family(defaults.monospace.to_string());
+                        } else {
+                            load_bundled_fonts(&*asset_source, &mut db);
+                            fix_generic_font_families(&mut db);
+                        }
                         Arc::new(db)
                     });
                     *db = fontdb.clone();

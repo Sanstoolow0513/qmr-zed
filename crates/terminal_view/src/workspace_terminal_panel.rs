@@ -1327,8 +1327,8 @@ impl Panel for WorkspaceTerminalPanel {
             .button
             .then_some(IconName::Terminal)
     }
-    fn icon_tooltip(&self, _: &Window, _: &App) -> Option<&'static str> {
-        Some("Workspace Terminals")
+    fn icon_tooltip(&self, _: &Window, cx: &App) -> Option<&'static str> {
+        Some(i18n::static_text("Workspace Terminals", cx))
     }
     fn toggle_action(&self) -> Box<dyn Action> {
         Box::new(ToggleFocus)
@@ -1407,7 +1407,7 @@ impl Render for WorkspaceTerminalPanel {
                     )
                     .child(
                         IconButton::new("new-workspace-terminal", IconName::Plus)
-                            .tooltip(Tooltip::text("New Terminal"))
+                            .tooltip(Tooltip::localized_text("New Terminal"))
                             .disabled(
                                 !self.supports_terminal(cx)
                                     || !self.pending_terminal_spawns.is_empty(),
@@ -1418,7 +1418,7 @@ impl Render for WorkspaceTerminalPanel {
                     )
                     .child(
                         IconButton::new("close-workspace-terminal", IconName::Close)
-                            .tooltip(Tooltip::text("Close Terminal"))
+                            .tooltip(Tooltip::localized_text("Close Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if let Some(id) = terminal_id {
                                     this.close_terminal(id, window, cx);
@@ -1437,7 +1437,7 @@ impl Render for WorkspaceTerminalPanel {
                 } else {
                     this.child(
                         div().p_4().child(
-                            Label::new(if !self.pending_terminal_spawns.is_empty() {
+                            Label::localized(if !self.pending_terminal_spawns.is_empty() {
                                 "Starting terminal…"
                             } else if self.supports_terminal(cx) {
                                 "Create a terminal to get started"

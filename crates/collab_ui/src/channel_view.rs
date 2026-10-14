@@ -214,6 +214,7 @@ impl ChannelView {
                         })
                         .ok();
                     })
+                    .localize_last()
                 }))
             });
             editor.set_show_bookmarks(false, cx);

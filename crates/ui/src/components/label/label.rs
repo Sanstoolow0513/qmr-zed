@@ -38,6 +38,7 @@ pub struct Label {
     base: LabelLike,
     label: SharedString,
     render_code_spans: bool,
+    localized: bool,
 }
 
 impl Label {
@@ -55,6 +56,15 @@ impl Label {
             base: LabelLike::new(),
             label: label.into(),
             render_code_spans: false,
+            localized: false,
+        }
+    }
+
+    /// Creates a label for application-owned, translatable text.
+    pub fn localized(label: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(label)
         }
     }
 
@@ -68,6 +78,7 @@ impl Label {
     /// Sets the text of the [`Label`].
     pub fn set_text(&mut self, text: impl Into<SharedString>) {
         self.label = text.into();
+        self.localized = false;
     }
 
     /// Truncates the label from the start, keeping the end visible.
@@ -266,7 +277,10 @@ impl LabelCommon for Label {
 }
 
 impl RenderOnce for Label {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.localized {
+            self.label = i18n::text(self.label, cx);
+        }
         if self.render_code_spans {
             if let Some((stripped, code_ranges)) = parse_backtick_spans(&self.label) {
                 let buffer_font_family = theme::theme_settings(cx).buffer_font(cx).family.clone();
@@ -400,43 +414,43 @@ impl Component for Label {
                     example_group_with_title(
                         "Sizes",
                         vec![
-                            single_example("Default", Label::new("Project Explorer").into_any_element()),
-                            single_example("Small", Label::new("File: main.rs").size(LabelSize::Small).into_any_element()),
-                            single_example("Large", Label::new("Welcome to Zed").size(LabelSize::Large).into_any_element()),
+                            single_example("Default", Label::localized("Project Explorer").into_any_element()),
+                            single_example("Small", Label::localized("File: main.rs").size(LabelSize::Small).into_any_element()),
+                            single_example("Large", Label::localized("Welcome to Zed").size(LabelSize::Large).into_any_element()),
                         ],
                     ),
                     example_group_with_title(
                         "Colors",
                         vec![
-                            single_example("Default", Label::new("Status: Ready").into_any_element()),
-                            single_example("Accent", Label::new("New Update Available").color(Color::Accent).into_any_element()),
-                            single_example("Error", Label::new("Build Failed").color(Color::Error).into_any_element()),
+                            single_example("Default", Label::localized("Status: Ready").into_any_element()),
+                            single_example("Accent", Label::localized("New Update Available").color(Color::Accent).into_any_element()),
+                            single_example("Error", Label::localized("Build Failed").color(Color::Error).into_any_element()),
                         ],
                     ),
                     example_group_with_title(
                         "Styles",
                         vec![
-                            single_example("Default", Label::new("Normal Text").into_any_element()),
-                            single_example("Bold", Label::new("Important Notice").weight(gpui::FontWeight::BOLD).into_any_element()),
-                            single_example("Italic", Label::new("Code Comment").italic().into_any_element()),
-                            single_example("Strikethrough", Label::new("Deprecated Feature").strikethrough().into_any_element()),
-                            single_example("Underline", Label::new("Clickable Link").underline().into_any_element()),
-                            single_example("Inline Code", Label::new("fn main() {}").inline_code(cx).into_any_element()),
+                            single_example("Default", Label::localized("Normal Text").into_any_element()),
+                            single_example("Bold", Label::localized("Important Notice").weight(gpui::FontWeight::BOLD).into_any_element()),
+                            single_example("Italic", Label::localized("Code Comment").italic().into_any_element()),
+                            single_example("Strikethrough", Label::localized("Deprecated Feature").strikethrough().into_any_element()),
+                            single_example("Underline", Label::localized("Clickable Link").underline().into_any_element()),
+                            single_example("Inline Code", Label::localized("fn main() {}").inline_code(cx).into_any_element()),
                         ],
                     ),
                     example_group_with_title(
                         "Line Height Styles",
                         vec![
-                            single_example("Default", Label::new("Multi-line\nText\nExample").into_any_element()),
-                            single_example("UI Label", Label::new("Compact\nUI\nLabel").line_height_style(LineHeightStyle::UiLabel).into_any_element()),
+                            single_example("Default", Label::localized("Multi-line\nText\nExample").into_any_element()),
+                            single_example("UI Label", Label::localized("Compact\nUI\nLabel").line_height_style(LineHeightStyle::UiLabel).into_any_element()),
                         ],
                     ),
                     example_group_with_title(
                         "Special Cases",
                         vec![
-                            single_example("Single Line", Label::new("Line 1\nLine 2\nLine 3").single_line().into_any_element()),
-                            single_example("Regular Truncation", div().max_w_24().child(Label::new("This is a very long file name that should be truncated: very_long_file_name_with_many_words.rs").truncate()).into_any_element()),
-                            single_example("Start Truncation", div().max_w_24().child(Label::new("zed/crates/ui/src/components/label/truncate/label/label.rs").truncate_start()).into_any_element()),
+                            single_example("Single Line", Label::localized("Line 1\nLine 2\nLine 3").single_line().into_any_element()),
+                            single_example("Regular Truncation", div().max_w_24().child(Label::localized("This is a very long file name that should be truncated: very_long_file_name_with_many_words.rs").truncate()).into_any_element()),
+                            single_example("Start Truncation", div().max_w_24().child(Label::localized("zed/crates/ui/src/components/label/truncate/label/label.rs").truncate_start()).into_any_element()),
                         ],
                     ),
                 ])

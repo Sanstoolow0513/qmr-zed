@@ -3445,7 +3445,7 @@ fn image_fallback_element(
         .id("image-fallback")
         .min_w_0()
         .child(Label::new(label).color(Color::Warning).underline())
-        .tooltip(Tooltip::text(
+        .tooltip(Tooltip::localized_text(
             "Image failed to load. Open `zed: log` for more details.",
         ))
         .when(open_image_url_on_click, |this| {

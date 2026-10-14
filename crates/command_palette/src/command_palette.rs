@@ -215,6 +215,22 @@ struct Command {
     usage: Option<CommandUsage>,
 }
 
+fn command_search_candidates(
+    commands: &[Command],
+    locale: i18n::Locale,
+) -> Vec<StringMatchCandidate> {
+    commands
+        .iter()
+        .enumerate()
+        .flat_map(|(index, command)| {
+            std::iter::once(StringMatchCandidate::new(index, &command.name)).chain(
+                i18n::lookup(&command.name, locale)
+                    .map(|translated| StringMatchCandidate::new(index, translated)),
+            )
+        })
+        .collect()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct CommandUsage {
     last_invoked: i64,
@@ -458,8 +474,8 @@ impl CommandPaletteDelegate {
             })
             .child(
                 ButtonLike::new(("remove-command-history", ix))
-                    .aria_label("Remove from Command History")
-                    .tooltip(Tooltip::for_action_title(
+                    .aria_label(i18n::text("Remove from Command History", cx))
+                    .tooltip(Tooltip::localized_for_action_title(
                         "Remove from Command History",
                         &RemoveSelected,
                     ))
@@ -520,8 +536,8 @@ impl PickerDelegate for CommandPaletteDelegate {
         "command palette"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Execute a command...".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Execute a command...", cx).into()
     }
 
     fn select_history(
@@ -599,6 +615,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
         let task = cx.background_spawn({
             let mut commands = self.all_commands.clone();
+            let locale = i18n::locale(cx);
             let command_usage = self.command_usage(cx);
             let executor = cx.background_executor().clone();
             let query = normalize_action_query(query_str);
@@ -609,11 +626,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 }
                 commands.sort_by_key(|command| (Reverse(command.usage), command.name.clone()));
 
-                let candidates = commands
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, command)| StringMatchCandidate::new(ix, &command.name))
-                    .collect::<Vec<_>>();
+                let candidates = command_search_candidates(&commands, locale);
 
                 let mut matches = fuzzy_nucleo::match_strings_async(
                     &candidates,
@@ -625,6 +638,9 @@ impl PickerDelegate for CommandPaletteDelegate {
                     executor,
                 )
                 .await;
+
+                let mut seen = std::collections::HashSet::new();
+                matches.retain(|matched| seen.insert(matched.candidate_id));
 
                 let used_commands = commands
                     .iter()
@@ -770,6 +786,16 @@ impl PickerDelegate for CommandPaletteDelegate {
     ) -> Option<Self::ListItem> {
         let matching_command = self.matches.get(ix)?;
         let command = self.commands.get(matching_command.candidate_id)?;
+        let display_name = if command.name.as_ref() == humanize_action_name(command.action.name()) {
+            i18n::text(command.name.clone(), cx)
+        } else {
+            command.name.clone()
+        };
+        let highlight_positions = if matching_command.string == display_name {
+            matching_command.positions.clone()
+        } else {
+            Vec::new()
+        };
 
         Some(
             ListItem::new(ix)
@@ -782,13 +808,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                         .py_px()
                         .justify_between()
                         .gap_2()
-                        .child(
-                            HighlightedLabel::new(
-                                command.name.clone(),
-                                matching_command.positions.clone(),
-                            )
-                            .truncate(),
-                        )
+                        .child(HighlightedLabel::new(display_name, highlight_positions).truncate())
                         .child(
                             h_flex()
                                 .flex_shrink_0()
@@ -821,7 +841,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
         let focus_handle = &self.previous_focus_handle;
         let keybinding_buttons = if keybind.has_binding(window) {
-            Button::new("change", "Change Keybinding…")
+            Button::localized("change", "Change Keybinding…")
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -830,7 +850,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                     window.dispatch_action(menu::SecondaryConfirm.boxed_clone(), cx);
                 })
         } else {
-            Button::new("add", "Add Keybinding…")
+            Button::localized("add", "Add Keybinding…")
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -850,7 +870,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .border_color(cx.theme().colors().border_variant)
                 .child(keybinding_buttons)
                 .child(
-                    Button::new("run-action", "Run")
+                    Button::localized("run-action", "Run")
                         .key_binding(
                             KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -941,6 +961,41 @@ impl std::fmt::Debug for Command {
 
 #[cfg(test)]
 mod tests {
+
+    #[gpui::test]
+    async fn chinese_commands_keep_english_identifiers(cx: &mut gpui::TestAppContext) {
+        let commands = vec![super::Command {
+            name: "zed: open settings".into(),
+            action: Box::new(zed_actions::OpenSettings),
+            usage: None,
+        }];
+        let candidates =
+            super::command_search_candidates(&commands, i18n::Locale::SimplifiedChinese);
+        for query in ["打开设置", "open settings"] {
+            let matches = fuzzy_nucleo::match_strings_async(
+                &candidates,
+                query,
+                fuzzy_nucleo::Case::Smart,
+                fuzzy_nucleo::LengthPenalty::On,
+                10,
+                &Default::default(),
+                cx.background_executor.clone(),
+            )
+            .await;
+            let matched = matches
+                .first()
+                .expect("both languages should find the command");
+            assert_eq!(matched.candidate_id, 0);
+            assert!(
+                matched
+                    .positions
+                    .iter()
+                    .all(|position| matched.string.is_char_boundary(*position))
+            );
+        }
+        assert_eq!(commands[0].name.as_ref(), "zed: open settings");
+        assert_eq!(commands[0].action.name(), "zed::OpenSettings");
+    }
     use std::sync::Arc;
 
     use super::*;

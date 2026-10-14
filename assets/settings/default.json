@@ -1,5 +1,7 @@
 {
   "$schema": "zed://schemas/settings",
+  // Display language: "zh-CN" or "en". Restart to apply.
+  "display_language": "zh-CN",
   // The name of the Zed theme to use for the UI.
   //
   // `mode` is one of:
@@ -26,9 +28,7 @@
   // 9. "None"
   "base_keymap": "Zed",
   // The name of a font to use for rendering text in the editor
-  // ".ZedMono" currently aliases to Lilex
-  // but this may change in the future.
-  "buffer_font_family": ".ZedMono",
+  "buffer_font_family": "Maple Mono NF CN",
   // Set the buffer text's font fallbacks, this will be merged with
   // the platform's default fallbacks.
   "buffer_font_fallbacks": null,
@@ -54,9 +54,7 @@
   "buffer_line_height": "comfortable",
   // The name of a font to use for rendering text in the UI
   // You can set this to ".SystemUIFont" to use the system font
-  // ".ZedSans" currently aliases to "IBM Plex Sans", but this may
-  // change in the future
-  "ui_font_family": ".ZedSans",
+  "ui_font_family": "Maple Mono NF CN",
   // Set the UI's font fallbacks, this will be merged with the platform's
   // default font fallbacks.
   "ui_font_fallbacks": null,

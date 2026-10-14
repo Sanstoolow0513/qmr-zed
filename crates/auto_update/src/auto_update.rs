@@ -314,9 +314,9 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Updates are managed outside this application.",
+            i18n::static_text("Updates are managed outside this application.", cx),
             Some(&message),
-            &["OK"],
+            &[i18n::static_text("OK", cx)],
             cx,
         ));
         return;
@@ -334,9 +334,12 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     } else {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Could not check for updates",
-            Some("Auto-updates disabled for non-bundled app."),
-            &["OK"],
+            i18n::static_text("Could not check for updates", cx),
+            Some(i18n::static_text(
+                "Auto-updates disabled for non-bundled app.",
+                cx,
+            )),
+            &[i18n::static_text("OK", cx)],
             cx,
         ));
     }

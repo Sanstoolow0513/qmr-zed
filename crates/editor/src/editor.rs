@@ -4485,6 +4485,7 @@ impl Editor {
                                     .log_err();
                             }
                         })
+                        .localize_last()
                         .separator()
                     },
                 )
@@ -4512,6 +4513,7 @@ impl Editor {
                             window.dispatch_action(Box::new(RunToCursor), cx);
                         },
                     )
+                    .localize_last()
                     .separator()
                 })
                 .when_some(toggle_state_entry, |this, (msg, action)| {
@@ -4641,6 +4643,7 @@ impl Editor {
                                 .log_err();
                         },
                     )
+                    .localize_last()
                 })
         })
     }
@@ -8919,7 +8922,7 @@ impl Editor {
         cx: &mut Context<Self>,
     ) -> Entity<Self> {
         const MINIMAP_FONT_WEIGHT: gpui::FontWeight = gpui::FontWeight::BLACK;
-        const MINIMAP_FONT_FAMILY: SharedString = SharedString::new_static(".ZedMono");
+        let minimap_font_family = theme::theme_settings(cx).buffer_font(cx).family.clone();
 
         let mut minimap = Editor::new_internal(
             EditorMode::Minimap {
@@ -8942,7 +8945,7 @@ impl Editor {
         minimap.set_text_style_refinement(TextStyleRefinement {
             font_size: Some(MINIMAP_FONT_SIZE),
             font_weight: Some(MINIMAP_FONT_WEIGHT),
-            font_family: Some(MINIMAP_FONT_FAMILY),
+            font_family: Some(minimap_font_family),
             ..Default::default()
         });
         minimap.update_minimap_configuration(minimap_settings, cx);

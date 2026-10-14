@@ -7,6 +7,16 @@ and terminal sessions use the independent [workspace sidebar](docs/src/workspace
 Editing, language servers, Git, debugging, collaboration and remote development
 remain available.
 
+QMR Zed defaults to Simplified Chinese. Switch between **简体中文** and **English**
+in **Settings → General → Display Language** (设置 → 通用 → 显示语言), then restart
+to apply the change. The JSON setting is `"display_language": "zh-CN"` or `"en"`.
+Changing it in `settings.json` also shows a restart notification.
+
+All 16 faces from `MapleMono-NF-CN-unhinted.zip` are bundled as **Maple Mono NF CN**.
+The interface and editor use this family by default, and terminals inherit the
+editor font unless overridden. Custom font settings remain supported. The
+original [font license](assets/fonts/maple-mono-nf-cn/LICENSE.txt) is included.
+
 ### QMR Zed Windows distribution
 
 Build the independent Windows x64 release with PowerShell 7, the MSVC Rust

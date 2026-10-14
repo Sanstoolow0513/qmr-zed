@@ -271,8 +271,8 @@ impl PickerDelegate for OutlineViewDelegate {
         "outline view"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Search buffer symbols...".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Search buffer symbols...", cx).into()
     }
 
     fn match_count(&self) -> usize {

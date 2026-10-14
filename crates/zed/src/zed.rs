@@ -623,9 +623,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start inotify",
+            i18n::static_text("Could not start inotify", cx),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[i18n::static_text("Troubleshoot and Quit", cx)],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -654,9 +654,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start ReadDirectoryChangesW",
+            i18n::static_text("Could not start ReadDirectoryChangesW", cx),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[i18n::static_text("Troubleshoot and Quit", cx)],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -704,9 +704,12 @@ fn show_software_emulation_warning_if_needed(
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Unsupported GPU",
+            i18n::static_text("Unsupported GPU", cx),
             Some(&message),
-            &["Skip", "Troubleshoot and Quit"],
+            &[
+                i18n::static_text("Skip", cx),
+                i18n::static_text("Troubleshoot and Quit", cx),
+            ],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -1465,14 +1468,14 @@ fn open_about_window(cx: &mut App) {
                             .child(Headline::new(self.message.clone()))
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
-                                    Label::new("Commit")
+                                    Label::localized("Commit")
                                         .color(Color::Muted)
                                         .size(LabelSize::XSmall),
                                 )
                                 .child(Label::new(commit).size(LabelSize::Small))
                             })
                             .child(
-                                Label::new("Version")
+                                Label::localized("Version")
                                     .color(Color::Muted)
                                     .size(LabelSize::XSmall),
                             )
@@ -1490,7 +1493,7 @@ fn open_about_window(cx: &mut App) {
                                         window.remove_window();
                                     }))
                                     .child(
-                                        Button::new("ok", "OK")
+                                        Button::localized("ok", "OK")
                                             .full_width()
                                             .style(ButtonStyle::OutlinedGhost)
                                             .toggle_state(ok_is_focused)
@@ -1510,7 +1513,7 @@ fn open_about_window(cx: &mut App) {
                                         },
                                     ))
                                     .child(
-                                        Button::new("copy", "Copy")
+                                        Button::localized("copy", "Copy")
                                             .full_width()
                                             .style(ButtonStyle::Tinted(TintColor::Accent))
                                             .toggle_state(copy_is_focused)
@@ -1557,7 +1560,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About QMR Zed".into()),
+                title: Some(i18n::text("About QMR Zed", cx)),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),
@@ -1615,9 +1618,12 @@ fn quit(_: &Quit, cx: &mut App) {
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Info,
-                        "Are you sure you want to quit?",
+                        i18n::static_text("Are you sure you want to quit?", cx),
                         None,
-                        &["Quit", "Cancel"],
+                        &[
+                            i18n::static_text("Quit", cx),
+                            i18n::static_text("Cancel", cx),
+                        ],
                         cx,
                     )
                 })
@@ -1919,6 +1925,34 @@ fn init_reduce_motion(cx: &mut App) {
     };
     apply(cx);
     cx.observe_global::<SettingsStore>(apply).detach();
+}
+
+pub fn observe_display_language(cx: &mut App) {
+    struct DisplayLanguageChanged;
+    let mut requested = settings::DisplayLanguageSettings::get_global(cx).locale();
+    cx.observe_global::<SettingsStore>(move |cx| {
+        let next = settings::DisplayLanguageSettings::get_global(cx).locale();
+        if requested == next {
+            return;
+        }
+        requested = next;
+        let id = NotificationId::unique::<DisplayLanguageChanged>();
+        if settings::DisplayLanguageSettings::restart_required(cx) {
+            show_app_notification(id, cx, |cx| {
+                cx.new(|cx| {
+                    MessageNotification::new(
+                        i18n::text("Restart to apply the display language change.", cx),
+                        cx,
+                    )
+                    .primary_message(i18n::text("Restart Now", cx))
+                    .primary_on_click(|_, cx| workspace::reload(cx))
+                })
+            });
+        } else {
+            dismiss_app_notification(&id, cx);
+        }
+    })
+    .detach();
 }
 
 pub fn watch_settings_files(fs: Arc<dyn fs::Fs>, cx: &mut App) {

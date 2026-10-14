@@ -58,7 +58,7 @@ impl Render for ToolbarControls {
             .child({
                 IconButton::new("toggle_search", IconName::MagnifyingGlass)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::for_action_title(
+                    .tooltip(Tooltip::localized_for_action_title(
                         "Buffer Search",
                         &buffer_search::Deploy::find(),
                     ))
@@ -72,7 +72,7 @@ impl Render for ToolbarControls {
                         IconButton::new("stop-updating", IconName::Stop)
                             .icon_color(Color::Error)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::for_action_title(
+                            .tooltip(Tooltip::localized_for_action_title(
                                 "Stop Diagnostics Update",
                                 &ToggleDiagnosticsRefresh,
                             ))
@@ -87,7 +87,7 @@ impl Render for ToolbarControls {
                     div.child(
                         IconButton::new("refresh-diagnostics", IconName::ArrowCircle)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::for_action_title(
+                            .tooltip(Tooltip::localized_for_action_title(
                                 "Refresh Diagnostics",
                                 &ToggleDiagnosticsRefresh,
                             ))

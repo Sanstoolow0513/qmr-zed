@@ -445,7 +445,7 @@ impl Component for IconButton {
                             IconButton::new("tooltip", IconName::Check)
                                 .style(ButtonStyle::Filled)
                                 .layer(ElevationIndex::Background)
-                                .tooltip(Tooltip::text("As mentioned - with a tooltip"))
+                                .tooltip(Tooltip::localized_text("As mentioned - with a tooltip"))
                                 .into_any_element(),
                         ),
                     ],

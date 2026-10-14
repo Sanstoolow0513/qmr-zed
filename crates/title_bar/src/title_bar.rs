@@ -619,7 +619,7 @@ impl TitleBar {
             return None;
         }
 
-        let button = Button::new("restricted_mode_trigger", "Restricted Mode")
+        let button = Button::localized("restricted_mode_trigger", "Restricted Mode")
             .style(ButtonStyle::Tinted(TintColor::Warning))
             .label_size(LabelSize::Small)
             .color(Color::Warning)
@@ -661,7 +661,7 @@ impl TitleBar {
 
         if self.project.read(cx).is_disconnected(cx) {
             return Some(
-                Button::new("disconnected", "Disconnected")
+                Button::localized("disconnected", "Disconnected")
                     .disabled(true)
                     .color(Color::Disabled)
                     .label_size(LabelSize::Small)
@@ -778,7 +778,11 @@ impl TitleBar {
                     .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                     .when(!is_project_selected, |s| s.color(Color::Muted)),
                 move |_window, cx| {
-                    Tooltip::for_action("Recent Projects", &zed_actions::OpenRecent::default(), cx)
+                    Tooltip::localized_for_action(
+                        "Recent Projects",
+                        &zed_actions::OpenRecent::default(),
+                        cx,
+                    )
                 },
             )
             .anchor(gpui::Anchor::TopLeft)
@@ -830,7 +834,11 @@ impl TitleBar {
                     .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                     .when(!is_project_selected, |s| s.color(Color::Muted)),
                 move |_window, cx| {
-                    Tooltip::for_action("Recent Projects", &zed_actions::OpenRecent::default(), cx)
+                    Tooltip::localized_for_action(
+                        "Recent Projects",
+                        &zed_actions::OpenRecent::default(),
+                        cx,
+                    )
                 },
             )
             .anchor(gpui::Anchor::TopLeft)
@@ -952,7 +960,7 @@ impl TitleBar {
                 };
 
                 let trigger = if is_detached_head {
-                    Button::new("project_branch_trigger", "Create Branch")
+                    Button::localized("project_branch_trigger", "Create Branch")
                         .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                         .label_size(LabelSize::Small)
                         .tab_index(0isize)
@@ -1012,7 +1020,7 @@ impl TitleBar {
                 .children(worktree_button)
                 .when(show_separator, |this| {
                     this.child(
-                        Label::new("/")
+                        Label::localized("/")
                             .size(LabelSize::Small)
                             .color(Color::Muted)
                             .alpha(0.25),
@@ -1074,7 +1082,7 @@ impl TitleBar {
                 div()
                     .id("disconnected")
                     .child(Icon::new(IconName::Disconnected).size(IconSize::Small))
-                    .tooltip(Tooltip::text("Disconnected"))
+                    .tooltip(Tooltip::localized_text("Disconnected"))
                     .into_any_element(),
             ),
             client::Status::UpgradeRequired => {
@@ -1112,7 +1120,7 @@ impl TitleBar {
     pub fn render_sign_in_button(&mut self, _: &mut Context<Self>) -> Button {
         let client = self.client.clone();
         let workspace = self.workspace.clone();
-        Button::new("sign_in", "Sign In")
+        Button::localized("sign_in", "Sign In")
             .label_size(LabelSize::Small)
             .tab_index(0isize)
             .on_click(move |_, window, cx| {
@@ -1133,7 +1141,7 @@ impl TitleBar {
         let show_update_button = self.update_version.read(cx).show_update_in_menu_bar();
 
         let trigger = ButtonLike::new("user-menu")
-            .aria_label("User menu")
+            .aria_label(i18n::text("User menu", cx))
             .tab_index(0isize)
             .child(Icon::new(IconName::ChevronDown).size(IconSize::Small));
 
@@ -1148,7 +1156,10 @@ impl TitleBar {
                                     .w_full()
                                     .gap_1()
                                     .justify_between()
-                                    .child(Label::new("Restart to update Zed").color(Color::Accent))
+                                    .child(
+                                        Label::localized("Restart to update Zed")
+                                            .color(Color::Accent),
+                                    )
                                     .child(
                                         Icon::new(IconName::Download)
                                             .size(IconSize::Small)
@@ -1163,19 +1174,24 @@ impl TitleBar {
                         .separator()
                     })
                     .action("Settings", zed_actions::OpenSettings.boxed_clone())
+                    .localize_last()
                     .action("Keymap", Box::new(zed_actions::OpenKeymap))
+                    .localize_last()
                     .action(
                         "Themes…",
                         zed_actions::theme_selector::Toggle::default().boxed_clone(),
                     )
+                    .localize_last()
                     .action(
                         "Icon Themes…",
                         zed_actions::icon_theme_selector::Toggle::default().boxed_clone(),
                     )
+                    .localize_last()
                     .action(
                         "Extensions",
                         zed_actions::Extensions::default().boxed_clone(),
                     )
+                    .localize_last()
                 })
                 .into()
             })

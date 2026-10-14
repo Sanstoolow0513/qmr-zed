@@ -4,6 +4,7 @@ use component::{Component, ComponentScope, example_group_with_title, single_exam
 #[derive(IntoElement, RegisterComponent)]
 pub struct ListSubHeader {
     label: SharedString,
+    localized: bool,
     start_slot: Option<IconName>,
     end_slot: Option<AnyElement>,
     inset: bool,
@@ -14,10 +15,18 @@ impl ListSubHeader {
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
             label: label.into(),
+            localized: false,
             start_slot: None,
             end_slot: None,
             inset: false,
             selected: false,
+        }
+    }
+
+    pub fn localized(label: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(label)
         }
     }
 
@@ -45,7 +54,10 @@ impl Toggleable for ListSubHeader {
 }
 
 impl RenderOnce for ListSubHeader {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.localized {
+            self.label = i18n::text(self.label, cx);
+        }
         h_flex()
             .flex_1()
             .w_full()
@@ -105,18 +117,20 @@ impl Component for ListSubHeader {
                     vec![
                         single_example(
                             "Simple",
-                            ListSubHeader::new("Subsection").into_any_element(),
+                            ListSubHeader::localized("Subsection").into_any_element(),
                         ),
                         single_example(
                             "With Icon",
-                            ListSubHeader::new("Documents")
+                            ListSubHeader::localized("Documents")
                                 .left_icon(Some(IconName::File))
                                 .into_any_element(),
                         ),
                         single_example(
                             "With End Slot",
-                            ListSubHeader::new("Recent")
-                                .end_slot(Label::new("3").color(Color::Muted).into_any_element())
+                            ListSubHeader::localized("Recent")
+                                .end_slot(
+                                    Label::localized("3").color(Color::Muted).into_any_element(),
+                                )
                                 .into_any_element(),
                         ),
                     ],
@@ -126,13 +140,13 @@ impl Component for ListSubHeader {
                     vec![
                         single_example(
                             "Selected",
-                            ListSubHeader::new("Selected")
+                            ListSubHeader::localized("Selected")
                                 .toggle_state(true)
                                 .into_any_element(),
                         ),
                         single_example(
                             "Inset",
-                            ListSubHeader::new("Inset Sub-header")
+                            ListSubHeader::localized("Inset Sub-header")
                                 .inset(true)
                                 .into_any_element(),
                         ),

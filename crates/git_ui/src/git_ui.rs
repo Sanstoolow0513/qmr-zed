@@ -551,7 +551,7 @@ impl CreateTagModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Tag name", window, cx);
+            editor.set_placeholder_text(i18n::static_text("Tag name", cx), window, cx);
             editor
         });
         Self {
@@ -729,7 +729,7 @@ impl RefPickerModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Enter git ref...", window, cx);
+            editor.set_placeholder_text(i18n::static_text("Enter git ref...", cx), window, cx);
             editor
         });
 
@@ -914,7 +914,7 @@ impl Render for RefPickerModal {
                     .w_full()
                     .gap_1p5()
                     .child(Icon::new(IconName::Hash).size(IconSize::XSmall))
-                    .child(Headline::new("View Commit").size(HeadlineSize::XSmall)),
+                    .child(Headline::localized("View Commit").size(HeadlineSize::XSmall)),
             )
             .child(div().px_3().w_full().child(self.editor.clone()))
             .when_some(commit_preview, |el, preview| {
@@ -1202,13 +1202,20 @@ mod remote_button {
                             el.context(keybinding_target)
                         })
                         .action("Fetch", git::Fetch.boxed_clone())
+                        .localize_last()
                         .action("Fetch From", git::FetchFrom.boxed_clone())
+                        .localize_last()
                         .action("Pull", git::Pull.boxed_clone())
+                        .localize_last()
                         .action("Pull (Rebase)", git::PullRebase.boxed_clone())
+                        .localize_last()
                         .separator()
                         .action("Push", git::Push.boxed_clone())
+                        .localize_last()
                         .action("Push To", git::PushTo.boxed_clone())
+                        .localize_last()
                         .action("Force Push", git::ForcePush.boxed_clone())
+                        .localize_last()
                 }))
             })
             .anchor(Anchor::TopRight)
@@ -1419,7 +1426,7 @@ impl GitCloneModal {
     pub fn show(panel: Entity<GitPanel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let repo_input = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Enter repository URL…", window, cx);
+            editor.set_placeholder_text(i18n::static_text("Enter repository URL…", cx), window, cx);
             editor
         });
         let focus_handle = repo_input.focus_handle(cx);
@@ -1463,12 +1470,12 @@ impl Render for GitCloneModal {
                     .rounded_b_sm()
                     .bg(cx.theme().colors().editor_background)
                     .child(
-                        Label::new("Clone a repository from GitHub or other sources.")
+                        Label::localized("Clone a repository from GitHub or other sources.")
                             .color(Color::Muted)
                             .size(LabelSize::Small),
                     )
                     .child(
-                        Button::new("learn-more", "Learn More")
+                        Button::localized("learn-more", "Learn More")
                             .label_size(LabelSize::Small)
                             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::XSmall))
                             .on_click(|_, _, cx| {

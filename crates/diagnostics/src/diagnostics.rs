@@ -755,8 +755,8 @@ impl Item for ProjectDiagnosticsEditor {
         Some("Project Diagnostics".into())
     }
 
-    fn tab_content_text(&self, _detail: usize, _: &App) -> SharedString {
-        "Diagnostics".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Diagnostics", cx)
     }
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, _: &App) -> AnyElement {
@@ -769,7 +769,7 @@ impl Item for ProjectDiagnosticsEditor {
                         h_flex()
                             .gap_1()
                             .child(Icon::new(IconName::Check).color(Color::Success))
-                            .child(Label::new("No problems").color(params.text_color())),
+                            .child(Label::localized("No problems").color(params.text_color())),
                     )
                 },
             )

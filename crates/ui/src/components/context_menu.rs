@@ -82,6 +82,7 @@ impl ContextMenuItem {
 }
 
 pub struct ContextMenuEntry {
+    localized: bool,
     toggle: Option<(IconPosition, bool)>,
     label: SharedString,
     icon: Option<IconName>,
@@ -106,6 +107,7 @@ impl ContextMenuEntry {
         ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             icon: None,
             custom_icon_path: None,
             custom_icon_svg: None,
@@ -121,6 +123,13 @@ impl ContextMenuEntry {
             end_slot_title: None,
             end_slot_handler: None,
             show_end_slot_on_hover: false,
+        }
+    }
+
+    pub fn localized(label: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(label)
         }
     }
 
@@ -213,6 +222,7 @@ impl From<ContextMenuEntry> for ContextMenuItem {
 pub struct ContextMenu {
     builder: Option<Rc<dyn Fn(Self, &mut Window, &mut Context<Self>) -> Self>>,
     items: Vec<ContextMenuItem>,
+    localized_items: std::collections::HashSet<usize>,
     focus_handle: FocusHandle,
     action_context: Option<FocusHandle>,
     selected_index: Option<usize>,
@@ -346,6 +356,7 @@ impl ContextMenu {
                 Self {
                     builder: Some(builder),
                     items: Default::default(),
+                    localized_items: Default::default(),
                     focus_handle,
                     action_context: None,
                     selected_index: None,
@@ -393,6 +404,7 @@ impl ContextMenu {
             Self {
                 builder: Some(builder),
                 items: Default::default(),
+                localized_items: Default::default(),
                 focus_handle: focus_handle.clone(),
                 action_context: None,
                 selected_index: None,
@@ -493,6 +505,14 @@ impl ContextMenu {
         self.items.push(item.into());
     }
 
+    /// Marks the last item as application-owned text without translating user-provided entries.
+    pub fn localize_last(mut self) -> Self {
+        if let Some(index) = self.items.len().checked_sub(1) {
+            self.localized_items.insert(index);
+        }
+        self
+    }
+
     pub fn entry(
         mut self,
         label: impl Into<SharedString>,
@@ -502,6 +522,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -533,6 +554,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -564,6 +586,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -608,6 +631,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: Some((position, toggled)),
             label: label.into(),
+            localized: false,
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -712,6 +736,7 @@ impl ContextMenu {
                 None
             },
             label: label.into(),
+            localized: false,
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |context, window, cx| {
                 if let Some(context) = &context {
@@ -745,6 +770,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |context, window, cx| {
                 if let Some(context) = &context {
@@ -782,6 +808,7 @@ impl ContextMenu {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
             label: label.into(),
+            localized: false,
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |_, window, cx| {
                 handler(window, cx);
@@ -1261,6 +1288,7 @@ impl ContextMenu {
             let mut menu = ContextMenu {
                 builder: None,
                 items: Default::default(),
+                localized_items: Default::default(),
                 focus_handle,
                 action_context: None,
                 selected_index: None,
@@ -1417,15 +1445,22 @@ impl ContextMenu {
         // descendant. GPUI only honors this while the menu actually holds
         // focus, so we mark the selected item unconditionally here.
         let is_active_descendant = |selectable: bool| selectable && Some(ix) == self.selected_index;
+        let localized = |text: &SharedString| {
+            if self.localized_items.contains(&ix) {
+                i18n::text(text.clone(), cx)
+            } else {
+                text.clone()
+            }
+        };
         match item {
             ContextMenuItem::Separator => ListSeparator.into_any_element(),
-            ContextMenuItem::Header(header) => ListSubHeader::new(header.clone())
+            ContextMenuItem::Header(header) => ListSubHeader::new(localized(header))
                 .inset(true)
                 .into_any_element(),
             ContextMenuItem::HeaderWithLink(header, label, url) => {
                 let url = url.clone();
                 let link_id = ElementId::Name(format!("link-{}", url).into());
-                ListSubHeader::new(header.clone())
+                ListSubHeader::new(localized(header))
                     .inset(true)
                     .end_slot(
                         Button::new(link_id, label.clone())
@@ -1445,7 +1480,7 @@ impl ContextMenu {
                 .inset(true)
                 .spacing(self.spacing)
                 .disabled(true)
-                .child(Label::new(label.clone()))
+                .child(Label::new(localized(label)))
                 .into_any_element(),
             ContextMenuItem::Entry(entry) => self
                 .render_menu_entry(ix, entry, is_active_descendant(true), window, cx)
@@ -1534,7 +1569,7 @@ impl ContextMenu {
             } => self
                 .render_submenu_item_trigger(
                     ix,
-                    label.clone(),
+                    localized(label),
                     *icon,
                     *icon_color,
                     is_active_descendant(true),
@@ -1773,6 +1808,7 @@ impl ContextMenu {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let ContextMenuEntry {
+            localized,
             toggle,
             label,
             handler,
@@ -1791,6 +1827,11 @@ impl ContextMenu {
             show_end_slot_on_hover,
             secondary_handler: _,
         } = entry;
+        let label = if *localized || self.localized_items.contains(&ix) {
+            i18n::text(label.clone(), cx)
+        } else {
+            label.clone()
+        };
         let this = cx.weak_entity();
         // Report the item's keyboard shortcut to assistive technology, resolving
         // the action's binding the same way the visible accelerator (rendered
@@ -2175,6 +2216,7 @@ impl ContextMenu {
         Self {
             builder: None,
             items: Vec::new(),
+            localized_items: Default::default(),
             focus_handle,
             action_context: None,
             selected_index: None,
@@ -2495,7 +2537,7 @@ mod tests {
                                 .entry("First", None, |_, _| {})
                                 .separator()
                                 .item(
-                                    ContextMenuEntry::new("Checked")
+                                    ContextMenuEntry::localized("Checked")
                                         .toggleable(IconPosition::Start, true),
                                 )
                         };

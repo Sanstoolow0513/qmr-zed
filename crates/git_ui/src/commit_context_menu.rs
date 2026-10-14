@@ -78,6 +78,7 @@ pub(crate) fn commit_context_menu(
                     );
                 }
             })
+            .localize_last()
             .entry(
                 "Copy SHA",
                 Some(CopyCommitSha.boxed_clone()),
@@ -85,10 +86,12 @@ pub(crate) fn commit_context_menu(
                     cx.write_to_clipboard(ClipboardItem::new_string(sha.to_string()));
                 },
             )
+            .localize_last()
             .when_some(ref_name.clone(), |menu, ref_name| {
                 menu.entry("Copy Ref Name", None, move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(ref_name.to_string()));
                 })
+                .localize_last()
             })
             .when(ref_name.is_none(), |menu| {
                 menu.map(|menu| {
@@ -144,6 +147,7 @@ pub(crate) fn commit_context_menu(
                         .log_err();
                 }
             })
+            .localize_last()
             .when(source == CommitContextMenuSource::GitPanel, |menu| {
                 menu.entry("Show in Git Graph", None, move |window, cx| {
                     window.dispatch_action(
@@ -153,13 +157,14 @@ pub(crate) fn commit_context_menu(
                         cx,
                     );
                 })
+                .localize_last()
             })
             .map(|mut menu| {
                 menu = menu.separator().header("Custom Commands");
 
                 if git_tasks.is_empty() {
                     return menu.item(
-                        ContextMenuEntry::new("Learn More")
+                        ContextMenuEntry::localized("Learn More")
                             .icon(IconName::ArrowUpRight)
                             .icon_color(Color::Muted)
                             .icon_position(IconPosition::End)

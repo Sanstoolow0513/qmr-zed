@@ -301,19 +301,21 @@ impl Render for Onboarding {
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Welcome to Zed")
+                                                        Headline::localized("Welcome to Zed")
                                                             .size(HeadlineSize::Small),
                                                     )
                                                     .child(
-                                                        Label::new("The editor for what's next")
-                                                            .color(Color::Muted)
-                                                            .size(LabelSize::Small)
-                                                            .italic(),
+                                                        Label::localized(
+                                                            "The editor for what's next",
+                                                        )
+                                                        .color(Color::Muted)
+                                                        .size(LabelSize::Small)
+                                                        .italic(),
                                                     ),
                                             ),
                                     )
                                     .child({
-                                        Button::new("finish_setup", "Finish Setup")
+                                        Button::localized("finish_setup", "Finish Setup")
                                             .style(ButtonStyle::Filled)
                                             .size(ButtonSize::Medium)
                                             .width(rems_from_px(200_f32))
@@ -346,8 +348,8 @@ impl Focusable for Onboarding {
 impl Item for Onboarding {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Onboarding".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Onboarding", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

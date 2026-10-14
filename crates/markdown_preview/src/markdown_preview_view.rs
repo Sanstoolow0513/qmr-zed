@@ -1926,6 +1926,7 @@ impl Render for MarkdownPreviewView {
                                                         );
                                                     },
                                                 )
+                                                .localize_last()
                                             })
                                             .when_some(selected_markdown, |menu, text| {
                                                 menu.entry(
@@ -1939,6 +1940,7 @@ impl Render for MarkdownPreviewView {
                                                         );
                                                     },
                                                 )
+                                                .localize_last()
                                             })
                                             .when_some(context_menu_link, |menu, url| {
                                                 menu.entry("Copy Link", None, move |_, cx| {
@@ -1946,6 +1948,7 @@ impl Render for MarkdownPreviewView {
                                                         ClipboardItem::new_string(url.to_string()),
                                                     );
                                                 })
+                                                .localize_last()
                                             })
                                     }))
                                 });

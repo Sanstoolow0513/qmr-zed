@@ -236,7 +236,11 @@ impl StashMessageModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Optionally provide a stash message", window, cx);
+            editor.set_placeholder_text(
+                i18n::static_text("Optionally provide a stash message", cx),
+                window,
+                cx,
+            );
             editor
         });
         Self {
@@ -338,11 +342,14 @@ fn git_panel_context_menu(
             })
             .action_disabled_when(!has_stash_items, "Stash Pop", StashPop.boxed_clone())
             .action("View Stash", zed_actions::git::ViewStash.boxed_clone())
+            .localize_last()
             .when(include_copy_paths, |context_menu| {
                 context_menu
                     .separator()
                     .action("Copy Path", CopyPath.boxed_clone())
+                    .localize_last()
                     .action("Copy Relative Path", CopyRelativePath.boxed_clone())
+                    .localize_last()
             })
             .separator()
             .action_disabled_when(
@@ -377,7 +384,7 @@ fn git_panel_view_options_menu(
             .header("View")
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("List")
+                ContextMenuEntry::localized("List")
                     .toggle(IconPosition::End, !state.tree_view)
                     .handler(move |window, cx| {
                         if state.tree_view {
@@ -391,7 +398,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Tree")
+                ContextMenuEntry::localized("Tree")
                     .toggle(IconPosition::End, state.tree_view)
                     .handler(move |window, cx| {
                         if !state.tree_view {
@@ -408,7 +415,7 @@ fn git_panel_view_options_menu(
                     .header("Sort By")
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
-                        ContextMenuEntry::new("Path")
+                        ContextMenuEntry::localized("Path")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Path)
                             .handler(move |window, cx| {
                                 if !state.tree_view {
@@ -422,7 +429,7 @@ fn git_panel_view_options_menu(
                     })
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
-                        ContextMenuEntry::new("Name")
+                        ContextMenuEntry::localized("Name")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Name)
                             .handler(move |window, cx| {
                                 if !state.tree_view {
@@ -439,7 +446,7 @@ fn git_panel_view_options_menu(
             .header("Group By")
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("None")
+                ContextMenuEntry::localized("None")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::None)
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::None {
@@ -453,7 +460,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Tracked & Untracked")
+                ContextMenuEntry::localized("Tracked & Untracked")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::Status)
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::Status {
@@ -467,7 +474,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Staged & Unstaged")
+                ContextMenuEntry::localized("Staged & Unstaged")
                     .toggle(
                         IconPosition::End,
                         state.group_by == GitPanelGroupBy::Staging,
@@ -1248,6 +1255,7 @@ pub(crate) fn commit_message_editor(
                 .action_disabled_when(!has_selection, "Cut", Box::new(editor::actions::Cut))
                 .action_disabled_when(!has_selection, "Copy", Box::new(editor::actions::Copy))
                 .action("Paste", Box::new(editor::actions::Paste))
+                .localize_last()
         }))
     });
     commit_editor
@@ -2906,32 +2914,41 @@ impl GitPanel {
 
                 Some(window.prompt(
                     PromptLevel::Warning,
-                    &format!(
-                        "{}{}?",
-                        message,
-                        MarkdownInlineCode(
-                            entry
-                                .repo_path
-                                .file_name()
-                                .unwrap_or(entry.repo_path.display(path_style).as_ref())
-                        )
+                    &i18n::format(
+                        "{argument0}{argument1}?",
+                        &[
+                            ("argument0", i18n::static_text(message, cx)),
+                            (
+                                "argument1",
+                                &format!(
+                                    "{}",
+                                    MarkdownInlineCode(
+                                        entry.repo_path.file_name().unwrap_or(
+                                            entry.repo_path.display(path_style).as_ref()
+                                        )
+                                    )
+                                ),
+                            ),
+                        ],
+                        cx,
                     ),
                     None,
-                    &[confirm_text, "Cancel"],
+                    &[
+                        i18n::static_text(confirm_text, cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
                     cx,
                 ))
             } else {
                 let (message, confirm_text) = match (tracked.len(), untracked.len()) {
                     (0, 0) => return Some(()),
                     (tracked_count, 0) => (
-                        format!("Discard changes to {tracked_count} files?"),
+                        i18n::format("Discard changes to {tracked_count} files?", &[("tracked_count", &tracked_count.to_string())], cx).to_string(),
                         "Discard",
                     ),
-                    (0, untracked_count) => (format!("Trash {untracked_count} files?"), "Trash"),
+                    (0, untracked_count) => (i18n::format("Trash {untracked_count} files?", &[("untracked_count", &untracked_count.to_string())], cx).to_string(), "Trash"),
                     (tracked_count, untracked_count) => (
-                        format!(
-                            "Discard changes to {tracked_count} files and trash {untracked_count} files?"
-                        ),
+                        i18n::format("Discard changes to {tracked_count} files and trash {untracked_count} files?", &[("tracked_count", &tracked_count.to_string()), ("untracked_count", &untracked_count.to_string())], cx).to_string(),
                         "Discard and Trash",
                     ),
                 };
@@ -2940,7 +2957,10 @@ impl GitPanel {
                     PromptLevel::Warning,
                     &message,
                     None,
-                    &[confirm_text, "Cancel"],
+                    &[
+                        i18n::static_text(confirm_text, cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
                     cx,
                 ))
             };
@@ -3841,7 +3861,13 @@ impl GitPanel {
             return;
         };
         let error_spawn = |message, window: &mut Window, cx: &mut App| {
-            let prompt = window.prompt(PromptLevel::Warning, message, None, &["OK"], cx);
+            let prompt = window.prompt(
+                PromptLevel::Warning,
+                message,
+                None,
+                &[i18n::static_text("OK", cx)],
+                cx,
+            );
             cx.spawn(async move |_| {
                 prompt.await.ok();
             })
@@ -4262,9 +4288,9 @@ impl GitPanel {
         } else if worktrees.is_empty() {
             let result = window.prompt(
                 PromptLevel::Warning,
-                "Unable to initialize a git repository",
-                Some("Open a directory first"),
-                &["OK"],
+                i18n::static_text("Unable to initialize a git repository", cx),
+                Some(i18n::static_text("Open a directory first", cx)),
+                &[i18n::static_text("OK", cx)],
                 cx,
             );
             cx.background_executor()
@@ -5840,7 +5866,7 @@ impl GitPanel {
             let workspace_weak = cx.weak_entity();
             let operation = action.name();
 
-            let status_toast = StatusToast::new(message, cx, move |this, _cx| {
+            let status_toast = StatusToast::new(message, cx, move |this, cx| {
                 use remote_output::SuccessStyle::*;
                 let this = this.icon(
                     Icon::new(IconName::GitBranch)
@@ -5856,14 +5882,14 @@ impl GitPanel {
                         // output of a push command, we'll simply dispatch the
                         // generic `CreatePullRequest` action when the toast
                         // button is pressed.
-                        this.action("Create Pull Request", move |window, cx| {
+                        this.action(i18n::text("Create Pull Request", cx), move |window, cx| {
                             window
                                 .dispatch_action(Box::new(zed_actions::git::CreatePullRequest), cx);
                         })
                     }
                     (Toast, false) => this,
                     (ToastWithLog { output }, false) => {
-                        this.action("View Log", move |window, cx| {
+                        this.action(i18n::text("View Log", cx), move |window, cx| {
                             let output = output.clone();
                             let output =
                                 format!("stdout:\n{}\nstderr:\n{}", output.stdout, output.stderr);
@@ -5962,7 +5988,7 @@ impl GitPanel {
             .trigger_with_tooltip(
                 IconButton::new("view-options-menu-trigger", IconName::Filter)
                     .icon_size(IconSize::Small),
-                Tooltip::text("View Options"),
+                Tooltip::localized_text("View Options"),
             )
             .menu(move |window, cx| {
                 Some(git_panel_view_options_menu(
@@ -6062,6 +6088,7 @@ impl GitPanel {
                                         }
                                     },
                                 )
+                                .localize_last()
                             })
                             .toggleable_entry(
                                 "Signoff",
@@ -6070,15 +6097,17 @@ impl GitPanel {
                                 Some(Box::new(Signoff)),
                                 move |window, cx| window.dispatch_action(Box::new(Signoff), cx),
                             )
+                            .localize_last()
                             .item(
-                                ContextMenuEntry::new("Skip Hooks")
+                                ContextMenuEntry::localized("Skip Hooks")
                                     .toggleable(IconPosition::Start, skip_hooks)
                                     .action(Box::new(SkipHooks))
                                     .handler(move |window, cx| {
                                         window.dispatch_action(Box::new(SkipHooks), cx)
                                     })
                                     .documentation_aside(DocumentationSide::Left, |_| {
-                                        Label::new("git commit --no-verify").into_any_element()
+                                        Label::localized("git commit --no-verify")
+                                            .into_any_element()
                                     }),
                             )
                     }))
@@ -6292,7 +6321,7 @@ impl GitPanel {
                                         .color(Color::Muted),
                                 )
                                 .child(
-                                    Label::new("View Diff")
+                                    Label::localized("View Diff")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -6308,7 +6337,7 @@ impl GitPanel {
                                     },
                                 ),
                         )
-                        .tooltip(Tooltip::for_action_title_in(
+                        .tooltip(Tooltip::localized_for_action_title_in(
                             "View Diff",
                             &Diff,
                             &self.focus_handle,
@@ -6401,7 +6430,7 @@ impl GitPanel {
                     .hover_color(Color::Muted)
                     .tooltip({
                         move |_window, cx| {
-                            Tooltip::for_action_in(
+                            Tooltip::localized_for_action_in(
                                 "Open Commit Modal",
                                 &git::ExpandCommitEditor,
                                 &editor_focus_handle,
@@ -6486,9 +6515,7 @@ impl GitPanel {
                                 .color(Color::Warning),
                         )
                         .child(
-                            Label::new(format!(
-                                "Commit message title exceeds {max_title_length}-character limit."
-                            ))
+                            Label::new(i18n::format("Commit message title exceeds {max_title_length}-character limit.", &[("max_title_length", &format!("{}", max_title_length))], cx).to_string())
                             .size(LabelSize::Small),
                         ),
                 )
@@ -6645,13 +6672,13 @@ impl GitPanel {
                     .overflow_hidden()
                     .max_w(relative(0.85))
                     .child(
-                        Label::new("This will update your most recent commit.")
+                        Label::localized("This will update your most recent commit.")
                             .size(LabelSize::Small)
                             .truncate(),
                     ),
             )
             .child(
-                Button::new("cancel", "Cancel")
+                Button::localized("cancel", "Cancel")
                     .label_size(LabelSize::Small)
                     .layer(ElevationIndex::ModalSurface)
                     .on_click(cx.listener(|this, _, _, cx| this.set_amend_pending(false, cx))),
@@ -6749,7 +6776,7 @@ impl GitPanel {
                             IconButton::new("git-graph-button", IconName::GitGraph)
                                 .icon_size(IconSize::Small)
                                 .tooltip(|_window, cx| {
-                                    Tooltip::for_action(
+                                    Tooltip::localized_for_action(
                                         "Open Git Graph",
                                         &crate::git_graph::Open,
                                         cx,
@@ -7222,7 +7249,7 @@ impl GitPanel {
                                     let sha_for_click = sha_string;
 
                                     let dot_separator = || {
-                                        Label::new("•")
+                                        Label::localized("•")
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)
                                             .alpha(0.5)
@@ -7449,10 +7476,10 @@ impl GitPanel {
         v_flex()
             .gap_1()
             .items_center()
-            .child(Label::new("No changes to commit").color(Color::Muted))
+            .child(Label::localized("No changes to commit").color(Color::Muted))
             .when(show_branch_diff, |this| {
                 this.child(
-                    Button::new("view_branch_diff", "View Branch Diff")
+                    Button::localized("view_branch_diff", "View Branch Diff")
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Outlined)
                         .on_click(move |_, _, cx| {
@@ -7490,7 +7517,7 @@ impl GitPanel {
                         .flex_wrap()
                         .gap_1()
                         .child(
-                            Button::new("trust_directory", "Trust Directory")
+                            Button::localized("trust_directory", "Trust Directory")
                             .label_size(LabelSize::Small)
                             .layer(ElevationIndex::ModalSurface)
                             .style(ButtonStyle::Filled)
@@ -7504,7 +7531,7 @@ impl GitPanel {
                             )
                     )
                     .child(
-                        Button::new("learn_more", "Learn More")
+                        Button::localized("learn_more", "Learn More")
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Outlined)
                             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::Small).color(Color::Muted))
@@ -7525,13 +7552,13 @@ impl GitPanel {
             v_flex()
                 .gap_1()
                 .items_center()
-                .child(Label::new("No Git Repositories").color(Color::Muted))
+                .child(Label::localized("No Git Repositories").color(Color::Muted))
                 .when(has_directory_worktree, |this| {
                     this.child(
-                        Button::new("initialize_repository", "Initialize Repository")
+                        Button::localized("initialize_repository", "Initialize Repository")
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Outlined)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "git init",
                                 &git::Init,
                                 &self.focus_handle,
@@ -7996,7 +8023,9 @@ impl GitPanel {
                 .action(restore_title, RestoreFile::default().boxed_clone())
                 .separator()
                 .action("Unstaged Changes", ViewUnstagedChanges.boxed_clone())
+                .localize_last()
                 .action("Staged Changes", ViewStagedChanges.boxed_clone())
+                .localize_last()
                 .separator()
                 .action(copy_path_title, CopyPath.boxed_clone())
                 .action(copy_relative_path_title, CopyRelativePath.boxed_clone())
@@ -8385,7 +8414,7 @@ impl GitPanel {
                             })
                             .tooltip(move |_window, cx| {
                                 if resolved_conflict {
-                                    Tooltip::simple("Conflict marked as resolved", cx)
+                                    Tooltip::localized_simple("Conflict marked as resolved", cx)
                                 } else {
                                     let action = stage_intent.label(|| stage_status);
                                     Tooltip::for_action(action, &ToggleStaged, cx)
@@ -8583,7 +8612,7 @@ impl GitPanel {
                             })
                             .tooltip(move |_window, cx| {
                                 if resolved_conflict {
-                                    Tooltip::simple("Conflicts marked as resolved", cx)
+                                    Tooltip::localized_simple("Conflicts marked as resolved", cx)
                                 } else {
                                     let action = stage_intent.label(|| stage_status);
                                     Tooltip::simple(format!("{action} Folder"), cx)
@@ -9069,8 +9098,8 @@ impl Panel for GitPanel {
             .then_some(ui::IconName::GitBranch)
     }
 
-    fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Git Panel")
+    fn icon_tooltip(&self, _window: &Window, cx: &App) -> Option<&'static str> {
+        Some(i18n::static_text("Git Panel", cx))
     }
 
     fn icon_label(&self, _: &Window, cx: &App) -> Option<String> {
@@ -9288,7 +9317,7 @@ impl RenderOnce for PanelRepoFooter {
                     if single_repo {
                         cx.new(|_| Empty).into()
                     } else {
-                        Tooltip::simple("Switch Active Repository", cx)
+                        Tooltip::localized_simple("Switch Active Repository", cx)
                     }
                 },
             )
@@ -9315,7 +9344,7 @@ impl RenderOnce for PanelRepoFooter {
             })
             .trigger_with_tooltip(
                 branch_selector_button,
-                Tooltip::for_action_title("Switch Branch", &zed_actions::git::Switch),
+                Tooltip::localized_for_action_title("Switch Branch", &zed_actions::git::Switch),
             )
             .anchor(Anchor::BottomLeft)
             .offset(gpui::Point {
@@ -9345,7 +9374,7 @@ impl RenderOnce for PanelRepoFooter {
                         this.child(div().child(repo_selector).min_w_0()).when(
                             show_separator,
                             |this| {
-                                this.child(Label::new("/").size(LabelSize::Small).color(
+                                this.child(Label::localized("/").size(LabelSize::Small).color(
                                     Color::Custom(cx.theme().colors().text_muted.opacity(0.4)),
                                 ))
                             },

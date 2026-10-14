@@ -55,7 +55,7 @@ impl RenderOnce for SectionHeader {
             .mb_2()
             .gap_2()
             .child(
-                Label::new(self.title.to_ascii_uppercase())
+                Label::new(i18n::text(self.title, cx))
                     .buffer_font(cx)
                     .color(Color::Muted)
                     .size(LabelSize::XSmall),
@@ -112,7 +112,7 @@ impl RenderOnce for SectionButton {
                                     .color(Color::Muted)
                                     .size(IconSize::Small),
                             )
-                            .child(Label::new(self.label)),
+                            .child(Label::localized(self.label)),
                     )
                     .child(
                         KeyBinding::for_action_in(action_ref, &self.focus_handle, cx)
@@ -426,8 +426,8 @@ impl Render for WelcomePage {
                             .gap_4()
                             .child(Vector::square(VectorName::ZedLogo, rems_from_px(45_f32)))
                             .child(
-                                v_flex().child(Headline::new(welcome_label)).child(
-                                    Label::new("The editor for what's next")
+                                v_flex().child(Headline::localized(welcome_label)).child(
+                                    Label::localized("The editor for what's next")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted)
                                         .italic(),
@@ -439,7 +439,7 @@ impl Render for WelcomePage {
                     .when(!self.fallback_to_recent_projects, |this| {
                         this.child(
                             v_flex().gap_4().child(Divider::horizontal()).child(
-                                Button::new("welcome-exit", "Return to Onboarding")
+                                Button::localized("welcome-exit", "Return to Onboarding")
                                     .tab_index(next_tab_index as isize)
                                     .full_width()
                                     .label_size(LabelSize::XSmall)
@@ -464,8 +464,8 @@ impl Focusable for WelcomePage {
 impl Item for WelcomePage {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Welcome".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Welcome", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

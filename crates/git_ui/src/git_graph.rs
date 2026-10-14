@@ -150,8 +150,8 @@ impl PickerDelegate for CommitTagPickerDelegate {
         "commit-tag"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Copy Tag".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Copy Tag", cx).into()
     }
 
     fn match_count(&self) -> usize {
@@ -1403,16 +1403,18 @@ impl RefMenuEntry {
         window: &mut Window,
     ) -> ContextMenu {
         if let Some(ref_name) = self.ref_name {
-            menu = menu.entry("Copy Ref Name", None, move |_window, cx| {
-                cx.write_to_clipboard(ClipboardItem::new_string(ref_name.to_string()));
-            });
+            menu = menu
+                .entry("Copy Ref Name", None, move |_window, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(ref_name.to_string()));
+                })
+                .localize_last();
         }
 
         menu = menu.separator().header("Custom Commands");
 
         if self.git_tasks.is_empty() {
             return menu.item(
-                ContextMenuEntry::new("Learn More")
+                ContextMenuEntry::localized("Learn More")
                     .icon(IconName::ArrowUpRight)
                     .icon_color(Color::Muted)
                     .icon_position(IconPosition::End)
@@ -3367,7 +3369,12 @@ impl GitGraph {
                                     this.child(
                                         Button::new(
                                             "view-on-provider",
-                                            format!("View on {}", provider_name),
+                                            i18n::format(
+                                                "View on {argument0}",
+                                                &[("argument0", &provider_name)],
+                                                cx,
+                                            )
+                                            .to_string(),
                                         )
                                         .start_icon(
                                             Icon::new(icon)
@@ -3407,14 +3414,14 @@ impl GitGraph {
                                 h_flex()
                                     .gap_1()
                                     .child(
-                                        Label::new(format!(
-                                            "{} Changed {}",
-                                            changed_files_count,
+                                        Label::new(i18n::format(
                                             if changed_files_count == 1 {
-                                                "File"
+                                                "{count} Changed File"
                                             } else {
-                                                "Files"
-                                            }
+                                                "{count} Changed Files"
+                                            },
+                                            &[("count", &changed_files_count.to_string())],
+                                            cx,
                                         ))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
@@ -3525,7 +3532,7 @@ impl GitGraph {
             .child(Divider::horizontal())
             .child(
                 h_flex().p_1p5().w_full().child(
-                    Button::new("view-commit", "View Commit")
+                    Button::localized("view-commit", "View Commit")
                         .full_width()
                         .start_icon(
                             Icon::new(IconName::GitCommit)
@@ -4272,7 +4279,7 @@ impl GitGraph {
                         )),
                     )
                     .child(
-                        Label::new("Message")
+                        Label::localized("Message")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
@@ -4397,20 +4404,20 @@ impl Render for GitGraph {
                                     if !is_path_history {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("Graph")
+                                                Label::localized("Graph")
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
-                                                Label::new("Description")
+                                                Label::localized("Description")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Date")
+                                                Label::localized("Date")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Author")
+                                                Label::localized("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::localized("Commit")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -4419,16 +4426,16 @@ impl Render for GitGraph {
                                     } else {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("Description")
+                                                Label::localized("Description")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Date")
+                                                Label::localized("Date")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Author")
+                                                Label::localized("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::localized("Commit")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -4764,7 +4771,7 @@ impl Item for GitGraph {
         Some(TabTooltipContent::Custom(Box::new(Tooltip::element({
             move |_, _| {
                 v_flex()
-                    .child(Label::new(if path_history_path.is_some() {
+                    .child(Label::localized(if path_history_path.is_some() {
                         "Path History"
                     } else {
                         "Git Graph"

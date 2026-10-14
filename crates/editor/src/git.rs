@@ -626,7 +626,11 @@ impl Editor {
         // Create the prompt editor for the review input
         let prompt_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Add a review comment...", window, cx);
+            editor.set_placeholder_text(
+                i18n::static_text("Add a review comment...", cx),
+                window,
+                cx,
+            );
             editor
         });
 
@@ -1046,7 +1050,9 @@ impl Editor {
                     .border_color(icon_color.opacity(0.5))
             })
             .child(Icon::new(IconName::Plus).size(IconSize::Small))
-            .tooltip(Tooltip::text("Add Review (drag to select multiple lines)"))
+            .tooltip(Tooltip::localized_text(
+                "Add Review (drag to select multiple lines)",
+            ))
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |editor, _event: &gpui::MouseDownEvent, window, cx| {
@@ -2643,7 +2649,7 @@ impl Editor {
                                 IconButton::new("diff-review-close", IconName::Close)
                                     .icon_color(ui::Color::Muted)
                                     .icon_size(action_icon_size)
-                                    .tooltip(Tooltip::text("Close"))
+                                    .tooltip(Tooltip::localized_text("Close"))
                                     .on_click(|_, window, cx| {
                                         window
                                             .dispatch_action(Box::new(crate::actions::Cancel), cx);
@@ -2653,7 +2659,7 @@ impl Editor {
                                 IconButton::new("diff-review-add", IconName::Return)
                                     .icon_color(ui::Color::Muted)
                                     .icon_size(action_icon_size)
-                                    .tooltip(Tooltip::text("Add comment"))
+                                    .tooltip(Tooltip::localized_text("Add comment"))
                                     .on_click(|_, window, cx| {
                                         window.dispatch_action(
                                             Box::new(crate::actions::SubmitDiffReviewComment),
@@ -2673,6 +2679,7 @@ impl Editor {
                     avatar_size,
                     action_icon_size,
                     colors,
+                    cx,
                 ))
             })
             .into_any_element()
@@ -2686,7 +2693,8 @@ impl Editor {
         avatar_size: Pixels,
         action_icon_size: IconSize,
         colors: &theme::ThemeColors,
-    ) -> impl IntoElement {
+        cx: &App,
+    ) -> impl IntoElement + use<> {
         let comment_count = comments.len();
 
         v_flex()
@@ -2720,10 +2728,14 @@ impl Editor {
                         .color(ui::Color::Muted),
                     )
                     .child(
-                        Label::new(format!(
-                            "{} Comment{}",
-                            comment_count,
-                            if comment_count == 1 { "" } else { "s" }
+                        Label::new(i18n::format(
+                            if comment_count == 1 {
+                                "{count} Comment"
+                            } else {
+                                "{count} Comments"
+                            },
+                            &[("count", &comment_count.to_string())],
+                            cx,
                         ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
@@ -2813,7 +2825,7 @@ impl Editor {
                         )
                         .icon_color(ui::Color::Muted)
                         .icon_size(action_icon_size)
-                        .tooltip(Tooltip::text("Cancel"))
+                        .tooltip(Tooltip::localized_text("Cancel"))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::actions::CancelEditReviewComment {
@@ -2830,7 +2842,7 @@ impl Editor {
                         )
                         .icon_color(ui::Color::Muted)
                         .icon_size(action_icon_size)
-                        .tooltip(Tooltip::text("Confirm"))
+                        .tooltip(Tooltip::localized_text("Confirm"))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::actions::ConfirmEditReviewComment {
@@ -3081,7 +3093,7 @@ pub fn render_diff_hunk_controls(
         .shadow_md()
         .when(show_stage_or_unstage, |el| {
             el.child(if status.has_secondary_hunk() {
-                Button::new(("stage", row as u64), "Stage")
+                Button::localized(("stage", row as u64), "Stage")
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
                     .tooltip({
                         let focus_handle = editor.focus_handle(cx);
@@ -3108,7 +3120,7 @@ pub fn render_diff_hunk_controls(
                         }
                     })
             } else {
-                Button::new(("unstage", row as u64), "Unstage")
+                Button::localized(("unstage", row as u64), "Unstage")
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
                     .tooltip({
                         let focus_handle = editor.focus_handle(cx);
@@ -3138,7 +3150,7 @@ pub fn render_diff_hunk_controls(
         })
         .when(show_restore, |el| {
             el.child(
-                Button::new(("restore", row as u64), "Restore")
+                Button::localized(("restore", row as u64), "Restore")
                     .tooltip({
                         let focus_handle = editor.focus_handle(cx);
                         move |_window, cx| {

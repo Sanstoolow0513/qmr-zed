@@ -156,7 +156,7 @@ fn open_performance_profiler(
         cx.open_window(
             WindowOptions {
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Profiler Window".into()),
+                    title: Some(i18n::text("Profiler Window", cx)),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
@@ -563,7 +563,7 @@ impl Render for ProfilerWindow {
                                 )),
                             )
                             .child(
-                                Button::new("export-data", "Save")
+                                Button::localized("export-data", "Save")
                                     .style(ButtonStyle::Filled)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         let Some(workspace) = this.workspace.as_ref() else {
@@ -620,7 +620,7 @@ impl Render for ProfilerWindow {
                     )
                     .child(
                         Checkbox::new("include-self", self.include_self_timings)
-                            .label("Include profiler timings")
+                            .label(i18n::text("Include profiler timings", cx))
                             .on_click(cx.listener(|this, checked, _window, cx| {
                                 this.include_self_timings = *checked;
                                 cx.notify();

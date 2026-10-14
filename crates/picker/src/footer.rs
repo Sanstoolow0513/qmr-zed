@@ -141,7 +141,7 @@ impl<D: PickerDelegate> Picker<D> {
 
         h_flex()
             .child(
-                Button::new("picker-preview-toggle", "Preview")
+                Button::localized("picker-preview-toggle", "Preview")
                     .when(preview_visible, |this| this.color(Color::Accent))
                     .key_binding(
                         KeyBinding::for_action_in(&TogglePreview, &focus_handle, cx)
@@ -158,7 +158,7 @@ impl<D: PickerDelegate> Picker<D> {
                             .icon_size(IconSize::Small)
                             .toggle_state(current == preview::Layout::Below)
                             .tooltip(move |_window, cx| {
-                                Tooltip::for_action_in(
+                                Tooltip::localized_for_action_in(
                                     "Preview Below",
                                     &SetPreviewBelow,
                                     &below_focus_handle,
@@ -174,7 +174,7 @@ impl<D: PickerDelegate> Picker<D> {
                             .icon_size(IconSize::Small)
                             .toggle_state(current == preview::Layout::Right)
                             .tooltip(move |_window, cx| {
-                                Tooltip::for_action_in(
+                                Tooltip::localized_for_action_in(
                                     "Preview to the Right",
                                     &SetPreviewRight,
                                     &right_focus_handle,
@@ -198,7 +198,7 @@ impl<D: PickerDelegate> Picker<D> {
         PopoverMenu::new("picker-actions-menu")
             .with_handle(self.actions_menu_handle.clone())
             .trigger(
-                Button::new("picker-actions-trigger", "Actions…")
+                Button::localized("picker-actions-trigger", "Actions…")
                     .key_binding(
                         KeyBinding::for_action_in(&ToggleActionsMenu, &focus_handle, cx)
                             .size(rems_from_px(12_f32)),

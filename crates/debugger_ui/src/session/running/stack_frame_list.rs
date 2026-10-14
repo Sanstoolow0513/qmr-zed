@@ -660,7 +660,7 @@ impl StackFrameList {
                                     }
                                 }))
                                 .tooltip(move |window, cx| {
-                                    Tooltip::text("Restart Stack Frame")(window, cx)
+                                    Tooltip::localized_text("Restart Stack Frame")(window, cx)
                                 }),
                             ),
                     )

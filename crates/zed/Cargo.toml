@@ -2,7 +2,7 @@
 description = "The fast, collaborative code editor."
 edition.workspace = true
 name = "zed"
-version = "1.25.0-qmr.1"
+version = "2026.10.13"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Zed Team <hi@zed.dev>"]
@@ -57,6 +57,7 @@ path = "src/visual_test_runner.rs"
 required-features = ["visual-tests"]
 
 [dependencies]
+i18n.workspace = true
 activity_indicator.workspace = true
 anyhow.workspace = true
 askpass.workspace = true

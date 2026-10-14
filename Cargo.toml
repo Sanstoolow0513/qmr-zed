@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/i18n",
     "crates/activity_indicator",
     "crates/askpass",
     "crates/assets",
@@ -230,6 +231,7 @@ publish = false
 edition = "2024"
 
 [workspace.dependencies]
+i18n = { path = "crates/i18n" }
 
 #
 # Workspace member crates

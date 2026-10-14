@@ -598,7 +598,7 @@ pub(crate) fn render_mermaid_diagram(
                 let rasterized_scale = cached.map_or(1.0, |cached| cached.rasterized_scale);
                 let image_element =
                     img(ImageSource::Render(render_image.clone())).with_fallback(|| {
-                        Label::new("Failed to Load Mermaid Diagram").into_any_element()
+                        Label::localized("Failed to Load Mermaid Diagram").into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
                     markdown.mermaid_scroll_handle(source_offset)
@@ -632,6 +632,7 @@ pub(crate) fn render_mermaid_diagram(
                         (!showing_code && zoom != 1.0).then_some(zoom),
                         markdown,
                         on_zoom,
+                        cx,
                     ))
                 })
                 .into_any_element()
@@ -647,6 +648,7 @@ pub(crate) fn render_mermaid_diagram(
                         None,
                         markdown,
                         on_zoom,
+                        cx,
                     ))
                 })
                 .into_any_element()
@@ -659,7 +661,7 @@ pub(crate) fn render_mermaid_diagram(
                 let fallback_element =
                     img(ImageSource::Render(fallback.clone())).with_fallback(|| {
                         div()
-                            .child(Label::new("Failed to load mermaid diagram"))
+                            .child(Label::localized("Failed to load mermaid diagram"))
                             .into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
@@ -705,6 +707,7 @@ pub(crate) fn render_mermaid_diagram(
                             (zoom != 1.0).then_some(zoom),
                             markdown,
                             on_zoom,
+                            cx,
                         ))
                     })
                     .into_any_element()
@@ -714,7 +717,7 @@ pub(crate) fn render_mermaid_diagram(
                     .child(render_mermaid_code_view(&parsed.contents.contents))
                     .child(
                         div().absolute().top_1().right_2().child(
-                            Label::new("Rendering...")
+                            Label::localized("Rendering...")
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted)
                                 .with_animation(
@@ -733,6 +736,7 @@ pub(crate) fn render_mermaid_diagram(
                             None,
                             markdown,
                             on_zoom,
+                            cx,
                         ))
                     })
                     .into_any_element()
@@ -821,7 +825,7 @@ fn render_mermaid_tab_header(
         .gap_0p5()
         .mb_2p5()
         .child(
-            Button::new(preview_id, "Preview")
+            Button::localized(preview_id, "Preview")
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(!showing_code)
@@ -835,7 +839,7 @@ fn render_mermaid_tab_header(
                 }),
         )
         .child(
-            Button::new(code_id, "Code")
+            Button::localized(code_id, "Code")
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(showing_code)
@@ -859,7 +863,8 @@ fn render_mermaid_overlay_controls(
     zoom: Option<f32>,
     markdown: Entity<Markdown>,
     on_zoom: Option<MermaidZoomCallback>,
-) -> impl IntoElement {
+    cx: &App,
+) -> impl IntoElement + use<> {
     h_flex()
         .absolute()
         .top_1()
@@ -871,6 +876,7 @@ fn render_mermaid_overlay_controls(
                 zoom,
                 markdown.clone(),
                 on_zoom,
+                cx,
             ))
         })
         .child(render_mermaid_copy_button(source_offset, code, markdown))
@@ -884,15 +890,23 @@ fn render_mermaid_zoom_indicator(
     zoom: f32,
     markdown: Entity<Markdown>,
     on_zoom: Option<MermaidZoomCallback>,
-) -> impl IntoElement {
+    cx: &App,
+) -> impl IntoElement + use<> {
     let percentage = (zoom * 100.0).round() as i32;
 
     h_flex()
         .gap_0p5()
         .child(
-            Label::new(format!("Zoom {percentage}%"))
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+            Label::new(
+                i18n::format(
+                    "Zoom {percentage}%",
+                    &[("percentage", &format!("{}", percentage))],
+                    cx,
+                )
+                .to_string(),
+            )
+            .size(LabelSize::Small)
+            .color(Color::Muted),
         )
         .child(
             IconButton::new(
@@ -901,7 +915,7 @@ fn render_mermaid_zoom_indicator(
             )
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .tooltip(Tooltip::text("Reset Zoom"))
+            .tooltip(Tooltip::localized_text("Reset Zoom"))
             .on_click(move |_event, window, cx| {
                 let zoom_changed = markdown.update(cx, |markdown, cx| {
                     let current_zoom = markdown.mermaid_zoom_level(source_offset);

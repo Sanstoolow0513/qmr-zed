@@ -610,10 +610,17 @@ fn font_fallbacks_from_settings(
         FontFallbacks::from_fonts(
             fallbacks
                 .into_iter()
-                .map(|font_family| font_family.0.to_string())
+                .map(|font_family| application_font_family(&font_family).to_string())
                 .collect(),
         )
     })
+}
+
+fn application_font_family(family: &settings::FontFamilyName) -> SharedString {
+    match family.0.as_ref() {
+        ".ZedMono" | ".ZedSans" | "Zed Plex Mono" | "Zed Plex Sans" => "Maple Mono NF CN".into(),
+        _ => family.0.clone().into(),
+    }
 }
 
 impl settings::Settings for ThemeSettings {
@@ -625,20 +632,14 @@ impl settings::Settings for ThemeSettings {
         Self {
             ui_font_size: clamp_font_size(content.ui_font_size.unwrap().into_gpui()),
             ui_font: Font {
-                family: content.ui_font_family.as_ref().unwrap().0.clone().into(),
+                family: application_font_family(content.ui_font_family.as_ref().unwrap()),
                 features: content.ui_font_features.clone().unwrap().into_gpui(),
                 fallbacks: font_fallbacks_from_settings(content.ui_font_fallbacks.clone()),
                 weight: content.ui_font_weight.unwrap().into_gpui(),
                 style: Default::default(),
             },
             buffer_font: Font {
-                family: content
-                    .buffer_font_family
-                    .as_ref()
-                    .unwrap()
-                    .0
-                    .clone()
-                    .into(),
+                family: application_font_family(content.buffer_font_family.as_ref().unwrap()),
                 features: content.buffer_font_features.clone().unwrap().into_gpui(),
                 fallbacks: font_fallbacks_from_settings(content.buffer_font_fallbacks.clone()),
                 weight: content.buffer_font_weight.unwrap().into_gpui(),
@@ -652,10 +653,10 @@ impl settings::Settings for ThemeSettings {
             git_commit_buffer_font_size: content.git_commit_buffer_font_size.map(|s| s.into_gpui()),
             markdown_preview_font_family: markdown_preview
                 .and_then(|preview| preview.font_family.as_ref())
-                .map(|f| f.0.clone().into()),
+                .map(application_font_family),
             markdown_preview_code_font_family: markdown_preview
                 .and_then(|preview| preview.code_font_family.as_ref())
-                .map(|f| f.0.clone().into()),
+                .map(application_font_family),
             markdown_preview_font_size: markdown_preview
                 .and_then(|preview| preview.font_size)
                 .map(|size| size.into_gpui()),

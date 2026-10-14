@@ -637,10 +637,20 @@ impl RenderOnce for ExtensionCard {
                                 .truncate()
                         }))
                         .children(download_count.map(|download_count| {
-                            Label::new(format!(
-                                "Downloads: {}",
-                                format_number_with_commas(u128::from(download_count))
-                            ))
+                            Label::new(
+                                i18n::format(
+                                    "Downloads: {argument0}",
+                                    &[(
+                                        "argument0",
+                                        &format!(
+                                            "{}",
+                                            format_number_with_commas(u128::from(download_count))
+                                        ),
+                                    )],
+                                    cx,
+                                )
+                                .to_string(),
+                            )
                             .size(LabelSize::Small)
                         })),
                 )
@@ -725,7 +735,7 @@ impl RenderOnce for ExtensionCard {
                             .size_full()
                             .justify_center()
                             .bg(cx.theme().colors().elevated_surface_background.alpha(0.8))
-                            .child(Label::new("Overridden by dev extension.")),
+                            .child(Label::localized("Overridden by dev extension.")),
                     )
                 }),
         )

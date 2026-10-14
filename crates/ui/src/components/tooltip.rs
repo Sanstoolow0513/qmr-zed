@@ -34,6 +34,45 @@ impl RenderOnce for Title {
 }
 
 impl Tooltip {
+    pub fn localized_simple(title: &'static str, cx: &mut App) -> AnyView {
+        Self::simple(i18n::text(title, cx), cx)
+    }
+
+    pub fn localized_for_action_title(
+        title: &'static str,
+        action: &dyn Action,
+    ) -> impl Fn(&mut Window, &mut App) -> AnyView + use<> {
+        let action = action.boxed_clone();
+        move |_, cx| Self::for_action(i18n::text(title, cx), action.as_ref(), cx)
+    }
+
+    pub fn localized_for_action_title_in(
+        title: &'static str,
+        action: &dyn Action,
+        focus_handle: &FocusHandle,
+    ) -> impl Fn(&mut Window, &mut App) -> AnyView + use<> {
+        let action = action.boxed_clone();
+        let focus_handle = focus_handle.clone();
+        move |_, cx| Self::for_action_in(i18n::text(title, cx), action.as_ref(), &focus_handle, cx)
+    }
+
+    pub fn localized_for_action(title: &'static str, action: &dyn Action, cx: &mut App) -> AnyView {
+        Self::for_action(i18n::text(title, cx), action, cx)
+    }
+
+    pub fn localized_for_action_in(
+        title: &'static str,
+        action: &dyn Action,
+        focus_handle: &FocusHandle,
+        cx: &mut App,
+    ) -> AnyView {
+        Self::for_action_in(i18n::text(title, cx), action, focus_handle, cx)
+    }
+
+    pub fn localized_text(title: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView {
+        move |_, cx| Self::simple(i18n::text(title, cx), cx)
+    }
+
     pub fn simple(title: impl Into<SharedString>, cx: &mut App) -> AnyView {
         cx.new(|_| Self {
             title: Title::Str(title.into()),
@@ -282,8 +321,8 @@ impl Component for Tooltip {
     fn preview(_window: &mut Window, _cx: &mut App) -> AnyElement {
         example_group(vec![single_example(
             "Text only",
-            Button::new("delete-example", "Delete")
-                .tooltip(Tooltip::text("This is a tooltip!"))
+            Button::localized("delete-example", "Delete")
+                .tooltip(Tooltip::localized_text("This is a tooltip!"))
                 .into_any_element(),
         )])
         .into_any_element()

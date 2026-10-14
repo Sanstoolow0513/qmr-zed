@@ -169,9 +169,37 @@ pub enum ReduceMotionMode {
     Off,
 }
 
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+pub enum DisplayLanguage {
+    #[default]
+    #[serde(rename = "zh-CN")]
+    #[strum(serialize = "简体中文")]
+    SimplifiedChinese,
+    #[serde(rename = "en")]
+    #[strum(serialize = "English")]
+    English,
+}
+
 #[with_fallible_options]
 #[derive(Debug, PartialEq, Default, Clone, Serialize, JsonSchema, MergeFrom)]
 pub struct SettingsContent {
+    /// Display language of the application interface. Changes require a restart.
+    /// Default: zh-CN
+    pub display_language: Option<DisplayLanguage>,
+
     #[serde(flatten)]
     pub project: ProjectSettingsContent,
 
@@ -402,7 +430,7 @@ impl SettingsContent {
 fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
-        call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, workspace_sidebar, workspace_terminal, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
+        display_language, call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, workspace_sidebar, workspace_terminal, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
         journal, log, line_indicator_format, outline_panel, project_panel,

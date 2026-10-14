@@ -310,6 +310,7 @@ impl CommitModal {
                                         }
                                     },
                                 )
+                                .localize_last()
                             })
                             .toggleable_entry(
                                 "Signoff",
@@ -325,15 +326,17 @@ impl CommitModal {
                                     }
                                 },
                             )
+                            .localize_last()
                             .item(
-                                ContextMenuEntry::new("Skip Hooks")
+                                ContextMenuEntry::localized("Skip Hooks")
                                     .toggleable(IconPosition::Start, skip_hooks_enabled)
                                     .action(Box::new(SkipHooks))
                                     .handler(move |window, cx| {
                                         window.dispatch_action(Box::new(SkipHooks), cx)
                                     })
                                     .documentation_aside(DocumentationSide::Left, |_| {
-                                        Label::new("git commit --no-verify").into_any_element()
+                                        Label::localized("git commit --no-verify")
+                                            .into_any_element()
                                     }),
                             )
                     }))
@@ -395,7 +398,7 @@ impl CommitModal {
             .with_handle(self.branch_list_handle.clone())
             .trigger_with_tooltip(
                 branch_picker_button,
-                Tooltip::for_action_title("Switch Branch", &zed_actions::git::Branch),
+                Tooltip::localized_for_action_title("Switch Branch", &zed_actions::git::Branch),
             )
             .anchor(Anchor::BottomLeft)
             .offset(gpui::Point {
@@ -666,9 +669,7 @@ impl Render for CommitModal {
                                         .color(Color::Warning),
                                 )
                                 .child(
-                                    Label::new(format!(
-                                        "Commit message title exceeds {max_title_length}-character limit."
-                                    ))
+                                    Label::new(i18n::format("Commit message title exceeds {max_title_length}-character limit.", &[("max_title_length", &format!("{}", max_title_length))], cx).to_string())
                                     .size(LabelSize::Small),
                                 ),
                         )

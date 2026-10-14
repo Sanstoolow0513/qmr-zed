@@ -407,27 +407,43 @@ impl PaneLeaderDecorator for PaneRenderContext<'_> {
                     } => {
                         if Some(leader_project_id) == self.project.read(cx).remote_id() {
                             is_in_unshared_view.then(|| {
-                                Label::new(format!(
-                                    "{} is in an unshared pane",
-                                    leader.user.username
-                                ))
+                                Label::new(
+                                    i18n::format(
+                                        "{argument0} is in an unshared pane",
+                                        &[("argument0", &leader.user.username)],
+                                        cx,
+                                    )
+                                    .to_string(),
+                                )
                             })
                         } else {
                             leader_join_data = Some((leader_project_id, leader.user.legacy_id));
-                            Some(Label::new(format!(
-                                "Follow {} to their active project",
-                                leader.user.username,
-                            )))
+                            Some(Label::new(
+                                i18n::format(
+                                    "Follow {argument0} to their active project",
+                                    &[("argument0", &leader.user.username)],
+                                    cx,
+                                )
+                                .to_string(),
+                            ))
                         }
                     }
-                    ParticipantLocation::UnsharedProject => Some(Label::new(format!(
-                        "{} is viewing an unshared Zed project",
-                        leader.user.username
-                    ))),
-                    ParticipantLocation::External => Some(Label::new(format!(
-                        "{} is viewing a window outside of Zed",
-                        leader.user.username
-                    ))),
+                    ParticipantLocation::UnsharedProject => Some(Label::new(
+                        i18n::format(
+                            "{argument0} is viewing an unshared Zed project",
+                            &[("argument0", &leader.user.username)],
+                            cx,
+                        )
+                        .to_string(),
+                    )),
+                    ParticipantLocation::External => Some(Label::new(
+                        i18n::format(
+                            "{argument0} is viewing a window outside of Zed",
+                            &[("argument0", &leader.user.username)],
+                            cx,
+                        )
+                        .to_string(),
+                    )),
                 };
                 status_box = leader_status_box.map(|status| {
                     div()

@@ -206,11 +206,15 @@ impl HeadlineSize {
 pub struct Headline {
     size: HeadlineSize,
     text: SharedString,
+    localized: bool,
     color: Color,
 }
 
 impl RenderOnce for Headline {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.localized {
+            self.text = i18n::text(self.text, cx);
+        }
         let ui_font = theme::theme_settings(cx).ui_font(cx).clone();
 
         div()
@@ -228,7 +232,15 @@ impl Headline {
         Self {
             size: HeadlineSize::default(),
             text: text.into(),
+            localized: false,
             color: Color::default(),
+        }
+    }
+
+    pub fn localized(text: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(text)
         }
     }
 
@@ -260,29 +272,29 @@ impl Component for Headline {
             .children(vec![
                 single_example(
                     "XLarge",
-                    Headline::new("XLarge Headline")
+                    Headline::localized("XLarge Headline")
                         .size(HeadlineSize::XLarge)
                         .into_any_element(),
                 ),
                 single_example(
                     "Large",
-                    Headline::new("Large Headline")
+                    Headline::localized("Large Headline")
                         .size(HeadlineSize::Large)
                         .into_any_element(),
                 ),
                 single_example(
                     "Medium (Default)",
-                    Headline::new("Medium Headline").into_any_element(),
+                    Headline::localized("Medium Headline").into_any_element(),
                 ),
                 single_example(
                     "Small",
-                    Headline::new("Small Headline")
+                    Headline::localized("Small Headline")
                         .size(HeadlineSize::Small)
                         .into_any_element(),
                 ),
                 single_example(
                     "XSmall",
-                    Headline::new("XSmall Headline")
+                    Headline::localized("XSmall Headline")
                         .size(HeadlineSize::XSmall)
                         .into_any_element(),
                 ),

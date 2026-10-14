@@ -642,7 +642,7 @@ impl Sidebar {
                     )
                     .child(
                         IconButton::new(("new-terminal", index), IconName::Plus)
-                            .tooltip(Tooltip::text("New Terminal"))
+                            .tooltip(Tooltip::localized_text("New Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_group(new_key.clone(), true, window, cx);
                                 cx.stop_propagation();
@@ -668,6 +668,7 @@ impl Sidebar {
                                             })
                                             .log_err();
                                         })
+                                        .localize_last()
                                         .entry("Move Down", None, move |_, cx| {
                                             down.update(cx, |multi_workspace, cx| {
                                                 multi_workspace
@@ -675,6 +676,7 @@ impl Sidebar {
                                             })
                                             .log_err();
                                         })
+                                        .localize_last()
                                         .entry("Open in New Window", None, move |window, cx| {
                                             new_window
                                                 .update(cx, |multi_workspace, cx| {
@@ -688,20 +690,18 @@ impl Sidebar {
                                                 })
                                                 .log_err();
                                         })
+                                        .localize_last()
                                         .separator()
-                                        .entry(
-                                            "Close Project",
-                                            None,
-                                            move |window, cx| {
-                                                multi_workspace
-                                                    .update(cx, |multi_workspace, cx| {
-                                                        multi_workspace
-                                                            .remove_project_group(&key, window, cx)
-                                                            .detach_and_log_err(cx)
-                                                    })
-                                                    .log_err();
-                                            },
-                                        )
+                                        .entry("Close Project", None, move |window, cx| {
+                                            multi_workspace
+                                                .update(cx, |multi_workspace, cx| {
+                                                    multi_workspace
+                                                        .remove_project_group(&key, window, cx)
+                                                        .detach_and_log_err(cx)
+                                                })
+                                                .log_err();
+                                        })
+                                        .localize_last()
                                     }))
                                 }
                             })
@@ -762,7 +762,7 @@ impl Sidebar {
                     )
                     .child(
                         IconButton::new(("close-terminal", index), IconName::Close)
-                            .tooltip(Tooltip::text("Close Terminal"))
+                            .tooltip(Tooltip::localized_text("Close Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if let Some(panel) =
                                     close_workspace.as_ref().and_then(|workspace| {
@@ -889,7 +889,7 @@ impl Sidebar {
                                 this.child(
                                     IconButton::new("clear_filter", IconName::Close)
                                         .icon_size(IconSize::Small)
-                                        .tooltip(Tooltip::text("Clear Search"))
+                                        .tooltip(Tooltip::localized_text("Clear Search"))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.reset_filter_editor_text(window, cx);
                                             this.update_entries(cx);
@@ -945,7 +945,7 @@ impl Sidebar {
                                 h_flex()
                                     .gap_2()
                                     .justify_between()
-                                    .child(Label::new("Toggle Sidebar"))
+                                    .child(Label::localized("Toggle Sidebar"))
                                     .child(KeyBinding::for_action(&ToggleWorkspaceSidebar, cx)),
                             )
                             .child(
@@ -955,7 +955,7 @@ impl Sidebar {
                                     .border_t_1()
                                     .border_color(cx.theme().colors().border_variant)
                                     .justify_between()
-                                    .child(Label::new("Focus Sidebar"))
+                                    .child(Label::localized("Focus Sidebar"))
                                     .child(KeyBinding::for_action(&FocusWorkspaceSidebar, cx)),
                             )
                             .into_any_element()

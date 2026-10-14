@@ -110,8 +110,8 @@ impl Component for ProgressBar {
                         .child(
                             h_flex()
                                 .justify_between()
-                                .child(Label::new("0%"))
-                                .child(Label::new("Empty")),
+                                .child(Label::localized("0%"))
+                                .child(Label::localized("Empty")),
                         )
                         .child(ProgressBar::new("empty", 0.0, max_value, cx)),
                 )
@@ -120,8 +120,8 @@ impl Component for ProgressBar {
                         .child(
                             h_flex()
                                 .justify_between()
-                                .child(Label::new("38%"))
-                                .child(Label::new("Partial")),
+                                .child(Label::localized("38%"))
+                                .child(Label::localized("Partial")),
                         )
                         .child(ProgressBar::new("partial", max_value * 0.35, max_value, cx)),
                 )
@@ -130,8 +130,8 @@ impl Component for ProgressBar {
                         .child(
                             h_flex()
                                 .justify_between()
-                                .child(Label::new("100%"))
-                                .child(Label::new("Complete")),
+                                .child(Label::localized("100%"))
+                                .child(Label::localized("Complete")),
                         )
                         .child(ProgressBar::new("filled", max_value, max_value, cx)),
                 )

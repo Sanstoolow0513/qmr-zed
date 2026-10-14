@@ -33,7 +33,7 @@ impl TableView {
             .flex()
             .flex_col()
             .gap_1()
-            .child("Performance metrics:")
+            .child(i18n::Message::new("Performance metrics:"))
             .children(
                 format_performance_metrics(&self.performance_metrics)
                     .into_iter()

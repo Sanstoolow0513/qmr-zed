@@ -1161,7 +1161,10 @@ impl BranchListDelegate {
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["Force Delete", "Cancel"],
+                                &[
+                                    i18n::static_text("Force Delete", cx),
+                                    i18n::static_text("Cancel", cx),
+                                ],
                                 cx,
                             )
                         })?;
@@ -1703,18 +1706,22 @@ impl PickerDelegate for BranchListDelegate {
         };
 
         let entry_title = match entry {
-            Entry::NewUrl { .. } => Label::new("Create Remote Repository")
+            Entry::NewUrl { .. } => Label::localized("Create Remote Repository")
                 .single_line()
                 .truncate()
                 .into_any_element(),
-            Entry::NewBranch { name } => Label::new(format!("Create Branch: \"{name}\"…"))
-                .single_line()
-                .truncate()
-                .into_any_element(),
-            Entry::NewRemoteName { name, .. } => Label::new(format!("Create Remote: \"{name}\""))
-                .single_line()
-                .truncate()
-                .into_any_element(),
+            Entry::NewBranch { name } => Label::new(
+                i18n::format("Create Branch: \"{name}\"…", &[("name", &name)], cx).to_string(),
+            )
+            .single_line()
+            .truncate()
+            .into_any_element(),
+            Entry::NewRemoteName { name, .. } => Label::new(
+                i18n::format("Create Remote: \"{name}\"", &[("name", &name)], cx).to_string(),
+            )
+            .single_line()
+            .truncate()
+            .into_any_element(),
             Entry::Branch { branch, positions } => {
                 HighlightedLabel::new(branch.name().to_string(), positions.clone())
                     .single_line()
@@ -1848,7 +1855,7 @@ impl PickerDelegate for BranchListDelegate {
                                         if show_author_name { author_name } else { None };
 
                                     let dot = || {
-                                        Label::new("•")
+                                        Label::localized("•")
                                             .alpha(0.5)
                                             .color(Color::Muted)
                                             .size(LabelSize::Small)
@@ -1883,7 +1890,7 @@ impl PickerDelegate for BranchListDelegate {
                                         })
                                         .when(!has_commit, |this| {
                                             this.child(
-                                                Label::new("No commits found")
+                                                Label::localized("No commits found")
                                                     .color(Color::Muted)
                                                     .size(LabelSize::Small),
                                             )
@@ -1910,14 +1917,14 @@ impl PickerDelegate for BranchListDelegate {
                                                 .child(Label::new(branch_name.clone()))
                                                 .when(is_select_only && is_checked, |this| {
                                                     this.child(
-                                                        Label::new("Selected Branch")
+                                                        Label::localized("Selected Branch")
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
                                                 })
                                                 .when(is_head, |this| {
                                                     this.child(
-                                                        Label::new("Current Branch")
+                                                        Label::localized("Current Branch")
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
@@ -2066,7 +2073,7 @@ impl PickerDelegate for BranchListDelegate {
                         },
                     )
                     .child(
-                        Button::new("switch_branch", "Switch")
+                        Button::localized("switch_branch", "Switch")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2081,7 +2088,7 @@ impl PickerDelegate for BranchListDelegate {
                         .justify_end()
                         .map(|this| match branch_from_default_button {
                             Some(button) => this.child(button).child(
-                                Button::new("create", "Create")
+                                Button::localized("create", "Create")
                                     .key_binding(
                                         KeyBinding::for_action_in(
                                             &menu::Confirm,
@@ -2126,7 +2133,7 @@ impl PickerDelegate for BranchListDelegate {
                             this.child(button)
                         })
                         .child(
-                            Button::new("create-new-branch", "Create")
+                            Button::localized("create-new-branch", "Create")
                                 .key_binding(
                                     KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2142,7 +2149,7 @@ impl PickerDelegate for BranchListDelegate {
                 footer_container()
                     .justify_end()
                     .child(
-                        Button::new("confirm-create-remote", "Confirm")
+                        Button::localized("confirm-create-remote", "Confirm")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),

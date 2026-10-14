@@ -113,8 +113,8 @@ impl PickerDelegate for ProjectSymbolsDelegate {
     fn name() -> &'static str {
         "project symbols"
     }
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Search project symbols...".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Search project symbols...", cx).into()
     }
 
     fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {

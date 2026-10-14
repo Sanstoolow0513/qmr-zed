@@ -100,8 +100,8 @@ impl Focusable for DebugSession {
 
 impl Item for DebugSession {
     type Event = ();
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Debugger".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Debugger", cx)
     }
 }
 

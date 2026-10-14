@@ -65,7 +65,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         view_items.push(MenuItem::separator());
     }
 
-    vec![
+    let mut menus = vec![
         Menu {
             name: "Zed".into(),
             disabled: false,
@@ -336,5 +336,20 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 ),
             ],
         },
-    ]
+    ];
+    fn translate_menu(menu: &mut Menu, cx: &App) {
+        menu.name = i18n::text(menu.name.clone(), cx);
+        for item in &mut menu.items {
+            match item {
+                MenuItem::Action { name, .. } => *name = i18n::text(name.clone(), cx),
+                MenuItem::Submenu(menu) => translate_menu(menu, cx),
+                MenuItem::SystemMenu(menu) => menu.name = i18n::text(menu.name.clone(), cx),
+                MenuItem::Separator => {}
+            }
+        }
+    }
+    for menu in &mut menus {
+        translate_menu(menu, cx);
+    }
+    menus
 }

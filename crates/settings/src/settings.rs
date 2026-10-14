@@ -1,4 +1,6 @@
 mod base_keymap_setting;
+mod display_language;
+pub use display_language::*;
 mod content_into_gpui;
 mod editable_setting_control;
 mod editorconfig_store;

@@ -470,8 +470,6 @@ actions!(
         ToggleBottomDock,
         /// Toggles centered layout mode.
         ToggleCenteredLayout,
-        /// Toggles edit prediction feature globally for all files.
-
         /// Toggles the left dock.
         ToggleLeftDock,
         /// Toggles the right dock.
@@ -3684,9 +3682,12 @@ impl Workspace {
                     let answer = cx.update(|window, cx| {
                         window.prompt(
                             PromptLevel::Warning,
-                            "Do you want to leave the current call?",
+                            i18n::static_text("Do you want to leave the current call?", cx),
                             None,
-                            &["Close window and hang up", "Cancel"],
+                            &[
+                                i18n::static_text("Close window and hang up", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?;
@@ -3932,9 +3933,16 @@ impl Workspace {
                         );
                         window.prompt(
                             PromptLevel::Warning,
-                            "Do you want to save all changes in the following files?",
+                            i18n::static_text(
+                                "Do you want to save all changes in the following files?",
+                                cx,
+                            ),
                             Some(&detail),
-                            &["Save all", "Discard all", "Cancel"],
+                            &[
+                                i18n::static_text("Save all", cx),
+                                i18n::static_text("Discard all", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?;
@@ -8893,7 +8901,7 @@ impl Workspace {
         div()
             .id("editor-region")
             .role(gpui::Role::Main)
-            .aria_label("Editor")
+            .aria_label(i18n::text("Editor", cx))
             .when(window.is_a11y_active(), |this| {
                 this.track_focus(&self.region_focus_handles.editor)
             })
@@ -9631,7 +9639,7 @@ impl Render for Workspace {
                         .track_focus(&self.titlebar_focus_handle)
                         .tab_group()
                         .role(gpui::Role::Toolbar)
-                        .aria_label("Title bar")
+                        .aria_label(i18n::text("Title bar", cx))
                         .on_key_down(cx.listener(
                             |workspace, event: &gpui::KeyDownEvent, window, cx| {
                                 if event.keystroke.modifiers.modified() {
@@ -10514,9 +10522,15 @@ async fn join_channel_internal(
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Warning,
-                        "Do you want to switch channels?",
-                        Some("Leaving this call will unshare your current project."),
-                        &["Yes, Join Channel", "Cancel"],
+                        i18n::static_text("Do you want to switch channels?", cx),
+                        Some(i18n::static_text(
+                            "Leaving this call will unshare your current project.",
+                            cx,
+                        )),
+                        &[
+                            i18n::static_text("Yes, Join Channel", cx),
+                            i18n::static_text("Cancel", cx),
+                        ],
                         cx,
                     )
                 })?
@@ -10744,9 +10758,9 @@ pub fn join_channel(
                         };
                         window.prompt(
                             PromptLevel::Critical,
-                            "Failed to join channel",
+                            i18n::static_text("Failed to join channel", cx),
                             Some(&detail),
-                            &["OK"],
+                            &[i18n::static_text("OK", cx)],
                             cx,
                         )
                     })?
@@ -11764,9 +11778,12 @@ pub fn reload(cx: &mut App) {
             .update(cx, |_, window, cx| {
                 window.prompt(
                     PromptLevel::Info,
-                    "Are you sure you want to restart?",
+                    i18n::static_text("Are you sure you want to restart?", cx),
                     None,
-                    &["Restart", "Cancel"],
+                    &[
+                        i18n::static_text("Restart", cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
                     cx,
                 )
             })

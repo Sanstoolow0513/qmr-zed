@@ -26,6 +26,7 @@ test-support = [
 ]
 
 [dependencies]
+i18n.workspace = true
 any_vec.workspace = true
 anyhow.workspace = true
 async-recursion.workspace = true

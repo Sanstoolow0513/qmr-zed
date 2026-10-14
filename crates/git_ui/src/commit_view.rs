@@ -173,6 +173,7 @@ impl Addon for CommitDiffAddon {
                         .log_err();
                 },
             )
+            .localize_last()
         })
     }
 }
@@ -547,11 +548,11 @@ impl CommitView {
             .justify_center()
             .gap_2()
             .child(
-                Label::new("This commit is at the boundary of a shallow clone.")
+                Label::localized("This commit is at the boundary of a shallow clone.")
                     .color(Color::Muted),
             )
             .child(
-                Label::new(
+                Label::localized(
                     "Its parent history was not fetched, so the changes it introduced cannot be shown.",
                 )
                 .color(Color::Muted),
@@ -575,7 +576,7 @@ impl CommitView {
                             )
                                 .style(ButtonStyle::Filled)
                                 .disabled(fetch_in_flight)
-                                .tooltip(Tooltip::text(
+                                .tooltip(Tooltip::localized_text(
                                     "Run `git fetch --unshallow` to download the full history, then show this commit's changes.",
                                 ))
                                 .on_click(move |_, window, cx| {
@@ -815,7 +816,7 @@ impl CommitView {
                                                     .size(LabelSize::Small),
                                             )
                                             .child(
-                                                Label::new("•")
+                                                Label::localized("•")
                                                     .size(LabelSize::Small)
                                                     .color(Color::Muted)
                                                     .alpha(0.5),
@@ -830,7 +831,7 @@ impl CommitView {
                     )
                     .when(self.stash.is_none(), |this| {
                         this.child(
-                            Button::new("sha", "Commit SHA")
+                            Button::localized("sha", "Commit SHA")
                                 .start_icon(
                                     Icon::new(copy_icon)
                                         .size(IconSize::Small)
@@ -1016,7 +1017,7 @@ impl CommitView {
             PromptLevel::Info,
             &format!("{} stash@{{{}}}?", str_action, stash),
             None,
-            &[str_action, "Cancel"],
+            &[str_action, i18n::static_text("Cancel", cx)],
             cx,
         );
 
@@ -1460,7 +1461,7 @@ impl Render for CommitViewToolbar {
                 IconButton::new("buffer-search", IconName::MagnifyingGlass)
                     .icon_size(IconSize::Small)
                     .tooltip(move |_, cx| {
-                        Tooltip::for_action(
+                        Tooltip::localized_for_action(
                             "Buffer Search",
                             &zed_actions::buffer_search::Deploy::find(),
                             cx,
@@ -1477,7 +1478,7 @@ impl Render for CommitViewToolbar {
                 this.child(
                     IconButton::new("show-in-git-graph", IconName::GitGraph)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Show in Git Graph"))
+                        .tooltip(Tooltip::localized_text("Show in Git Graph"))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::git_graph::OpenAtCommit {
@@ -1492,7 +1493,14 @@ impl Render for CommitViewToolbar {
 
                     IconButton::new("view_on_provider", icon)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text(format!("View on {}", provider_name)))
+                        .tooltip(Tooltip::text(
+                            i18n::format(
+                                "View on {argument0}",
+                                &[("argument0", &provider_name)],
+                                cx,
+                            )
+                            .to_string(),
+                        ))
                         .on_click(move |_, _, cx| cx.open_url(&url))
                 }))
             })

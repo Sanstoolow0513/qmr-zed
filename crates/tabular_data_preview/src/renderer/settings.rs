@@ -46,7 +46,7 @@ pub(crate) fn settings_popover_menu(view_entity: Entity<TableView>) -> PopoverMe
             IconButton::new("table-settings-trigger", IconName::Filter)
                 .icon_size(IconSize::Small)
                 .size(ButtonSize::Compact),
-            Tooltip::text("Table Settings"),
+            Tooltip::localized_text("Table Settings"),
         )
         .anchor(Anchor::TopRight)
         .menu(move |window, cx| {

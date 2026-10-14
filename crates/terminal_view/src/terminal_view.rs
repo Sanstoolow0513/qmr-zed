@@ -575,33 +575,41 @@ impl TerminalView {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.action("New Terminal", Box::new(NewTerminal::default()))
+                        .localize_last()
                         .action(
                             "New Center Terminal",
                             Box::new(NewCenterTerminal::default()),
                         )
+                        .localize_last()
                         .separator()
                 })
                 .action("Copy", Box::new(Copy))
+                .localize_last()
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
                         menu.action("Paste", Box::new(Paste))
+                            .localize_last()
                             .action("Paste Text", Box::new(PasteText))
+                            .localize_last()
                     },
                 )
                 .action("Select All", Box::new(SelectAll))
+                .localize_last()
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| menu.action("Clear", Box::new(Clear)),
+                    |menu| menu.action("Clear", Box::new(Clear)).localize_last(),
                 )
                 .when(self.shows_workspace_actions(), |menu| {
-                    menu.separator().action(
-                        "Close Terminal Tab",
-                        Box::new(CloseActiveItem {
-                            save_intent: None,
-                            close_pinned: true,
-                        }),
-                    )
+                    menu.separator()
+                        .action(
+                            "Close Terminal Tab",
+                            Box::new(CloseActiveItem {
+                                save_intent: None,
+                                close_pinned: true,
+                            }),
+                        )
+                        .localize_last()
                 })
         });
 
@@ -1149,7 +1157,9 @@ impl TerminalView {
                 .size(ButtonSize::Compact)
                 .icon_color(Color::Default)
                 .shape(ui::IconButtonShape::Square)
-                .tooltip(move |_window, cx| Tooltip::for_action("Rerun task", &RerunTask, cx))
+                .tooltip(move |_window, cx| {
+                    Tooltip::localized_for_action("Rerun task", &RerunTask, cx)
+                })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(terminal_rerun_override(&task_id)), cx);
                 }),
@@ -1536,15 +1546,22 @@ impl Item for TerminalView {
             let title = terminal.title(false);
             let pid = terminal.pid_getter()?.fallback_pid();
 
-            move |_, _| {
+            move |_, cx| {
                 v_flex()
                     .gap_1()
                     .child(Label::new(title.clone()))
                     .child(h_flex().flex_grow_1().child(Divider::horizontal()))
                     .child(
-                        Label::new(format!("Process ID (PID): {}", pid))
-                            .color(Color::Muted)
-                            .size(LabelSize::Small),
+                        Label::new(
+                            i18n::format(
+                                "Process ID (PID): {argument0}",
+                                &[("argument0", &format!("{}", pid))],
+                                cx,
+                            )
+                            .to_string(),
+                        )
+                        .color(Color::Muted)
+                        .size(LabelSize::Small),
                     )
                     .into_any_element()
             }

@@ -16,6 +16,7 @@ path = "src/terminal_view.rs"
 doctest = false
 
 [dependencies]
+i18n.workspace = true
 async-channel.workspace = true
 audio.workspace = true
 chrono.workspace = true

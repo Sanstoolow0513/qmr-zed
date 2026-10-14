@@ -803,7 +803,7 @@ impl Render for BranchDiffToolbar {
                                 .size(IconSize::XSmall)
                                 .color(Color::Muted),
                         ),
-                        Tooltip::text("Select Base Branch"),
+                        Tooltip::localized_text("Select Base Branch"),
                     ),
             )
     }

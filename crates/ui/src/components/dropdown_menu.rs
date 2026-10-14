@@ -330,33 +330,51 @@ impl Component for DropdownMenu {
     fn preview(window: &mut Window, cx: &mut App) -> AnyElement {
         let menu = ContextMenu::build(window, cx, |this, _, _| {
             this.entry("Option 1", None, |_, _| {})
+                .localize_last()
                 .entry("Option 2", None, |_, _| {})
+                .localize_last()
                 .entry("Option 3", None, |_, _| {})
+                .localize_last()
                 .separator()
                 .entry("Option 4", None, |_, _| {})
+                .localize_last()
         });
 
         let menu_with_submenu = ContextMenu::build(window, cx, |this, _, _| {
             this.entry("Toggle All Docks", None, |_, _| {})
+                .localize_last()
                 .submenu("Editor Layout", |menu, _, _| {
                     menu.entry("Split Up", None, |_, _| {})
+                        .localize_last()
                         .entry("Split Down", None, |_, _| {})
+                        .localize_last()
                         .separator()
                         .entry("Split Side", None, |_, _| {})
+                        .localize_last()
                 })
+                .localize_last()
                 .separator()
                 .entry("Project Panel", None, |_, _| {})
+                .localize_last()
                 .entry("Outline Panel", None, |_, _| {})
+                .localize_last()
                 .separator()
                 .submenu("Autofill", |menu, _, _| {
                     menu.entry("Contact…", None, |_, _| {})
+                        .localize_last()
                         .entry("Passwords…", None, |_, _| {})
+                        .localize_last()
                 })
+                .localize_last()
                 .submenu_with_icon("Predict", IconName::ZedPredict, |menu, _, _| {
                     menu.entry("Everywhere", None, |_, _| {})
+                        .localize_last()
                         .entry("At Cursor", None, |_, _| {})
+                        .localize_last()
                         .entry("Over Here", None, |_, _| {})
+                        .localize_last()
                         .entry("Over There", None, |_, _| {})
+                        .localize_last()
                 })
         });
 

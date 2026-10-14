@@ -1451,7 +1451,7 @@ impl Component for Table {
                                 "Project A".into_any_element(),
                                 "High".into_any_element(),
                                 "2023-12-31".into_any_element(),
-                                Button::new("view_a", "View")
+                                Button::localized("view_a", "View")
                                     .style(ButtonStyle::Filled)
                                     .full_width()
                                     .into_any_element(),
@@ -1461,7 +1461,7 @@ impl Component for Table {
                                 "Project B".into_any_element(),
                                 "Medium".into_any_element(),
                                 "2024-03-15".into_any_element(),
-                                Button::new("view_b", "View")
+                                Button::localized("view_b", "View")
                                     .style(ButtonStyle::Filled)
                                     .full_width()
                                     .into_any_element(),
@@ -1471,7 +1471,7 @@ impl Component for Table {
                                 "Project C".into_any_element(),
                                 "Low".into_any_element(),
                                 "2024-06-30".into_any_element(),
-                                Button::new("view_c", "View")
+                                Button::localized("view_c", "View")
                                     .style(ButtonStyle::Filled)
                                     .full_width()
                                     .into_any_element(),

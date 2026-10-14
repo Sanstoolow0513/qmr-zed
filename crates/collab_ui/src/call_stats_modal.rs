@@ -296,7 +296,7 @@ impl Render for CallStatsModal {
             .child(
                 h_flex()
                     .justify_between()
-                    .child(Label::new("Call Diagnostics").size(LabelSize::Large))
+                    .child(Label::localized("Call Diagnostics").size(LabelSize::Large))
                     .child(
                         Label::new(quality_text)
                             .size(LabelSize::Large)
@@ -307,7 +307,7 @@ impl Render for CallStatsModal {
                 this.child(
                     h_flex()
                         .justify_center()
-                        .child(Label::new("Showing diagnostics from the most recent call").color(Color::Muted)),
+                        .child(Label::localized("Showing diagnostics from the most recent call").color(Color::Muted)),
                 )
             })
             .when(!has_diagnostics, |this| {
@@ -315,7 +315,7 @@ impl Render for CallStatsModal {
                     h_flex()
                         .justify_center()
                         .py_4()
-                        .child(Label::new("No call diagnostics available").color(Color::Muted)),
+                        .child(Label::localized("No call diagnostics available").color(Color::Muted)),
                 )
             })
             .when(has_diagnostics, |this| {
@@ -326,17 +326,14 @@ impl Render for CallStatsModal {
                         .max_h(rems(32.))
                         .overflow_y_scroll()
                         .child(
-                            Label::new(format!(
-                                "{sample_count} samples · {:.0}s retained · {recent_issue_count} affected intervals in the last 60s",
-                                retained_duration.as_secs_f64()
-                            ))
+                            Label::new(i18n::format("{sample_count} samples · {argument0}s retained · {recent_issue_count} affected intervals in the last 60s", &[("sample_count", &format!("{}", sample_count)), ("argument0", &format!("{:.0}", retained_duration.as_secs_f64())), ("recent_issue_count", &format!("{}", recent_issue_count))], cx).to_string())
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
                         .child(
                             v_flex()
                                 .gap_1()
-                                .child(Label::new("Network").weight(FontWeight::SEMIBOLD))
+                                .child(Label::localized("Network").weight(FontWeight::SEMIBOLD))
                                 .child(self.render_metric_row(
                                     "Latency",
                                     "Time for data to travel to the server",
@@ -369,17 +366,17 @@ impl Render for CallStatsModal {
                         .child(
                             v_flex()
                                 .gap_1()
-                                .child(Label::new("Inbound audio").weight(FontWeight::SEMIBOLD))
+                                .child(Label::localized("Inbound audio").weight(FontWeight::SEMIBOLD))
                                 .when(remote_audio.is_empty(), |this| {
                                     this.child(
-                                        Label::new("Waiting for inbound audio statistics")
+                                        Label::localized("Waiting for inbound audio statistics")
                                             .color(Color::Muted),
                                     )
                                 })
                                 .children(
                                     remote_audio
                                         .into_iter()
-                                        .map(|audio| self.render_remote_audio(audio)),
+                                        .map(|audio| self.render_remote_audio(audio, cx)),
                                 ),
                         ),
                 )
@@ -390,11 +387,11 @@ impl Render for CallStatsModal {
                         .justify_end()
                         .gap_2()
                         .child(
-                            Button::new("copy-call-diagnostics", "Copy Report")
+                            Button::localized("copy-call-diagnostics", "Copy Report")
                                 .on_click(cx.listener(|this, _, _, cx| this.copy_report(cx))),
                         )
                         .child(
-                            Button::new("save-call-diagnostics", "Save Report…")
+                            Button::localized("save-call-diagnostics", "Save Report…")
                                 .on_click(cx.listener(|this, _, _, cx| this.save_report(cx))),
                         ),
                 )
@@ -403,7 +400,11 @@ impl Render for CallStatsModal {
 }
 
 impl CallStatsModal {
-    fn render_remote_audio(&self, audio: RemoteAudioDiagnostics) -> impl IntoElement {
+    fn render_remote_audio(
+        &self,
+        audio: RemoteAudioDiagnostics,
+        cx: &App,
+    ) -> impl IntoElement + use<> {
         let issue_score = audio_issue_score(&audio);
         let (status, color) = if issue_score > 0 {
             ("Affected", Color::Warning)
@@ -471,25 +472,17 @@ impl CallStatsModal {
                     .child(Label::new(status).color(color)),
             )
             .child(
-                Label::new(format!(
-                    "Loss {packet_loss} · jitter {:.1}ms · jitter buffer {jitter_buffer_delay}",
-                    audio.jitter_ms
-                ))
+                Label::new(i18n::format("Loss {packet_loss} · jitter {argument0}ms · jitter buffer {jitter_buffer_delay}", &[("packet_loss", &packet_loss), ("argument0", &format!("{:.1}", audio.jitter_ms)), ("jitter_buffer_delay", &jitter_buffer_delay)], cx).to_string())
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
             .child(
-                Label::new(format!(
-                    "WebRTC repaired {repaired_audio_duration} in {} {repair_event_label}",
-                    audio.concealment_events,
-                ))
+                Label::new(i18n::format("WebRTC repaired {repaired_audio_duration} in {argument0} {repair_event_label}", &[("repaired_audio_duration", &repaired_audio_duration), ("argument0", &format!("{}", audio.concealment_events)), ("repair_event_label", &repair_event_label)], cx).to_string())
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
             .child(
-                Label::new(format!(
-                    "Local playback starved for {starved_audio_duration} · dropped {dropped_audio_duration} · buffered {buffered_audio_duration} (peak {peak_buffered_audio_duration})",
-                ))
+                Label::new(i18n::format("Local playback starved for {starved_audio_duration} · dropped {dropped_audio_duration} · buffered {buffered_audio_duration} (peak {peak_buffered_audio_duration})", &[("starved_audio_duration", &starved_audio_duration), ("dropped_audio_duration", &dropped_audio_duration), ("buffered_audio_duration", &buffered_audio_duration), ("peak_buffered_audio_duration", &peak_buffered_audio_duration)], cx).to_string())
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )

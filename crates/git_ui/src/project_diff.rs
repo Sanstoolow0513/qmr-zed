@@ -445,8 +445,8 @@ impl Item for ProjectDiff {
         Some(self.tab_content_text(0, cx))
     }
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Uncommitted Changes".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Uncommitted Changes", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -844,7 +844,7 @@ impl Render for ProjectDiffToolbar {
                         IconButton::new("up", IconName::ArrowUp)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Previous Hunk",
                                 &GoToPreviousHunk,
                                 &focus_handle,
@@ -857,7 +857,7 @@ impl Render for ProjectDiffToolbar {
                         IconButton::new("down", IconName::ArrowDown)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Next Hunk",
                                 &GoToHunk,
                                 &focus_handle,
@@ -872,8 +872,8 @@ impl Render for ProjectDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Toggle Staged")
-                                .tooltip(Tooltip::for_action_title_in(
+                            Button::localized("stage", "Toggle Staged")
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Toggle Staged",
                                     &ToggleStaged,
                                     &focus_handle,
@@ -886,9 +886,9 @@ impl Render for ProjectDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Stage")
+                            Button::localized("stage", "Stage")
                                 .disabled(!button_states.stage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Stage and Go to Next Hunk",
                                     &StageAndNext,
                                     &focus_handle,
@@ -898,9 +898,9 @@ impl Render for ProjectDiffToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "Unstage")
+                            Button::localized("unstage", "Unstage")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Unstage and Go to Next Hunk",
                                     &UnstageAndNext,
                                     &focus_handle,
@@ -916,9 +916,9 @@ impl Render for ProjectDiffToolbar {
                 button_states.unstage_all && !button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("unstage-all", "Unstage All")
+                        Button::localized("unstage-all", "Unstage All")
                             .width(stage_all_button_width)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Unstage All Changes",
                                 &UnstageAll,
                                 &focus_handle,
@@ -933,10 +933,10 @@ impl Render for ProjectDiffToolbar {
                 !button_states.unstage_all || button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("stage-all", "Stage All")
+                        Button::localized("stage-all", "Stage All")
                             .width(stage_all_button_width)
                             .disabled(!button_states.stage_all)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Stage All Changes",
                                 &StageAll,
                                 &focus_handle,
@@ -949,8 +949,8 @@ impl Render for ProjectDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
-                    .tooltip(Tooltip::for_action_title_in(
+                Button::localized("commit", "Commit")
+                    .tooltip(Tooltip::localized_for_action_title_in(
                         "Commit",
                         &Commit,
                         &focus_handle,

@@ -180,7 +180,7 @@ impl Render for TerminalNotification {
                     .gap_1()
                     .items_center()
                     .child(
-                        Button::new("open", "View")
+                        Button::localized("open", "View")
                             .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                             .full_width()
                             .on_click({
@@ -189,11 +189,15 @@ impl Render for TerminalNotification {
                                 })
                             }),
                     )
-                    .child(Button::new("dismiss", "Dismiss").full_width().on_click({
-                        cx.listener(move |this, _event, _, cx| {
-                            this.dismiss(cx);
-                        })
-                    })),
+                    .child(
+                        Button::localized("dismiss", "Dismiss")
+                            .full_width()
+                            .on_click({
+                                cx.listener(move |this, _event, _, cx| {
+                                    this.dismiss(cx);
+                                })
+                            }),
+                    ),
             )
     }
 }

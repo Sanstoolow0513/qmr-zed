@@ -9,6 +9,7 @@ use theme::UiDensity;
 pub struct ListHeader {
     /// The label of the header.
     label: SharedString,
+    localized: bool,
     /// A slot for content that appears before the label, like an icon or avatar.
     start_slot: Option<AnyElement>,
     /// A slot for content that appears after the label, usually on the other side of the header.
@@ -31,6 +32,7 @@ impl ListHeader {
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
             label: label.into(),
+            localized: false,
             start_slot: None,
             end_slot: None,
             end_hover_slot: None,
@@ -42,6 +44,13 @@ impl ListHeader {
             height: None,
             focused: None,
             dock: None,
+        }
+    }
+
+    pub fn localized(label: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(label)
         }
     }
 
@@ -108,7 +117,10 @@ impl Toggleable for ListHeader {
 }
 
 impl RenderOnce for ListHeader {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.localized {
+            self.label = i18n::text(self.label, cx);
+        }
         let ui_density = theme::theme_settings(cx).ui_density(cx);
 
         h_flex()
@@ -203,18 +215,18 @@ impl Component for ListHeader {
                     vec![
                         single_example(
                             "Simple",
-                            ListHeader::new("Section Header").into_any_element(),
+                            ListHeader::localized("Section Header").into_any_element(),
                         ),
                         single_example(
                             "With Icon",
-                            ListHeader::new("Files")
+                            ListHeader::localized("Files")
                                 .start_slot(Icon::new(IconName::File))
                                 .into_any_element(),
                         ),
                         single_example(
                             "With End Slot",
-                            ListHeader::new("Recent")
-                                .end_slot(Label::new("5").color(Color::Muted))
+                            ListHeader::localized("Recent")
+                                .end_slot(Label::localized("5").color(Color::Muted))
                                 .into_any_element(),
                         ),
                     ],
@@ -224,13 +236,13 @@ impl Component for ListHeader {
                     vec![
                         single_example(
                             "Expanded",
-                            ListHeader::new("Expanded Section")
+                            ListHeader::localized("Expanded Section")
                                 .toggle(Some(true))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Collapsed",
-                            ListHeader::new("Collapsed Section")
+                            ListHeader::localized("Collapsed Section")
                                 .toggle(Some(false))
                                 .into_any_element(),
                         ),
@@ -241,13 +253,13 @@ impl Component for ListHeader {
                     vec![
                         single_example(
                             "Selected",
-                            ListHeader::new("Selected Header")
+                            ListHeader::localized("Selected Header")
                                 .toggle_state(true)
                                 .into_any_element(),
                         ),
                         single_example(
                             "Inset",
-                            ListHeader::new("Inset Header")
+                            ListHeader::localized("Inset Header")
                                 .inset(true)
                                 .into_any_element(),
                         ),

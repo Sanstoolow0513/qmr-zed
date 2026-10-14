@@ -1182,13 +1182,17 @@ impl ProjectPanel {
                     if is_read_only {
                         menu.when(is_markdown, |menu| {
                             menu.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                                .localize_last()
                         })
                         .when(is_dir, |menu| {
                             menu.action("Search Inside", Box::new(NewSearchInDirectory))
+                                .localize_last()
                         })
                     } else {
                         menu.action("New File", Box::new(NewFile))
+                            .localize_last()
                             .action("New Folder", Box::new(NewDirectory))
+                            .localize_last()
                             .separator()
                             .when(is_local, |menu| {
                                 menu.action(
@@ -1198,29 +1202,39 @@ impl ProjectPanel {
                             })
                             .when(is_local, |menu| {
                                 menu.action("Open in Default App", Box::new(OpenWithSystem))
+                                    .localize_last()
                             })
                             .action("Open in Terminal", Box::new(OpenInTerminal))
+                            .localize_last()
                             .when(is_markdown, |menu| {
                                 menu.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                                    .localize_last()
                             })
                             .when(is_dir, |menu| {
                                 menu.separator()
                                     .action("Find in Folder…", Box::new(NewSearchInDirectory))
+                                    .localize_last()
                             })
                             .when(is_unfoldable, |menu| {
                                 menu.action("Unfold Directory", Box::new(UnfoldDirectory))
+                                    .localize_last()
                             })
                             .when(is_foldable, |menu| {
                                 menu.action("Fold Directory", Box::new(FoldDirectory))
+                                    .localize_last()
                             })
                             .when(should_show_compare, |menu| {
                                 menu.separator()
                                     .action("Compare Marked Files", Box::new(CompareMarkedFiles))
+                                    .localize_last()
                             })
                             .separator()
                             .action("Cut", Box::new(Cut))
+                            .localize_last()
                             .action("Copy", Box::new(Copy))
+                            .localize_last()
                             .action("Duplicate", Box::new(Duplicate))
+                            .localize_last()
                             .action_disabled_when(!has_pasteable_content, "Paste", Box::new(Paste))
                             .when(!is_collab, |menu| {
                                 let can_undo = self.undo_manager.can_undo();
@@ -1232,13 +1246,16 @@ impl ProjectPanel {
                             .when(is_remote, |menu| {
                                 menu.separator()
                                     .action("Download...", Box::new(DownloadFromRemote))
+                                    .localize_last()
                             })
                             .separator()
                             .action("Copy Path", Box::new(zed_actions::workspace::CopyPath))
+                            .localize_last()
                             .action(
                                 "Copy Relative Path",
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
+                            .localize_last()
                             .when(has_git_repo, |menu| {
                                 menu.separator()
                                     .when(!is_dir && self.has_git_changes(entry_id), |menu| {
@@ -1246,34 +1263,44 @@ impl ProjectPanel {
                                             "Restore File",
                                             Box::new(git::RestoreFile { skip_prompt: false }),
                                         )
+                                        .localize_last()
                                     })
                                     .action("Add to .gitignore", Box::new(git::AddToGitignore))
+                                    .localize_last()
                                     .action(
                                         "Add to .git/info/exclude",
                                         Box::new(git::AddToGitInfoExclude),
                                     )
+                                    .localize_last()
                                     .when(has_history, |menu| {
                                         menu.action("View History", Box::new(git::FileHistory))
+                                            .localize_last()
                                     })
                                     .when(!is_dir, |menu| {
                                         menu.action(
                                             "Open File Permalink",
                                             git::OpenFilePermalink.boxed_clone(),
                                         )
+                                        .localize_last()
                                         .action(
                                             "Copy File Permalink",
                                             git::CopyFilePermalink.boxed_clone(),
                                         )
+                                        .localize_last()
                                     })
                             })
                             .when(!should_hide_rename, |menu| {
-                                menu.separator().action("Rename", Box::new(Rename))
+                                menu.separator()
+                                    .action("Rename", Box::new(Rename))
+                                    .localize_last()
                             })
                             .when(!is_root && !is_collab, |menu| {
                                 menu.action("Trash", Box::new(Trash { skip_prompt: false }))
+                                    .localize_last()
                             })
                             .when(!is_root, |menu| {
                                 menu.action("Delete", Box::new(Delete { skip_prompt: false }))
+                                    .localize_last()
                             })
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
@@ -1281,20 +1308,26 @@ impl ProjectPanel {
                                         "Add Folders to Project…",
                                         Box::new(workspace::AddFolderToProject),
                                     )
+                                    .localize_last()
                                     .action("Remove from Project", Box::new(RemoveFromProject))
+                                    .localize_last()
                             })
                             .when(is_dir && !is_root, |menu| {
                                 menu.separator()
                                     .action("Expand All", Box::new(ExpandSelectedEntryAndChildren))
+                                    .localize_last()
                                     .action(
                                         "Collapse All",
                                         Box::new(CollapseSelectedEntryAndChildren),
                                     )
+                                    .localize_last()
                             })
                             .when(is_dir && is_root, |menu| {
                                 menu.separator()
                                     .action("Expand All", Box::new(ExpandAllEntries))
+                                    .localize_last()
                                     .action("Collapse All", Box::new(CollapseAllEntries))
+                                    .localize_last()
                             })
                     }
                 })
@@ -2641,7 +2674,16 @@ impl ProjectPanel {
 
             let answer = if !action.skip_prompt {
                 let prompt = format!("Discard changes to {}?", MarkdownInlineCode(&file_name));
-                Some(window.prompt(PromptLevel::Info, &prompt, None, &["Restore", "Cancel"], cx))
+                Some(window.prompt(
+                    PromptLevel::Info,
+                    &prompt,
+                    None,
+                    &[
+                        i18n::static_text("Restore", cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
+                    cx,
+                ))
             } else {
                 None
             };
@@ -2923,7 +2965,7 @@ impl ProjectPanel {
                     PromptLevel::Info,
                     &prompt.message,
                     prompt.detail,
-                    &[prompt.confirmation_label, "Cancel"],
+                    &[prompt.confirmation_label, i18n::static_text("Cancel", cx)],
                     cx,
                 ))
             } else {
@@ -3877,7 +3919,7 @@ impl ProjectPanel {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Download".into()),
+            prompt: Some(i18n::text("Download", cx)),
         });
 
         let fs = self.fs.clone();
@@ -5031,7 +5073,10 @@ impl ProjectPanel {
                                 PromptLevel::Info,
                                 &prompt_message,
                                 None,
-                                &["Replace", "Cancel"],
+                                &[
+                                    i18n::static_text("Replace", cx),
+                                    i18n::static_text("Cancel", cx),
+                                ],
                                 cx,
                             )
                         })?
@@ -8149,7 +8194,14 @@ impl Render for DraggedProjectEntryView {
                     .bg(cx.theme().colors().background)
                     .map(|this| {
                         if self.selections.len() > 1 && self.selections.contains(&self.selection) {
-                            this.child(Label::new(format!("{} entries", self.selections.len())))
+                            this.child(Label::new(
+                                i18n::format(
+                                    "{argument0} entries",
+                                    &[("argument0", &format!("{}", self.selections.len()))],
+                                    cx,
+                                )
+                                .to_string(),
+                            ))
                         } else {
                             this.child(
                                 h_flex()
@@ -8204,8 +8256,8 @@ impl Panel for ProjectPanel {
             .then_some(IconName::FileTree)
     }
 
-    fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Project Panel")
+    fn icon_tooltip(&self, _window: &Window, cx: &App) -> Option<&'static str> {
+        Some(i18n::static_text("Project Panel", cx))
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

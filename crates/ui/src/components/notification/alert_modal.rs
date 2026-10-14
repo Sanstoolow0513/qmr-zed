@@ -188,7 +188,7 @@ impl Component for AlertModal {
                         AlertModal::new("simple-modal")
                             .title("Do you want to leave the current call?")
                             .child(
-                                "The current window will be closed, and connections to any shared projects will be terminated."
+                                i18n::Message::new("The current window will be closed, and connections to any shared projects will be terminated.")
                             )
                             .primary_action("Leave Call")
                             .dismiss_label("Cancel")
@@ -206,12 +206,12 @@ impl Component for AlertModal {
                                         h_flex()
                                             .gap_1()
                                             .child(Icon::new(IconName::Warning).color(Color::Warning))
-                                            .child(Headline::new("Unrecognized Workspace").size(HeadlineSize::Small))
+                                            .child(Headline::localized("Unrecognized Workspace").size(HeadlineSize::Small))
                                     )
                                     .child(
                                         h_flex()
                                             .pl(IconSize::default().rems() + rems(0.5))
-                                            .child(Label::new("~/projects/my-project").color(Color::Muted))
+                                            .child(Label::localized("~/projects/my-project").color(Color::Muted))
                                     )
                             )
                             .child(
@@ -221,7 +221,7 @@ Review .zed/settings.json for any extensions or commands configured by this proj
                             .child(
                                 v_flex()
                                     .mt_1()
-                                    .child(Label::new("Restricted mode prevents:").color(Color::Muted))
+                                    .child(Label::localized("Restricted mode prevents:").color(Color::Muted))
                                     .child(ListBulletItem::new("Project settings from being applied"))
                                     .child(ListBulletItem::new("Language servers from running"))
                                     .child(ListBulletItem::new("MCP integrations from installing"))
@@ -237,8 +237,8 @@ Review .zed/settings.json for any extensions or commands configured by this proj
                                     .child(
                                         h_flex()
                                             .gap_1()
-                                            .child(Button::new("restricted", "Stay in Restricted Mode").color(Color::Muted))
-                                            .child(Button::new("trust", "Trust and Continue").style(ButtonStyle::Filled))
+                                            .child(Button::localized("restricted", "Stay in Restricted Mode").color(Color::Muted))
+                                            .child(Button::localized("trust", "Trust and Continue").style(ButtonStyle::Filled))
                                     )
                             )
                             .width(rems(40.))

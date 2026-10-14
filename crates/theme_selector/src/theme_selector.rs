@@ -382,8 +382,8 @@ impl PickerDelegate for ThemeSelectorDelegate {
         "theme selector"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select Theme...".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Select Theme...", cx).into()
     }
 
     fn match_count(&self) -> usize {
@@ -541,7 +541,7 @@ impl PickerDelegate for ThemeSelectorDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("docs", "View Theme Docs")
+                    Button::localized("docs", "View Theme Docs")
                         .end_icon(
                             Icon::new(IconName::ArrowUpRight)
                                 .size(IconSize::Small)
@@ -552,7 +552,7 @@ impl PickerDelegate for ThemeSelectorDelegate {
                         })),
                 )
                 .child(
-                    Button::new("more-themes", "Install Themes").on_click(cx.listener({
+                    Button::localized("more-themes", "Install Themes").on_click(cx.listener({
                         move |_, _, window, cx| {
                             window.dispatch_action(
                                 Box::new(Extensions {

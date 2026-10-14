@@ -511,16 +511,26 @@ impl PickerDelegate for ColumnFilterDelegate {
                 .justify_between()
                 .items_center()
                 .child(
-                    Label::new(format!("{selected_rows} / {total_rows} rows selected"))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    Label::new(
+                        i18n::format(
+                            "{selected_rows} / {total_rows} rows selected",
+                            &[
+                                ("selected_rows", &format!("{}", selected_rows)),
+                                ("total_rows", &format!("{}", total_rows)),
+                            ],
+                            cx,
+                        )
+                        .to_string(),
+                    )
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
                 )
                 .child(
                     div()
                         .id("table-filter-clear-all")
                         .cursor_pointer()
                         .child(
-                            Label::new("Clear all")
+                            Label::localized("Clear all")
                                 .size(LabelSize::Small)
                                 .color(Color::Accent),
                         )

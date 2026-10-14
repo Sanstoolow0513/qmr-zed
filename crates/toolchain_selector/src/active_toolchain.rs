@@ -248,7 +248,14 @@ impl Render for ActiveToolchain {
                         });
                     }
                 }))
-                .tooltip(Tooltip::text(format!("Select {}", self.term))),
+                .tooltip(Tooltip::text(
+                    i18n::format(
+                        "Select {argument0}",
+                        &[("argument0", &format!("{}", self.term))],
+                        cx,
+                    )
+                    .to_string(),
+                )),
         )
     }
 }

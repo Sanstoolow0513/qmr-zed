@@ -132,7 +132,7 @@ fn files_not_created_on_launch(errors: HashMap<io::ErrorKind, Vec<&Path>>) {
                             gpui::PromptLevel::Critical,
                             message,
                             Some(&error_details),
-                            &["Exit"],
+                            &[i18n::static_text("Exit", cx)],
                             cx,
                         );
 
@@ -339,6 +339,11 @@ fn main() {
 
     let app = build_application()
         .with_assets(Assets)
+        .with_font_defaults(gpui::FontDefaults {
+            proportional: "Maple Mono NF CN".into(),
+            monospace: "Maple Mono NF CN".into(),
+            asset_directory: "fonts/maple-mono-nf-cn/".into(),
+        })
         .with_restart_arguments(restart_arguments);
 
     let app_db = db::AppDatabase::new();
@@ -495,6 +500,8 @@ fn main() {
         settings::init(cx);
         zlog_settings::init(cx);
         zed::watch_settings_files(fs.clone(), cx);
+        cx.set_global(settings::DisplayLanguageSettings::get_global(cx).locale());
+        zed::observe_display_language(cx);
         handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
 
         let user_agent = format!(
@@ -1723,7 +1730,7 @@ fn parse_url_arg(arg: &str, cx: &App) -> String {
 
 fn load_embedded_fonts(cx: &App) {
     let asset_source = cx.asset_source();
-    let font_paths = asset_source.list("fonts").unwrap();
+    let font_paths = asset_source.list("fonts/maple-mono-nf-cn/").unwrap();
     let embedded_fonts = Mutex::new(Vec::new());
     let executor = cx.background_executor();
 

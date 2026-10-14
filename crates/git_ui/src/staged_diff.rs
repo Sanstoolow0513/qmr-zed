@@ -68,9 +68,9 @@ impl DiffHunkRenderer for StagedDiffHunkRenderer {
             .block_mouse_except_scroll()
             .shadow_md()
             .child(
-                Button::new(("unstage", row as u64), "Unstage")
+                Button::localized(("unstage", row as u64), "Unstage")
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
-                    .tooltip(Tooltip::text("Unstage Hunk"))
+                    .tooltip(Tooltip::localized_text("Unstage Hunk"))
                     .on_click({
                         let editor = editor.clone();
                         move |_event, window, cx| {
@@ -306,8 +306,8 @@ impl Item for StagedDiff {
         Some("Staged Changes".into())
     }
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Staged Changes".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Staged Changes", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -609,7 +609,7 @@ impl Render for StagedDiffToolbar {
                         IconButton::new("up", IconName::ArrowUp)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Previous Hunk",
                                 &GoToPreviousHunk,
                                 &focus_handle,
@@ -622,7 +622,7 @@ impl Render for StagedDiffToolbar {
                         IconButton::new("down", IconName::ArrowDown)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Next Hunk",
                                 &GoToHunk,
                                 &focus_handle,
@@ -637,9 +637,9 @@ impl Render for StagedDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("unstage", "Unstage")
+                            Button::localized("unstage", "Unstage")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::text("Unstage Selected Hunks"))
+                                .tooltip(Tooltip::localized_text("Unstage Selected Hunks"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.unstage_selected_staged_hunks(false, window, cx)
                                 })),
@@ -647,9 +647,9 @@ impl Render for StagedDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("unstage", "Unstage")
+                            Button::localized("unstage", "Unstage")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Unstage and Go to Next Hunk",
                                     &UnstageAndNext,
                                     &focus_handle,
@@ -662,10 +662,10 @@ impl Render for StagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("unstage-all", "Unstage All")
+                Button::localized("unstage-all", "Unstage All")
                     .width(rems_from_px(80_f32))
                     .disabled(!button_states.unstage_all)
-                    .tooltip(Tooltip::for_action_title_in(
+                    .tooltip(Tooltip::localized_for_action_title_in(
                         "Unstage All Changes",
                         &UnstageAll,
                         &focus_handle,
@@ -674,8 +674,8 @@ impl Render for StagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
-                    .tooltip(Tooltip::for_action_title_in(
+                Button::localized("commit", "Commit")
+                    .tooltip(Tooltip::localized_for_action_title_in(
                         "Commit",
                         &Commit,
                         &focus_handle,

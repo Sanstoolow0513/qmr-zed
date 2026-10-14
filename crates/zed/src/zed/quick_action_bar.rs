@@ -165,7 +165,7 @@ impl Render for QuickActionBar {
                         .toggle_state(is_deployed)
                         .when(!is_deployed, |this| {
                             this.when(has_available_code_actions, |this| {
-                                this.tooltip(Tooltip::for_action_title(
+                                this.tooltip(Tooltip::localized_for_action_title(
                                     "Code Actions",
                                     &ToggleCodeActions::default(),
                                 ))
@@ -173,7 +173,7 @@ impl Render for QuickActionBar {
                             .when(
                                 !has_available_code_actions,
                                 |this| {
-                                    this.tooltip(Tooltip::for_action_title(
+                                    this.tooltip(Tooltip::localized_for_action_title(
                                         "No Code Actions Available",
                                         &ToggleCodeActions::default(),
                                     ))
@@ -226,7 +226,7 @@ impl Render for QuickActionBar {
                         .icon_size(IconSize::Small)
                         .style(ButtonStyle::Subtle)
                         .toggle_state(self.toggle_selections_handle.is_deployed()),
-                    Tooltip::text("Selection Controls"),
+                    Tooltip::localized_text("Selection Controls"),
                 )
                 .with_handle(self.toggle_selections_handle.clone())
                 .anchor(Anchor::TopRight)
@@ -235,35 +235,45 @@ impl Render for QuickActionBar {
                     let menu = ContextMenu::build(window, cx, move |menu, _, _| {
                         menu.context(focus.clone())
                             .action("Select All", Box::new(SelectAll))
+                            .localize_last()
                             .action(
                                 "Select Next Occurrence",
                                 Box::new(SelectNext {
                                     replace_newest: false,
                                 }),
                             )
+                            .localize_last()
                             .action("Expand Selection", Box::new(SelectLargerSyntaxNode))
+                            .localize_last()
                             .action("Shrink Selection", Box::new(SelectSmallerSyntaxNode))
+                            .localize_last()
                             .action(
                                 "Add Cursor Above",
                                 Box::new(AddSelectionAbove {
                                     skip_soft_wrap: true,
                                 }),
                             )
+                            .localize_last()
                             .action(
                                 "Add Cursor Below",
                                 Box::new(AddSelectionBelow {
                                     skip_soft_wrap: true,
                                 }),
                             )
+                            .localize_last()
                             .separator()
                             .action("Go to Symbol", Box::new(ToggleOutline))
+                            .localize_last()
                             .action("Go to Line/Column", Box::new(ToggleGoToLine))
+                            .localize_last()
                             .separator()
                             .action("Next Problem", Box::new(GoToDiagnostic::default()))
+                            .localize_last()
                             .action(
                                 "Previous Problem",
                                 Box::new(GoToPreviousDiagnostic::default()),
                             )
+                            .localize_last()
                             .separator()
                             .action_disabled_when(!has_diff_hunks, "Next Hunk", Box::new(GoToHunk))
                             .action_disabled_when(
@@ -273,8 +283,11 @@ impl Render for QuickActionBar {
                             )
                             .separator()
                             .action("Move Line Up", Box::new(MoveLineUp))
+                            .localize_last()
                             .action("Move Line Down", Box::new(MoveLineDown))
+                            .localize_last()
                             .action("Duplicate Selection", Box::new(DuplicateLineDown))
+                            .localize_last()
                     });
                     Some(menu)
                 })
@@ -297,7 +310,7 @@ impl Render for QuickActionBar {
                     IconButton::new("toggle_editor_settings_icon", IconName::Filter)
                         .icon_size(IconSize::Small)
                         .toggle_state(self.toggle_settings_handle.is_deployed()),
-                    Tooltip::text("Editor Controls"),
+                    Tooltip::localized_text("Editor Controls"),
                 )
                 .anchor(Anchor::TopRight)
                 .with_handle(self.toggle_settings_handle.clone())
@@ -327,7 +340,7 @@ impl Render for QuickActionBar {
                                                 .ok();
                                         }
                                     },
-                                );
+                                ).localize_last();
 
                                 menu = menu.toggleable_entry(
                                     "Inline Values",
@@ -348,7 +361,7 @@ impl Render for QuickActionBar {
                                                 .ok();
                                         }
                                     }
-                                );
+                                ).localize_last();
                             }
 
                             if supports_semantic_tokens {
@@ -371,7 +384,7 @@ impl Render for QuickActionBar {
                                                 .ok();
                                         }
                                     },
-                                );
+                                ).localize_last();
                             }
 
                             if supports_code_lens {
@@ -394,7 +407,7 @@ impl Render for QuickActionBar {
                                                 .ok();
                                         }
                                     },
-                                );
+                                ).localize_last();
                             }
 
                             if supports_minimap {
@@ -411,7 +424,7 @@ impl Render for QuickActionBar {
                                             })
                                             .ok();
                                     }
-                                },)
+                                },).localize_last()
                             }
 
 
@@ -438,10 +451,10 @@ impl Render for QuickActionBar {
                                                 .ok();
                                         }
                                     },
-                                );
+                                ).localize_last();
 
                                 if supports_inline_diagnostics {
-                                    let mut inline_diagnostics_item = ContextMenuEntry::new("Inline Diagnostics")
+                                    let mut inline_diagnostics_item = ContextMenuEntry::localized("Inline Diagnostics")
                                         .toggleable(IconPosition::Start, diagnostics_enabled && inline_diagnostics_enabled)
                                         .action(ToggleInlineDiagnostics.boxed_clone())
                                         .handler({
@@ -459,7 +472,7 @@ impl Render for QuickActionBar {
                                             }
                                         });
                                     if !diagnostics_enabled {
-                                        inline_diagnostics_item = inline_diagnostics_item.disabled(true).documentation_aside(DocumentationSide::Left, |_|  Label::new("Inline diagnostics are not available until regular diagnostics are enabled.").into_any_element());
+                                        inline_diagnostics_item = inline_diagnostics_item.disabled(true).documentation_aside(DocumentationSide::Left, |_|  Label::localized("Inline diagnostics are not available until regular diagnostics are enabled.").into_any_element());
                                     }
                                     menu = menu.item(inline_diagnostics_item)
                                 }
@@ -486,7 +499,7 @@ impl Render for QuickActionBar {
                                             .ok();
                                     }
                                 },
-                            );
+                            ).localize_last();
 
                             menu = menu.toggleable_entry(
                                 "Selection Menu",
@@ -507,7 +520,7 @@ impl Render for QuickActionBar {
                                             .ok();
                                     }
                                 },
-                            );
+                            ).localize_last();
 
                             menu = menu.toggleable_entry(
                                 "Auto Signature Help",
@@ -528,7 +541,7 @@ impl Render for QuickActionBar {
                                             .ok();
                                     }
                                 },
-                            );
+                            ).localize_last();
 
                             menu = menu.separator();
 
@@ -551,7 +564,7 @@ impl Render for QuickActionBar {
                                             .ok();
                                     }
                                 },
-                            );
+                            ).localize_last();
 
                             menu = menu.toggleable_entry(
                                 "Column Git Blame",
@@ -572,7 +585,7 @@ impl Render for QuickActionBar {
                                             .ok();
                                     }
                                 },
-                            );
+                            ).localize_last();
 
                             if let Some(fs) = fs.clone() {
                                 menu = menu.toggleable_entry(
@@ -593,7 +606,7 @@ impl Render for QuickActionBar {
                                             });
                                         }
                                     },
-                                );
+                                ).localize_last();
                             }
 
                             menu = menu.separator();
@@ -611,7 +624,7 @@ impl Render for QuickActionBar {
                                         window.refresh();
                                     }
                                 },
-                            );
+                            ).localize_last();
                             menu = menu.toggleable_entry(
                                 "Helix Mode",
                                 helix_mode_enabled,
@@ -625,7 +638,7 @@ impl Render for QuickActionBar {
                                         window.refresh();
                                     }
                                 }
-                            );
+                            ).localize_last();
 
                             menu
                         }

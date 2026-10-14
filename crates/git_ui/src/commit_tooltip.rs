@@ -524,7 +524,7 @@ pub(crate) fn shallow_boundary_notice(
                     )
                     .child(
                         div().flex_1().min_w_0().child(
-                            Label::new(
+                            Label::localized(
                                 "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit.",
                             )
                             .size(LabelSize::Small)
@@ -549,7 +549,7 @@ pub(crate) fn shallow_boundary_notice(
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .disabled(in_flight)
-                            .tooltip(Tooltip::text(
+                            .tooltip(Tooltip::localized_text(
                                 "Run `git fetch --unshallow` to download the full history",
                             ))
                             .on_click(move |_, window, cx| {

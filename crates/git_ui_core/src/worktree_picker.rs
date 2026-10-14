@@ -402,7 +402,7 @@ impl Render for DeleteWorktreeTooltip {
             .unwrap_or(false);
 
         if force_delete {
-            Tooltip::for_action_in(
+            Tooltip::localized_for_action_in(
                 "Force Delete Worktree",
                 &ForceDeleteWorktree,
                 &self.focus_handle,
@@ -566,7 +566,10 @@ impl WorktreePickerDelegate {
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["Force Delete", "Cancel"],
+                                &[
+                                    i18n::static_text("Force Delete", cx),
+                                    i18n::static_text("Cancel", cx),
+                                ],
                                 cx,
                             )
                         })?;
@@ -761,8 +764,8 @@ impl PickerDelegate for WorktreePickerDelegate {
         "worktree picker"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select or type to create a worktree…".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Select or type to create a worktree…", cx).into()
     }
 
     fn editor_position(&self) -> PickerEditorPosition {
@@ -1184,7 +1187,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                                                 .color(Color::Muted),
                                                         )
                                                         .child(
-                                                            Label::new("\u{2022}")
+                                                            Label::localized("\u{2022}")
                                                                 .alpha(0.5)
                                                                 .color(Color::Muted)
                                                                 .size(LabelSize::Small),
@@ -1198,7 +1201,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                                             .color(Color::Muted),
                                                     )
                                                     .child(
-                                                        Label::new("\u{2022}")
+                                                        Label::localized("\u{2022}")
                                                             .alpha(0.5)
                                                             .color(Color::Muted)
                                                             .size(LabelSize::Small),
@@ -1225,7 +1228,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                             .with_rotate_animation(2),
                                     )
                                     .child(
-                                        Label::new("Deleting…")
+                                        Label::localized("Deleting…")
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     ),
@@ -1235,7 +1238,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             let open_in_new_window_button =
                                 IconButton::new(("open-new-window", ix), IconName::ArrowUpRight)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Open in New Window"))
+                                    .tooltip(Tooltip::localized_text("Open in New Window"))
                                     .on_click(cx.listener(move |picker, _, window, cx| {
                                         let Some(entry) = picker.delegate.matches.get(ix) else {
                                             return;
@@ -1303,7 +1306,9 @@ impl PickerDelegate for WorktreePickerDelegate {
                                                 IconName::Close,
                                             )
                                             .icon_size(IconSize::Small)
-                                            .tooltip(Tooltip::text("Remove Worktree from Window"))
+                                            .tooltip(Tooltip::localized_text(
+                                                "Remove Worktree from Window",
+                                            ))
                                             .on_click(
                                                 cx.listener(move |picker, _, window, cx| {
                                                     picker.delegate.remove_worktree_from_window(
@@ -1368,7 +1373,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             IconButton::new("configure-worktree-tasks", IconName::Settings)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_window, cx| {
-                    Tooltip::for_action_in(
+                    Tooltip::localized_for_action_in(
                         "Automate Worktree Setup",
                         &OpenWorktreeSetupTasks,
                         &focus_handle,
@@ -1422,7 +1427,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             .border_t_1()
             .border_color(cx.theme().colors().border_variant)
             .child(
-                Button::new("configure-worktree-tasks", "Automate Setup")
+                Button::localized("configure-worktree-tasks", "Automate Setup")
                     .key_binding(
                         KeyBinding::for_action_in(&OpenWorktreeSetupTasks, &focus_handle, cx)
                             .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1436,7 +1441,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             Some(
                 footer
                     .child(
-                        Button::new("create-worktree", "Create")
+                        Button::localized("create-worktree", "Create")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1455,7 +1460,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .gap_0p5()
                             .when(is_deleting, |this| {
                                 this.child(
-                                    Button::new("delete-worktree", "Deleting…")
+                                    Button::localized("delete-worktree", "Deleting…")
                                         .loading(true)
                                         .disabled(true),
                                 )
@@ -1463,7 +1468,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && can_delete, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("delete-worktree", "Delete")
+                                    Button::localized("delete-worktree", "Delete")
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &DeleteWorktree,
@@ -1480,7 +1485,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && !is_current, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("open-in-new-window", "Open in New Window")
+                                    Button::localized("open-in-new-window", "Open in New Window")
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &menu::SecondaryConfirm,
@@ -1499,7 +1504,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             })
                             .when(!is_deleting, |this| {
                                 this.child(
-                                    Button::new("open-worktree", "Open")
+                                    Button::localized("open-worktree", "Open")
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &menu::Confirm,

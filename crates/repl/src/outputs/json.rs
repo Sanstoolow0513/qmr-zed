@@ -98,12 +98,12 @@ impl JsonView {
                                         )
                                     })
                                     .when(!is_expanded, |this| {
-                                        this.child(Label::new("{").color(Color::Muted))
+                                        this.child(Label::localized("{").color(Color::Muted))
                                             .child(
                                                 Label::new(format!(" {} ", preview))
                                                     .color(Color::Muted),
                                             )
-                                            .child(Label::new("}").color(Color::Muted))
+                                            .child(Label::localized("}").color(Color::Muted))
                                     }),
                             ),
                     )
@@ -158,12 +158,12 @@ impl JsonView {
                                         )
                                     })
                                     .when(!is_expanded, |this| {
-                                        this.child(Label::new("[").color(Color::Muted))
+                                        this.child(Label::localized("[").color(Color::Muted))
                                             .child(
                                                 Label::new(format!(" {} ", preview))
                                                     .color(Color::Muted),
                                             )
-                                            .child(Label::new("]").color(Color::Muted))
+                                            .child(Label::localized("]").color(Color::Muted))
                                     }),
                             ),
                     )

@@ -50,6 +50,7 @@ pub fn compile(manifest: bool) -> Result<(), Box<dyn std::error::Error>> {
         _ => ("app-icon-dev.ico", "QMR Zed Dev"),
     };
     let icon = std::path::PathBuf::from(ICON_DIR).join(icon_filename);
+    println!("cargo:rerun-if-changed={}", icon.display());
     let icon_escaped = icon.to_string_lossy().replace('\\', "\\\\");
 
     let manifest_line = if manifest {

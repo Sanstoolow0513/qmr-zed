@@ -934,9 +934,14 @@ impl LineBreakpoint {
                                 .truncate()
                         }))
                         .when_some(self.dir.as_ref(), |this, parent_dir| {
-                            this.tooltip(Tooltip::text(format!(
-                                "Worktree parent path: {parent_dir}"
-                            )))
+                            let parent_dir = parent_dir.clone();
+                            this.tooltip(move |window, cx| {
+                                Tooltip::text(i18n::format(
+                                    "Worktree parent path: {parent_dir}",
+                                    &[("parent_dir", &parent_dir)],
+                                    cx,
+                                ))(window, cx)
+                            })
                         }),
                 )
                 .child(BreakpointOptionsStrip {

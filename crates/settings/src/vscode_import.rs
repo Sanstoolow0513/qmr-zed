@@ -180,6 +180,7 @@ impl VsCodeSettings {
 
     pub fn settings_content(&self) -> SettingsContent {
         SettingsContent {
+            display_language: None,
             workspace_sidebar: None,
             workspace_terminal: None,
 

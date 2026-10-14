@@ -1481,49 +1481,56 @@ impl Render for PanelButtons {
                                     let panel_for_flex = panel.clone();
                                     let dock_for_flex = dock_for_menu.clone();
                                     let workspace_for_flex = workspace_for_menu.clone();
-                                    menu = menu.toggleable_entry(
-                                        "Flex Width",
-                                        currently_flexible,
-                                        IconPosition::Start,
-                                        None,
-                                        move |window, cx| {
-                                            if !currently_flexible {
-                                                if let Some(ws) = workspace_for_flex.upgrade() {
-                                                    ws.update(cx, |workspace, cx| {
-                                                        workspace.toggle_dock_panel_flexible_size(
-                                                            &dock_for_flex,
-                                                            panel_for_flex.as_ref(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
+                                    menu = menu
+                                        .toggleable_entry(
+                                            "Flex Width",
+                                            currently_flexible,
+                                            IconPosition::Start,
+                                            None,
+                                            move |window, cx| {
+                                                if !currently_flexible {
+                                                    if let Some(ws) = workspace_for_flex.upgrade() {
+                                                        ws.update(cx, |workspace, cx| {
+                                                            workspace
+                                                                .toggle_dock_panel_flexible_size(
+                                                                    &dock_for_flex,
+                                                                    panel_for_flex.as_ref(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        },
-                                    );
+                                            },
+                                        )
+                                        .localize_last();
                                     let panel_for_fixed = panel.clone();
                                     let dock_for_fixed = dock_for_menu.clone();
                                     let workspace_for_fixed = workspace_for_menu.clone();
-                                    menu = menu.toggleable_entry(
-                                        "Fixed Width",
-                                        !currently_flexible,
-                                        IconPosition::Start,
-                                        None,
-                                        move |window, cx| {
-                                            if currently_flexible {
-                                                if let Some(ws) = workspace_for_fixed.upgrade() {
-                                                    ws.update(cx, |workspace, cx| {
-                                                        workspace.toggle_dock_panel_flexible_size(
-                                                            &dock_for_fixed,
-                                                            panel_for_fixed.as_ref(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
+                                    menu = menu
+                                        .toggleable_entry(
+                                            "Fixed Width",
+                                            !currently_flexible,
+                                            IconPosition::Start,
+                                            None,
+                                            move |window, cx| {
+                                                if currently_flexible {
+                                                    if let Some(ws) = workspace_for_fixed.upgrade()
+                                                    {
+                                                        ws.update(cx, |workspace, cx| {
+                                                            workspace
+                                                                .toggle_dock_panel_flexible_size(
+                                                                    &dock_for_fixed,
+                                                                    panel_for_fixed.as_ref(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        },
-                                    );
+                                            },
+                                        )
+                                        .localize_last();
                                 }
                                 if let Some(hide) = panel_hide {
                                     menu = crate::status_bar::add_hide_button_entry(
