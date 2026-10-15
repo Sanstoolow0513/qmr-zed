@@ -1,7 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
 use collections::HashMap;
-use gpui::SharedString;
+use gpui::{Hsla, SharedString, rgb};
 
 use crate::Appearance;
 
@@ -47,6 +47,27 @@ pub struct DirectoryIcons {
     pub collapsed: Option<SharedString>,
     /// The path to the icon to use for an expanded directory.
     pub expanded: Option<SharedString>,
+    /// Appearance-aware tint for bundled monochrome directory icons.
+    pub colors: Option<IconColors>,
+}
+
+/// Tints for a bundled monochrome icon in each UI appearance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IconColors {
+    /// The tint to use on a light UI background.
+    pub light: Hsla,
+    /// The tint to use on a dark UI background.
+    pub dark: Hsla,
+}
+
+impl IconColors {
+    /// Resolves the tint using the active UI theme, independently of system appearance.
+    pub fn for_appearance(self, appearance: Appearance) -> Hsla {
+        match appearance {
+            Appearance::Light => self.light,
+            Appearance::Dark => self.dark,
+        }
+    }
 }
 
 /// The icons used for chevrons.
@@ -59,10 +80,12 @@ pub struct ChevronIcons {
 }
 
 /// An icon definition.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IconDefinition {
     /// The path to the icon file.
     pub path: SharedString,
+    /// Appearance-aware tint for bundled monochrome icons; external images retain their colors.
+    pub colors: Option<IconColors>,
 }
 
 const FILE_STEMS_BY_ICON_KEY: &[(&str, &[&str])] = &[
@@ -431,6 +454,7 @@ static DEFAULT_ICON_THEME: LazyLock<Arc<IconTheme>> = LazyLock::new(|| {
         directory_icons: DirectoryIcons {
             collapsed: Some("icons/file_icons/folder.svg".into()),
             expanded: Some("icons/file_icons/folder_open.svg".into()),
+            colors: None,
         },
         named_directory_icons: HashMap::default(),
         chevron_icons: ChevronIcons {
@@ -444,6 +468,7 @@ static DEFAULT_ICON_THEME: LazyLock<Arc<IconTheme>> = LazyLock::new(|| {
                 ty.to_string(),
                 IconDefinition {
                     path: (*path).into(),
+                    colors: None,
                 },
             )
         })),
@@ -453,4 +478,105 @@ static DEFAULT_ICON_THEME: LazyLock<Arc<IconTheme>> = LazyLock::new(|| {
 /// Returns the default icon theme.
 pub fn default_icon_theme() -> Arc<IconTheme> {
     DEFAULT_ICON_THEME.clone()
+}
+
+/// The bundled icon theme used by the product defaults.
+pub const CLAUDE_ICON_THEME_NAME: &str = "Claude Icons";
+
+static CLAUDE_ICON_THEME: LazyLock<Arc<IconTheme>> = LazyLock::new(|| {
+    let colors = |light, dark| IconColors {
+        light: rgb(light).into(),
+        dark: rgb(dark).into(),
+    };
+    let terracotta = colors(0xa95336, 0xd97757);
+    let amber = colors(0x86651f, 0xd5b86b);
+    let blue = colors(0x3e6f9e, 0x8ab4dc);
+    let teal = colors(0x2d7076, 0x86bbc1);
+    let green = colors(0x526c3e, 0xa8bd8a);
+    let purple = colors(0x785a96, 0xb6a0d8);
+    let rose = colors(0xa83e45, 0xe08b8b);
+    let neutral = colors(0x6c695f, 0xada79c);
+
+    let mut file_icons = HashMap::from_iter(FILE_ICONS.iter().map(|(kind, path)| {
+        let colors = match *kind {
+            "rust" | "html" | "svelte" | "vcs" | "swift" | "zig" | "astro" => terracotta,
+            "javascript" | "json" | "nim" => amber,
+            "typescript" | "markdown" | "c" | "cpp" | "docker" | "dart" | "fsharp" | "vs_sln" => {
+                blue
+            }
+            "react" | "go" | "storage" | "document" | "hcl" | "terraform" | "prisma" => teal,
+            "python" | "terminal" | "vue" | "diff" | "vim" => green,
+            "css" | "toml" | "settings" | "yaml" | "lock" | "elixir" | "haskell" | "kotlin"
+            | "lua" | "luau" | "nix" | "ocaml" | "eslint" | "prettier" => purple,
+            "image" | "audio" | "video" | "ruby" | "sass" | "graphql" | "java" => rose,
+            _ => neutral,
+        };
+        (
+            kind.to_string(),
+            IconDefinition {
+                path: (*path).into(),
+                colors: Some(colors),
+            },
+        )
+    }));
+    for (kind, asset) in [
+        ("default", "file"),
+        ("settings", "settings"),
+        ("lock", "lock"),
+        ("terminal", "terminal"),
+        ("image", "image"),
+        ("storage", "database"),
+        ("document", "document"),
+        ("rust", "rust"),
+        ("typescript", "typescript"),
+        ("javascript", "javascript"),
+        ("python", "python"),
+        ("react", "react"),
+        ("html", "html"),
+        ("css", "css"),
+        ("json", "json"),
+        ("toml", "toml"),
+        ("yaml", "yaml"),
+        ("markdown", "markdown"),
+        ("vcs", "git"),
+    ] {
+        if let Some(icon) = file_icons.get_mut(kind) {
+            icon.path = format!("icons/file_icons/claude/{asset}.svg").into();
+        }
+    }
+    file_icons.insert(
+        "archive".into(),
+        IconDefinition {
+            path: "icons/file_icons/claude/archive.svg".into(),
+            colors: Some(amber),
+        },
+    );
+    let mut file_suffixes = icon_keys_by_association(FILE_SUFFIXES_BY_ICON_KEY);
+    for suffix in ["7z", "bz2", "gz", "rar", "tar", "tgz", "xz", "zip", "zst"] {
+        file_suffixes.insert(suffix.into(), "archive".into());
+    }
+
+    Arc::new(IconTheme {
+        id: "claude-icons".into(),
+        name: CLAUDE_ICON_THEME_NAME.into(),
+        appearance: Appearance::Dark,
+        directory_icons: DirectoryIcons {
+            collapsed: Some("icons/file_icons/claude/folder.svg".into()),
+            expanded: Some("icons/file_icons/claude/folder_open.svg".into()),
+            colors: Some(amber),
+        },
+        named_directory_icons: HashMap::default(),
+        chevron_icons: ChevronIcons {
+            collapsed: Some("icons/file_icons/chevron_right.svg".into()),
+            expanded: Some("icons/file_icons/chevron_down.svg".into()),
+        },
+        file_stems: icon_keys_by_association(FILE_STEMS_BY_ICON_KEY),
+        file_suffixes,
+        file_icons,
+    })
+});
+
+/// Returns the bundled icon theme with tints for both light and dark UIs.
+pub fn claude_icon_theme() -> Arc<IconTheme> {
+    CLAUDE_ICON_THEME.clone()
 }

@@ -3,7 +3,7 @@ use std::{path::Path, str};
 
 use gpui::{App, SharedString};
 use settings_content::FolderIndicator;
-use theme::{GlobalTheme, IconTheme, ThemeRegistry};
+use theme::{DirectoryIcons, GlobalTheme, IconColors, IconDefinition, IconTheme, ThemeRegistry};
 use util::paths::PathExt;
 
 #[derive(Debug)]
@@ -16,6 +16,7 @@ pub struct FileIcons {
 pub struct FolderIndicators {
     pub chevron: Option<SharedString>,
     pub icon: Option<SharedString>,
+    pub icon_colors: Option<IconColors>,
 }
 
 impl FileIcons {
@@ -26,14 +27,18 @@ impl FileIcons {
     }
 
     pub fn get_icon(path: &Path, cx: &App) -> Option<SharedString> {
+        Self::get_icon_definition(path, cx).map(|icon| icon.path)
+    }
+
+    pub fn get_icon_definition(path: &Path, cx: &App) -> Option<IconDefinition> {
         let this = Self::get(cx);
 
-        let get_icon_from_suffix = |suffix: &str| -> Option<SharedString> {
+        let get_icon_from_suffix = |suffix: &str| -> Option<IconDefinition> {
             this.icon_theme
                 .file_stems
                 .get(suffix)
                 .or_else(|| this.icon_theme.file_suffixes.get(suffix))
-                .and_then(|typ| this.get_icon_for_type(typ, cx))
+                .and_then(|typ| this.get_icon_definition_for_type(typ, cx))
         };
         // TODO: Associate a type with the languages and have the file's language
         //       override these associations
@@ -86,7 +91,7 @@ impl FileIcons {
                 return maybe_path;
             }
         }
-        this.get_icon_for_type("default", cx)
+        this.get_icon_definition_for_type("default", cx)
     }
 
     fn default_icon_theme(cx: &App) -> Option<Arc<IconTheme>> {
@@ -95,24 +100,31 @@ impl FileIcons {
     }
 
     pub fn get_icon_for_type(&self, typ: &str, cx: &App) -> Option<SharedString> {
-        fn get_icon_for_type(icon_theme: &Arc<IconTheme>, typ: &str) -> Option<SharedString> {
-            icon_theme
-                .file_icons
-                .get(typ)
-                .map(|icon_definition| icon_definition.path.clone())
-        }
+        self.get_icon_definition_for_type(typ, cx)
+            .map(|icon| icon.path)
+    }
 
-        get_icon_for_type(GlobalTheme::icon_theme(cx), typ).or_else(|| {
-            Self::default_icon_theme(cx).and_then(|icon_theme| get_icon_for_type(&icon_theme, typ))
+    fn get_icon_definition_for_type(&self, typ: &str, cx: &App) -> Option<IconDefinition> {
+        self.icon_theme.file_icons.get(typ).cloned().or_else(|| {
+            Self::default_icon_theme(cx)
+                .and_then(|icon_theme| icon_theme.file_icons.get(typ).cloned())
         })
     }
 
     pub fn get_folder_icon(expanded: bool, path: &Path, cx: &App) -> Option<SharedString> {
+        Self::get_folder_icon_definition(expanded, path, cx).map(|icon| icon.path)
+    }
+
+    pub fn get_folder_icon_definition(
+        expanded: bool,
+        path: &Path,
+        cx: &App,
+    ) -> Option<IconDefinition> {
         fn get_folder_icon(
             icon_theme: &Arc<IconTheme>,
             path: &Path,
             expanded: bool,
-        ) -> Option<SharedString> {
+        ) -> Option<IconDefinition> {
             let name = path.file_name()?.to_str()?.trim();
             if name.is_empty() {
                 return None;
@@ -120,11 +132,7 @@ impl FileIcons {
 
             let directory_icons = icon_theme.named_directory_icons.get(name)?;
 
-            if expanded {
-                directory_icons.expanded.clone()
-            } else {
-                directory_icons.collapsed.clone()
-            }
+            FileIcons::directory_icon_definition(directory_icons, expanded)
         }
 
         get_folder_icon(GlobalTheme::icon_theme(cx), path, expanded)
@@ -139,16 +147,27 @@ impl FileIcons {
             })
     }
 
-    fn get_generic_folder_icon(expanded: bool, cx: &App) -> Option<SharedString> {
+    fn directory_icon_definition(
+        directory_icons: &DirectoryIcons,
+        expanded: bool,
+    ) -> Option<IconDefinition> {
+        let path = if expanded {
+            directory_icons.expanded.clone()
+        } else {
+            directory_icons.collapsed.clone()
+        }?;
+        Some(IconDefinition {
+            path,
+            colors: directory_icons.colors,
+        })
+    }
+
+    fn get_generic_folder_icon(expanded: bool, cx: &App) -> Option<IconDefinition> {
         fn get_generic_folder_icon(
             icon_theme: &Arc<IconTheme>,
             expanded: bool,
-        ) -> Option<SharedString> {
-            if expanded {
-                icon_theme.directory_icons.expanded.clone()
-            } else {
-                icon_theme.directory_icons.collapsed.clone()
-            }
+        ) -> Option<IconDefinition> {
+            FileIcons::directory_icon_definition(&icon_theme.directory_icons, expanded)
         }
 
         get_generic_folder_icon(GlobalTheme::icon_theme(cx), expanded).or_else(|| {
@@ -186,10 +205,14 @@ impl FileIcons {
             .flatten();
         let icon = indicator
             .shows_icon()
-            .then(|| Self::get_folder_icon(expanded, path, cx))
+            .then(|| Self::get_folder_icon_definition(expanded, path, cx))
             .flatten();
 
-        FolderIndicators { chevron, icon }
+        FolderIndicators {
+            chevron,
+            icon_colors: icon.as_ref().and_then(|icon| icon.colors),
+            icon: icon.map(|icon| icon.path),
+        }
     }
 }
 
@@ -197,6 +220,150 @@ impl FileIcons {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use theme::{Appearance, CLAUDE_ICON_THEME_NAME};
+
+    fn use_claude_icons(cx: &mut App) {
+        theme::init(theme::LoadThemes::JustBase, cx);
+        let icons = ThemeRegistry::global(cx)
+            .get_icon_theme(CLAUDE_ICON_THEME_NAME)
+            .unwrap();
+        GlobalTheme::update_icon_theme(cx, icons);
+    }
+
+    #[gpui::test]
+    fn test_claude_file_associations_and_fallback(cx: &mut App) {
+        use_claude_icons(cx);
+
+        for (filename, asset) in [
+            ("main.rs", "rust"),
+            ("main.ts", "typescript"),
+            ("main.py", "python"),
+            ("Component.stories.tsx", "react"),
+            (".data.json", "json"),
+            ("Cargo.toml", "toml"),
+            ("README.md", "markdown"),
+            (".gitignore", "git"),
+            ("archive.tar.gz", "archive"),
+            ("unknown.custom", "file"),
+        ] {
+            let icon = FileIcons::get_icon_definition(Path::new(filename), cx).unwrap();
+            assert_eq!(icon.path, format!("icons/file_icons/claude/{asset}.svg"));
+            assert!(icon.colors.is_some(), "missing tint for {filename}");
+            assert_eq!(
+                FileIcons::get_icon(Path::new(filename), cx),
+                Some(icon.path)
+            );
+        }
+
+        let docker = FileIcons::get_icon_definition(Path::new("Dockerfile"), cx).unwrap();
+        assert_eq!(docker.path, "icons/file_icons/docker.svg");
+        assert!(docker.colors.is_some());
+    }
+
+    #[gpui::test]
+    fn test_claude_tint_follows_ui_appearance_independently_of_system(cx: &mut App) {
+        use_claude_icons(cx);
+        let icon = FileIcons::get_icon_definition(Path::new("main.rs"), cx).unwrap();
+        let colors = icon.colors.unwrap();
+        assert_ne!(colors.light, colors.dark);
+
+        for (system_appearance, ui_appearance, expected) in [
+            (Appearance::Light, Appearance::Dark, colors.dark),
+            (Appearance::Dark, Appearance::Light, colors.light),
+        ] {
+            theme::SystemAppearance::global_mut(cx).0 = system_appearance;
+            let mut ui_theme = GlobalTheme::theme(cx).as_ref().clone();
+            ui_theme.appearance = ui_appearance;
+            GlobalTheme::update_theme(cx, Arc::new(ui_theme));
+
+            assert_eq!(
+                colors.for_appearance(GlobalTheme::theme(cx).appearance()),
+                expected
+            );
+            assert_eq!(GlobalTheme::icon_theme(cx).name, CLAUDE_ICON_THEME_NAME);
+        }
+    }
+
+    #[gpui::test]
+    fn test_claude_folder_indicators_keep_tint_and_chevron_separate(cx: &mut App) {
+        use_claude_icons(cx);
+        let path = Path::new("src");
+        let collapsed = FileIcons::get_folder_indicators(FolderIndicator::Both, false, path, cx);
+        let expanded = FileIcons::get_folder_indicators(FolderIndicator::Both, true, path, cx);
+        assert_eq!(
+            collapsed.icon.as_deref(),
+            Some("icons/file_icons/claude/folder.svg")
+        );
+        assert_eq!(
+            expanded.icon.as_deref(),
+            Some("icons/file_icons/claude/folder_open.svg")
+        );
+        assert_eq!(collapsed.icon_colors, expanded.icon_colors);
+        assert!(collapsed.icon_colors.is_some());
+        assert_eq!(
+            collapsed.chevron.as_deref(),
+            Some("icons/file_icons/chevron_right.svg")
+        );
+
+        let chevron = FileIcons::get_folder_indicators(FolderIndicator::Chevron, false, path, cx);
+        assert!(chevron.icon.is_none());
+        assert!(chevron.icon_colors.is_none());
+    }
+
+    #[gpui::test]
+    fn test_external_icon_theme_preserves_images_and_zed_fallback(cx: &mut App) {
+        use_claude_icons(cx);
+        let registry = ThemeRegistry::global(cx);
+        let root = Path::new("extension");
+        registry
+            .load_icon_theme(
+                &root.join("theme.json"),
+                root,
+                br#"{
+                    "name": "External", "author": "Test",
+                    "themes": [{
+                        "name": "External", "appearance": "dark",
+                        "directory_icons": {"collapsed": "icons/folder.svg"},
+                        "named_directory_icons": {"src": {"expanded": "icons/src-open.svg"}},
+                        "file_stems": {"Cargo.toml": "cargo"},
+                        "file_suffixes": {"special.rs": "special"},
+                        "file_icons": {
+                            "cargo": {"path": "icons/cargo.svg"},
+                            "special": {"path": "icons/special.svg"}
+                        }
+                    }]
+                }"#
+                .to_vec(),
+            )
+            .unwrap();
+        GlobalTheme::update_icon_theme(cx, registry.get_icon_theme("External").unwrap());
+
+        for (filename, asset) in [("Cargo.toml", "cargo"), ("name.special.rs", "special")] {
+            let icon = FileIcons::get_icon_definition(Path::new(filename), cx).unwrap();
+            assert_eq!(
+                icon.path.as_ref(),
+                root.join(format!("icons/{asset}.svg")).to_string_lossy()
+            );
+            assert!(icon.colors.is_none());
+        }
+
+        let rust = FileIcons::get_icon_definition(Path::new("main.rs"), cx).unwrap();
+        assert_eq!(rust.path, "icons/file_icons/rust.svg");
+        assert!(rust.colors.is_none());
+        let unknown = FileIcons::get_icon_definition(Path::new("unknown.custom"), cx).unwrap();
+        assert_eq!(unknown.path, "icons/file_icons/file.svg");
+        assert!(unknown.colors.is_none());
+
+        let source = FileIcons::get_folder_icon_definition(true, Path::new("src"), cx).unwrap();
+        assert_eq!(
+            source.path.as_ref(),
+            root.join("icons/src-open.svg").to_string_lossy()
+        );
+        assert!(source.colors.is_none());
+        let folder = FileIcons::get_folder_icon_definition(true, Path::new("other"), cx).unwrap();
+        assert_eq!(folder.path, "icons/file_icons/folder_open.svg");
+        assert!(folder.colors.is_none());
+    }
 
     #[gpui::test]
     fn test_folder_indicators_per_setting(cx: &mut gpui::TestAppContext) {

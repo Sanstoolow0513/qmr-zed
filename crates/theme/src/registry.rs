@@ -130,6 +130,13 @@ impl ThemeRegistry {
             .icon_themes
             .insert(default_icon_theme.name.clone(), default_icon_theme);
 
+        let claude_icon_theme = crate::claude_icon_theme();
+        registry
+            .state
+            .write()
+            .icon_themes
+            .insert(claude_icon_theme.name.clone(), claude_icon_theme);
+
         registry
     }
 
@@ -311,6 +318,7 @@ impl ThemeRegistry {
                         DirectoryIcons {
                             collapsed: value.collapsed.map(resolve_icon_path),
                             expanded: value.expanded.map(resolve_icon_path),
+                            colors: None,
                         },
                     )
                 },
@@ -326,6 +334,7 @@ impl ThemeRegistry {
                 directory_icons: DirectoryIcons {
                     collapsed: icon_theme.directory_icons.collapsed.map(resolve_icon_path),
                     expanded: icon_theme.directory_icons.expanded.map(resolve_icon_path),
+                    colors: None,
                 },
                 named_directory_icons,
                 chevron_icons: ChevronIcons {
@@ -342,6 +351,7 @@ impl ThemeRegistry {
                             key,
                             IconDefinition {
                                 path: resolve_icon_path(icon.path),
+                                colors: None,
                             },
                         )
                     })

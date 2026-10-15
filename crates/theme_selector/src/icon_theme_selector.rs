@@ -393,6 +393,7 @@ mod tests {
                 directory_icons: DirectoryIcons {
                     collapsed: None,
                     expanded: None,
+                    colors: None,
                 },
                 named_directory_icons: HashMap::default(),
                 chevron_icons: ChevronIcons {

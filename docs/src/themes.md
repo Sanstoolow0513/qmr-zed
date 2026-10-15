@@ -7,6 +7,11 @@ description: Browse, install, and create themes for Zed. Includes built-in theme
 
 Zed comes with a number of built-in themes, with more themes available as extensions.
 
+QMR Zed defaults to **Claude Light** and **Claude Dark**, switching with your
+system appearance. Both use warm neutral surfaces and terracotta accents across
+the editor, panels, menus, and terminal. Existing theme choices take precedence
+over these defaults.
+
 ## Selecting a Theme
 
 See what themes are installed and preview them via the Theme Selector, which you can open from the command palette with the {#action theme_selector::Toggle} (bound to {#kb theme_selector::Toggle}) action.
@@ -38,8 +43,8 @@ You can set the mode to `"dark"` or `"light"` to ignore the current system mode.
 {
   "theme": {
     "mode": "system",
-    "light": "One Light",
-    "dark": "One Dark"
+    "light": "Claude Light",
+    "dark": "Claude Dark"
   }
 }
 ```
@@ -56,19 +61,20 @@ If your settings currently use a static theme value, like:
 }
 ```
 
-the first toggle converts it to dynamic theme selection with default themes:
+the first toggle converts it to dynamic theme selection with default themes in
+the requested mode. For example, switching to dark mode produces:
 
 ```json [settings]
 {
   "theme": {
-    "mode": "system",
-    "light": "One Light",
-    "dark": "One Dark"
+    "mode": "dark",
+    "light": "Claude Light",
+    "dark": "Claude Dark"
   }
 }
 ```
 
-You are required to set both `light` and `dark` themes manually after the first toggle.
+You can set `light` and `dark` to different themes after the first toggle.
 
 After that, toggling updates only `theme.mode`.
 If `light` and `dark` are the same theme, the first toggle may not produce a visible UI change until you set different values for `light` and `dark`.

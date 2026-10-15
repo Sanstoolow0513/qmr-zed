@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub use settings::{FontFamilyName, IconThemeName, ThemeAppearanceMode, ThemeName};
 use settings::{IntoGpui, RegisterSetting, Settings, SettingsContent};
 use std::sync::Arc;
-use theme::{Appearance, DEFAULT_ICON_THEME_NAME, SyntaxTheme, Theme, UiDensity};
+use theme::{Appearance, CLAUDE_ICON_THEME_NAME, SyntaxTheme, Theme, UiDensity};
 
 const MIN_FONT_SIZE: Pixels = px(6.0);
 const MAX_FONT_SIZE: Pixels = px(100.0);
@@ -304,7 +304,7 @@ pub fn set_mode(content: &mut SettingsContent, mode: ThemeAppearanceMode) {
         match selection {
             settings::ThemeSelection::Static(_) => {
                 *selection = settings::ThemeSelection::Dynamic {
-                    mode: ThemeAppearanceMode::System,
+                    mode,
                     light: ThemeName(settings::DEFAULT_LIGHT_THEME.into()),
                     dark: ThemeName(settings::DEFAULT_DARK_THEME.into()),
                 };
@@ -338,7 +338,7 @@ pub fn set_mode(content: &mut SettingsContent, mode: ThemeAppearanceMode) {
         }
     } else {
         theme.icon_theme = Some(settings::IconThemeSelection::Static(IconThemeName(
-            DEFAULT_ICON_THEME_NAME.into(),
+            CLAUDE_ICON_THEME_NAME.into(),
         )));
     }
 }
@@ -684,6 +684,56 @@ impl settings::Settings for ThemeSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appearance_mode_uses_claude_defaults_without_explicit_selections() {
+        let mut content = SettingsContent::default();
+        set_mode(&mut content, ThemeAppearanceMode::Dark);
+
+        assert_eq!(
+            content.theme.theme,
+            Some(settings::ThemeSelection::Dynamic {
+                mode: ThemeAppearanceMode::Dark,
+                light: ThemeName("Claude Light".into()),
+                dark: ThemeName("Claude Dark".into()),
+            })
+        );
+        assert_eq!(
+            content.theme.icon_theme,
+            Some(settings::IconThemeSelection::Static(IconThemeName(
+                CLAUDE_ICON_THEME_NAME.into()
+            )))
+        );
+    }
+
+    #[test]
+    fn appearance_mode_keeps_explicit_icon_selection() {
+        let mut content = SettingsContent::default();
+        content.theme.theme = Some(settings::ThemeSelection::Static(ThemeName(
+            "Claude Light".into(),
+        )));
+        content.theme.icon_theme = Some(settings::IconThemeSelection::Static(IconThemeName(
+            "External Icons".into(),
+        )));
+
+        set_mode(&mut content, ThemeAppearanceMode::Dark);
+
+        assert!(matches!(
+            content.theme.theme,
+            Some(settings::ThemeSelection::Dynamic {
+                mode: ThemeAppearanceMode::Dark,
+                ..
+            })
+        ));
+        assert_eq!(
+            content.theme.icon_theme,
+            Some(settings::IconThemeSelection::Dynamic {
+                mode: ThemeAppearanceMode::Dark,
+                light: IconThemeName("External Icons".into()),
+                dark: IconThemeName("External Icons".into()),
+            })
+        );
+    }
 
     fn theme_with_colors(colors: ::settings::ThemeColorsContent) -> Theme {
         crate::refine_theme(&crate::ThemeContent {

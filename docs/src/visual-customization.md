@@ -489,11 +489,11 @@ TBD: Centered layout related settings
     "button": true,                 // Show/hide button in the status bar
     "default_width": 240,           // Default panel width
     "dock": "right",                // Position of the dock (left, right)
-    "entry_spacing": "comfortable", // Vertical spacing (comfortable, standard)
+    "entry_spacing": "standard",    // Vertical spacing (comfortable, standard)
     "file_icons": true,             // Show/hide file icons
     "folder_indicator": "icon",     // Dir glyph: icon, chevron, both
     "git_status": true,             // Indicate new/updated files
-    "indent_size": 20,              // Pixels for each successive indent
+    "indent_size": 12,              // Pixels for each successive indent
     "auto_reveal_entries": true,    // Show file in panel when activating its buffer
     "auto_fold_dirs": true,         // Fold dirs with single subdir
     "bold_folder_labels": false,    // Show folder names with bold text
@@ -518,7 +518,7 @@ TBD: Centered layout related settings
     "sort_order": "default",
     // Whether to hide the root entry when only one folder is open in the window;
     // this also affects how file paths appear in the file finder history.
-    "hide_root": false,
+    "hide_root": true,
     // Whether to hide the hidden entries in the project panel.
     "hide_hidden": false
   }
