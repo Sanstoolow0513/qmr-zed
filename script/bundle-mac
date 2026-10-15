@@ -7,6 +7,7 @@ build_flag="--release"
 zed_features=""
 remote_server_features=""
 target_dir="release"
+editor_bin="qmrzed"
 open_result=false
 local_install=false
 can_code_sign=false
@@ -53,9 +54,19 @@ shift $((OPTIND-1))
 
 # Get release channel
 pushd crates/zed
-channel=$(<RELEASE_CHANNEL)
-export ZED_RELEASE_CHANNEL="${channel}"
+# Prefer the release workflow's channel so the committed dev file can stay unchanged.
+if [[ "${ZED_RELEASE_CHANNEL:-}" =~ ^(stable|preview|nightly|dev)$ ]]; then
+    channel="$ZED_RELEASE_CHANNEL"
+else
+    channel=$(<RELEASE_CHANNEL)
+    channel="${channel//$'\n'/}"
+    export ZED_RELEASE_CHANNEL="${channel}"
+fi
+export RELEASE_CHANNEL="${channel}"
 popd
+if [[ -z "${ZED_UPDATE_EXPLANATION:-}" ]]; then
+    export ZED_UPDATE_EXPLANATION="QMR Zed is an independent fork. Download updates from https://github.com/Sanstoolow0513/qmr-zed/releases."
+fi
 
 export ZED_BUNDLE=true
 export CARGO_BUNDLE_SKIP_BUILD=true
@@ -92,14 +103,14 @@ rustup target add $target_triple
 
 echo "Compiling zed binaries"
 if [[ "$target_dir" = "release" ]]; then
-    cargo --config .cargo/bundle-config.toml rustc ${build_flag} ${zed_features} --package zed --bin zed --target $target_triple -- -C 'link-arg=-Wl,-unexported_symbol,__R*'
-    cargo --config .cargo/bundle-config.toml build ${build_flag} --package cli --target $target_triple
+    cargo --config .cargo/bundle-config.toml rustc --locked ${build_flag} ${zed_features} --package zed --bin "$editor_bin" --target $target_triple -- -C 'link-arg=-Wl,-unexported_symbol,__R*'
+    cargo --config .cargo/bundle-config.toml build --locked ${build_flag} --package cli --target $target_triple
 else
-    cargo --config .cargo/bundle-config.toml build ${build_flag} ${zed_features} --package zed --package cli --target $target_triple
+    cargo --config .cargo/bundle-config.toml build --locked ${build_flag} ${zed_features} --package zed --package cli --target $target_triple
 fi
 # Build remote_server in separate invocation to prevent feature unification from other crates
 # from influencing dynamic libraries required by it.
-cargo --config .cargo/bundle-config.toml build ${build_flag} ${remote_server_features} --package remote_server --target $target_triple
+cargo --config .cargo/bundle-config.toml build --locked ${build_flag} ${remote_server_features} --package remote_server --target $target_triple
 
 echo "Creating application bundle"
 pushd crates/zed
@@ -204,15 +215,15 @@ function sign_app_binaries() {
     echo "Downloading git binary"
     download_git "${target_triple}" "${app_path}/Contents/MacOS/git"
 
-    # Note: The app identifier for our development builds is the same as the app identifier for nightly.
-    cp crates/zed/contents/$channel/embedded.provisionprofile "${app_path}/Contents/"
-
     if [[ $can_code_sign = true ]]; then
+        # The provision profile belongs to the signing certificate. Unsigned
+        # forks leave it out so Gatekeeper is not asked to honor another team.
+        cp crates/zed/contents/$channel/embedded.provisionprofile "${app_path}/Contents/"
         echo "Code signing binaries"
         # sequence of codesign commands modeled after this example: https://developer.apple.com/forums/thread/701514
         /usr/bin/codesign --deep --force --timestamp --options runtime --sign "$IDENTITY" "${app_path}/Contents/MacOS/cli" -v
         /usr/bin/codesign --deep --force --timestamp --options runtime --sign "$IDENTITY" "${app_path}/Contents/MacOS/git" -v
-        /usr/bin/codesign --deep --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}/Contents/MacOS/zed" -v
+        /usr/bin/codesign --deep --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}/Contents/MacOS/${bundle_executable}" -v
         /usr/bin/codesign --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}" -v
     else
         echo "One or more of the following variables are missing: MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD, APPLE_NOTARIZATION_KEY, APPLE_NOTARIZATION_KEY_ID, APPLE_NOTARIZATION_ISSUER_ID"
@@ -266,7 +277,7 @@ function sign_app_binaries() {
         ln -s /Applications ${dmg_source_directory}
 
         echo "Creating final DMG at ${dmg_file_path} using ${dmg_source_directory}"
-        hdiutil create -volname Zed -srcfolder "${dmg_source_directory}" -ov -format UDZO "${dmg_file_path}"
+        hdiutil create -volname "QMR Zed" -srcfolder "${dmg_source_directory}" -ov -format UDZO "${dmg_file_path}"
 
         # If someone runs this bundle script locally, a symlink will be placed in `dmg_source_directory`.
         # This symlink causes CPU issues with Zed if the Zed codebase is the project being worked on, so we simply remove it for now.
@@ -307,7 +318,7 @@ function extract_debug_symbols() {
         return
     fi
     debug_symbols_extracted=true
-    if ! dsymutil --flat "target/${target_triple}/${target_dir}/zed" 2> target/dsymutil.log; then
+    if ! dsymutil --flat "target/${target_triple}/${target_dir}/${editor_bin}" 2> target/dsymutil.log; then
         echo "dsymutil failed"
         cat target/dsymutil.log
         exit 1
@@ -329,7 +340,7 @@ function upload_debug_symbols() {
         for attempt in 1 2 3; do
             echo "Sentry upload attempt $attempt..."
             if sentry-cli debug-files upload --include-sources --wait -p zed -o zed-dev \
-                "target/${target_triple}/${target_dir}/zed.dwarf" \
+                "target/${target_triple}/${target_dir}/${editor_bin}.dwarf" \
                 "target/${target_triple}/${target_dir}/remote_server.dwarf"; then
                 break
             else
@@ -352,13 +363,14 @@ upload_debug_symbols
 # also keep symbols recoverable when the sentry upload is skipped.
 if [[ "$target_dir" == "release" && "$local_install" != true ]]; then
     extract_debug_symbols
-    strip -x "target/${target_triple}/${target_dir}/zed"
+    strip -x "target/${target_triple}/${target_dir}/${editor_bin}"
     strip -x "target/${target_triple}/${target_dir}/cli"
     strip -x "target/${target_triple}/${target_dir}/remote_server"
 fi
 
-cp target/${target_triple}/${target_dir}/zed "${app_path}/Contents/MacOS/zed"
-cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
+bundle_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${app_path}/Contents/Info.plist")
+cp "target/${target_triple}/${target_dir}/${editor_bin}" "${app_path}/Contents/MacOS/${bundle_executable}"
+cp "target/${target_triple}/${target_dir}/cli" "${app_path}/Contents/MacOS/cli"
 sign_app_binaries
 
 sign_binary "target/$target_triple/release/remote_server"

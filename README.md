@@ -17,40 +17,61 @@ The interface and editor use this family by default, and terminals inherit the
 editor font unless overridden. Custom font settings remain supported. The
 original [font license](assets/fonts/maple-mono-nf-cn/LICENSE.txt) is included.
 
-### QMR Zed Windows distribution
+### QMR Zed releases
 
-Build the independent Windows x64 release with PowerShell 7, the MSVC Rust
-toolchain, and Visual Studio C++ and CMake tools:
+Release assets use the same names and package types as upstream Zed:
+
+- Windows: `Zed-x86_64.exe` and `Zed-aarch64.exe` (Inno Setup installers)
+- macOS: `Zed-x86_64.dmg` and `Zed-aarch64.dmg`
+- Linux: `zed-linux-x86_64.tar.gz` and `zed-linux-aarch64.tar.gz`
+- Linux sandbox: `bwrap-linux-x86_64.gz` and `bwrap-linux-aarch64.gz`
+- Remote servers for Linux, macOS, and Windows on x86_64 and aarch64
+
+The installed application is QMR Zed. It uses its own install location, file
+associations, and `%APPDATA%\QMRZed` / `%LOCALAPPDATA%\QMRZed` data directories,
+separate from official Zed. Automatic updates to official Zed builds are
+disabled. Download updates from this fork's
+[releases](https://github.com/Sanstoolow0513/qmr-zed/releases).
+
+These packages are unsigned: the fork does not have Apple or Azure signing
+certificates. Windows SmartScreen and macOS Gatekeeper show a warning. The
+Windows 11 Explorer package is unsigned, so that context-menu integration does
+not register; the installer still adds the optional registry entries used on
+earlier Windows versions.
+
+Build one platform locally with the upstream bundlers. Set
+`ZED_RELEASE_CHANNEL` to `stable`, `preview`, `nightly`, or `dev` first; when
+it is unset, the scripts use `crates/zed/RELEASE_CHANNEL`.
 
 ```powershell
-pwsh -File script/bundle-qmr-windows.ps1
+$env:ZED_RELEASE_CHANNEL = 'stable'
+pwsh -File script/bundle-windows.ps1
 ```
 
-The script builds optimized Release binaries and writes an extract-and-run ZIP,
-the corresponding source ZIP, and SHA-256 checksums to `target/qmr-dist`. Run
-`QMRZed.exe`, or use `bin/qmrzed.exe` from a terminal. The package is unsigned.
-Settings live in `%APPDATA%\QMRZed`, and data/logs in `%LOCALAPPDATA%\QMRZed`,
-separate from official Zed. Updates are manual from this fork's
-[releases](https://github.com/Sanstoolow0513/qmr-zed/releases); official Zed
-automatic updates are disabled. The build manifest records the base commit and
-any uncommitted source changes. macOS and Linux packaging still uses upstream
-templates and has not been adapted for this distribution.
+```bash
+export ZED_RELEASE_CHANNEL=stable
+./script/bundle-mac
+./script/bundle-linux --skip-sentry
+```
 
-SSH, WSL and dev-container connections download matching remote servers from
+Windows needs PowerShell 7, the MSVC Rust toolchain, Visual Studio C++ and
+CMake, the Windows SDK, and Inno Setup 6. macOS needs Xcode. Linux needs the
+packages installed by `script/linux`, including LLD 12 or newer.
+
+SSH, WSL, and dev-container connections download matching remote servers from
 this fork's GitHub Release. Release tags use `v` followed by the version in
-`crates/zed/Cargo.toml` (for example, `v2026.10.13`). The **QMR Zed release**
-workflow builds the Windows client and remote servers for Linux, macOS and
-Windows on x86_64 and aarch64 from the same commit. It publishes only after all
-six server archives and the client/source archives pass validation. Linux
-servers are static musl binaries. A release version and its tag must never be
-reused for different source code.
+`crates/zed/Cargo.toml` (for example, `v2026.10.15`). The **QMR Zed release**
+workflow builds every client package and remote server from the same commit,
+then the static `bwrap` binaries. It publishes only after all of those assets
+pass validation. Linux servers are static musl binaries. A release version and
+its tag must never be reused for different source code.
 
 To release, commit the reviewed changes, create the matching tag on this fork,
 and push that tag to `origin`. The workflow also supports a manual run against
-an existing tag. It requires no upstream credentials or private runners.
-Locally produced ZIPs require the matching fork Release to be available before
-first-time remote connections can download their server. The client reports a
-missing release instead of falling back to an unrelated official server.
+an existing tag. It requires no upstream credentials or private runners. A
+locally built client needs the matching fork Release before a first remote
+connection can download its server. The client reports a missing release
+instead of falling back to an unrelated official server.
 
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)

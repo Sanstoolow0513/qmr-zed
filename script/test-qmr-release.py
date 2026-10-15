@@ -2,8 +2,10 @@
 
 import gzip
 import importlib.util
+import io
 import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -30,20 +32,7 @@ class ReleaseValidationTests(unittest.TestCase):
                 with gzip.open(archive_path, "wb") as archive:
                     archive.write(b"server")
             self.write_server_metadata(target)
-        self.source_path = self.directory / f"qmr-zed-{self.version}-source.zip"
-        with zipfile.ZipFile(self.source_path, "w") as archive:
-            archive.writestr("crates/zed/Cargo.toml", f'[package]\nversion = "{self.version}"\n')
-        self.client_metadata = {
-            "repository": f"https://github.com/{release.REPOSITORY}",
-            "version": self.version,
-            "base_commit": self.commit,
-            "platform": "x86_64-pc-windows-msvc",
-            "working_tree_changes": [],
-            "source_archive": self.source_path.name,
-            "source_sha256": release.sha256(self.source_path),
-            "remote_server_release": f"https://github.com/{release.REPOSITORY}/releases/tag/v{self.version}",
-        }
-        self.write_client()
+        self.write_clients()
 
     def write_server_metadata(self, target, **overrides):
         archive_path = self.directory / release.asset_name(target)
@@ -58,22 +47,35 @@ class ReleaseValidationTests(unittest.TestCase):
         metadata.update(overrides)
         archive_path.with_name(archive_path.name + ".json").write_text(json.dumps(metadata))
 
-    def write_client(self, missing_runtime=None):
-        name = f"qmr-zed-{self.version}-windows-x86_64"
-        with zipfile.ZipFile(self.directory / f"{name}.zip", "w") as archive:
-            archive.writestr(f"{name}/build-info.json", json.dumps(self.client_metadata))
-            for relative_path in ["QMRZed.exe", "bin/qmrzed.exe", "cli.exe", "conpty.dll", "x64/OpenConsole.exe"]:
-                if relative_path != missing_runtime:
-                    archive.writestr(f"{name}/{relative_path}", b"runtime")
+    def write_clients(self, missing=None):
+        for name in release.CLIENT_ASSETS:
+            path = self.directory / name
+            if name == missing:
+                path.unlink(missing_ok=True)
+                continue
+            if name.endswith(".exe"):
+                path.write_bytes(b"MZ" + b"installer" * 64)
+            elif name.endswith(".dmg"):
+                path.write_bytes(b"dmg" * 200)
+            elif name.startswith("zed-linux-"):
+                buffer = io.BytesIO()
+                with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+                    payload = b"editor"
+                    info = tarfile.TarInfo("zed.app/libexec/zed-editor")
+                    info.size = len(payload)
+                    archive.addfile(info, io.BytesIO(payload))
+                path.write_bytes(buffer.getvalue())
+            else:
+                path.write_bytes(gzip.compress(b"bwrap"))
 
     def validate(self):
         return release.validate_assets(self.directory, self.version, self.commit)
 
     def test_complete_matching_release(self):
         files = self.validate()
-        self.assertEqual(len(files), 14)
+        self.assertEqual(len(files), 20)
         checksums = (self.directory / "SHA256SUMS.txt").read_text().splitlines()
-        self.assertEqual(len(checksums), 14)
+        self.assertEqual(len(checksums), 20)
         for path in files:
             self.assertIn(f"{release.sha256(path)}  {path.name}", checksums)
 
@@ -102,24 +104,26 @@ class ReleaseValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at ZIP root"):
             self.validate()
 
-    def test_stale_or_dirty_client_prevents_release(self):
-        for key, value in [("base_commit", "b" * 40), ("working_tree_changes", [" M source.rs"])]:
-            with self.subTest(key=key):
-                original = self.client_metadata[key]
-                self.client_metadata[key] = value
-                self.write_client()
-                with self.assertRaisesRegex(ValueError, f"mismatched {key}"):
-                    self.validate()
-                self.client_metadata[key] = original
-
-    def test_wrong_source_archive_prevents_release(self):
-        self.source_path.write_bytes(b"wrong source")
-        with self.assertRaisesRegex(ValueError, "mismatched source_sha256"):
+    def test_missing_client_asset_prevents_release(self):
+        self.write_clients(missing="Zed-x86_64.exe")
+        with self.assertRaisesRegex(ValueError, "Missing client asset: Zed-x86_64.exe"):
             self.validate()
 
-    def test_missing_client_runtime_prevents_release(self):
-        self.write_client(missing_runtime="conpty.dll")
-        with self.assertRaisesRegex(ValueError, "missing conpty.dll"):
+    def test_invalid_windows_installer_prevents_release(self):
+        (self.directory / "Zed-aarch64.exe").write_bytes(b"not an executable")
+        with self.assertRaisesRegex(ValueError, "not a Windows executable"):
+            self.validate()
+
+    def test_linux_archive_requires_editor(self):
+        path = self.directory / "zed-linux-x86_64.tar.gz"
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            payload = b"cli"
+            info = tarfile.TarInfo("zed.app/bin/zed")
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+        path.write_bytes(buffer.getvalue())
+        with self.assertRaisesRegex(ValueError, "missing libexec/zed-editor"):
             self.validate()
 
 

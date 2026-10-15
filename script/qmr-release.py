@@ -9,11 +9,22 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 import zipfile
 
 
 REPOSITORY = "Sanstoolow0513/qmr-zed"
+CLIENT_ASSETS = (
+    "Zed-x86_64.exe",
+    "Zed-aarch64.exe",
+    "Zed-x86_64.dmg",
+    "Zed-aarch64.dmg",
+    "zed-linux-x86_64.tar.gz",
+    "zed-linux-aarch64.tar.gz",
+    "bwrap-linux-x86_64.gz",
+    "bwrap-linux-aarch64.gz",
+)
 TARGETS = {
     "x86_64-unknown-linux-musl": ("linux", "x86_64", "gz"),
     "aarch64-unknown-linux-musl": ("linux", "aarch64", "gz"),
@@ -126,32 +137,26 @@ def validate_assets(directory, version, commit):
                     pass
         expected_files.extend([archive_path, metadata_path])
 
-    package_name = f"qmr-zed-{version}-windows-x86_64"
-    client_path = directory / f"{package_name}.zip"
-    source_path = directory / f"qmr-zed-{version}-source.zip"
-    with zipfile.ZipFile(client_path) as archive:
-        for relative_path in ["QMRZed.exe", "bin/qmrzed.exe", "cli.exe", "conpty.dll", "x64/OpenConsole.exe"]:
-            member = f"{package_name}/{relative_path}"
-            require(member in archive.namelist(), f"Client package: missing {relative_path}")
-            require(archive.getinfo(member).file_size > 0, f"Client package: empty {relative_path}")
-        metadata = json.loads(archive.read(f"{package_name}/build-info.json"))
-        for key, expected in {
-            "repository": f"https://github.com/{REPOSITORY}",
-            "version": version,
-            "base_commit": commit,
-            "platform": "x86_64-pc-windows-msvc",
-            "working_tree_changes": [],
-            "source_archive": source_path.name,
-            "source_sha256": sha256(source_path),
-            "remote_server_release": f"https://github.com/{REPOSITORY}/releases/tag/v{version}",
-        }.items():
-            require(metadata.get(key) == expected, f"Client package: mismatched {key}")
-        require(archive.testzip() is None, "Corrupt client archive")
-    with zipfile.ZipFile(source_path) as archive:
-        require(archive.testzip() is None, "Corrupt source archive")
-        manifest = tomllib.loads(archive.read("crates/zed/Cargo.toml").decode("utf-8"))
-        require(manifest["package"]["version"] == version, "Source version does not match")
-    expected_files.extend([client_path, source_path])
+    for name in CLIENT_ASSETS:
+        path = directory / name
+        require(path.is_file(), f"Missing client asset: {name}")
+        require(path.stat().st_size > 0, f"Empty client asset: {name}")
+        if name.endswith(".exe"):
+            require(path.read_bytes()[:2] == b"MZ", f"{name}: not a Windows executable")
+        elif name.startswith("zed-linux-"):
+            with tarfile.open(path, "r:gz") as archive:
+                names = archive.getnames()
+            require(
+                any(member == "zed.app/libexec/zed-editor" or member.endswith("/libexec/zed-editor")
+                    for member in names),
+                f"{name}: missing libexec/zed-editor",
+            )
+        elif name.endswith(".gz"):
+            with gzip.open(path, "rb") as archive:
+                require(bool(archive.read(1)), f"Empty binary: {name}")
+        elif name.endswith(".dmg"):
+            require(path.stat().st_size >= 512, f"{name}: DMG is too small")
+        expected_files.append(path)
     (directory / "SHA256SUMS.txt").write_text(
         "".join(f"{sha256(path)}  {path.name}\n" for path in sorted(expected_files)),
         encoding="ascii",
@@ -188,6 +193,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile, tarfile.TarError) as error:
         print(f"Release validation failed: {error}", file=sys.stderr)
         sys.exit(1)

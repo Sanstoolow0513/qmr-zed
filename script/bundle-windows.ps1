@@ -40,8 +40,12 @@ function Get-VSArch {
     }
 }
 
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+$visualStudio = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $visualStudio) { throw "Visual Studio C++ build tools are required." }
+$devShell = Join-Path $visualStudio "Common7\Tools\Launch-VsDevShell.ps1"
 Push-Location
-& "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1" -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
+& $devShell -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture) -SkipAutomaticLocation
 Pop-Location
 
 $target = "$Architecture-pc-windows-msvc"
@@ -57,10 +61,19 @@ if ($Help) {
 }
 
 Push-Location -Path crates/zed
-$channel = Get-Content "RELEASE_CHANNEL"
-$env:ZED_RELEASE_CHANNEL = $channel
+# A release workflow can select stable/preview/nightly without editing the
+# committed dev channel file, which package validation requires to stay clean.
+if ($env:ZED_RELEASE_CHANNEL -match '^(stable|preview|nightly|dev)$') {
+    $channel = $env:ZED_RELEASE_CHANNEL
+} else {
+    $channel = (Get-Content "RELEASE_CHANNEL" -Raw).Trim()
+    $env:ZED_RELEASE_CHANNEL = $channel
+}
 $env:RELEASE_CHANNEL = $channel
 Pop-Location
+if ([string]::IsNullOrWhiteSpace($env:ZED_UPDATE_EXPLANATION)) {
+    $env:ZED_UPDATE_EXPLANATION = "QMR Zed is an independent fork. Download updates from https://github.com/Sanstoolow0513/qmr-zed/releases."
+}
 
 function CheckEnvironmentVariables {
     if(-not $env:CI) {
@@ -116,20 +129,24 @@ function GenerateLicenses {
 function BuildZedAndItsFriends {
     Write-Output "Building Zed and its friends, for channel: $channel"
     # Build zed.exe, cli.exe and auto_update_helper.exe
-    cargo --config .cargo/bundle-config.toml build --release --package zed --package cli --package auto_update_helper --target $target
-    Copy-Item -Path ".\$CargoOutDir\zed.exe" -Destination "$innoDir\Zed.exe" -Force
+    cargo --config .cargo/bundle-config.toml build --locked --release --package zed --package cli --package auto_update_helper --target $target
+    $editorBinary = ".\$CargoOutDir\qmrzed.exe"
+    if (-not (Test-Path -LiteralPath $editorBinary)) {
+        $editorBinary = ".\$CargoOutDir\zed.exe"
+    }
+    Copy-Item -LiteralPath $editorBinary -Destination "$innoDir\Zed.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
     switch ($channel) {
         "stable" {
-            cargo --config .cargo/bundle-config.toml build --release --features stable --no-default-features --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --locked --release --features stable --no-default-features --package explorer_command_injector --target $target
         }
         "preview" {
-            cargo --config .cargo/bundle-config.toml build --release --features preview --no-default-features --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --locked --release --features preview --no-default-features --package explorer_command_injector --target $target
         }
         default {
-            cargo --config .cargo/bundle-config.toml build --release --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --locked --release --package explorer_command_injector --target $target
         }
     }
     Copy-Item -Path ".\$CargoOutDir\explorer_command_injector.dll" -Destination "$innoDir\zed_explorer_command_injector.dll" -Force
@@ -137,7 +154,7 @@ function BuildZedAndItsFriends {
 
 function BuildRemoteServer {
     Write-Output "Building remote_server for $target"
-    cargo --config .cargo/bundle-config.toml build --release --package remote_server --target $target
+    cargo --config .cargo/bundle-config.toml build --locked --release --package remote_server --target $target
 
     # Create zipped remote server binary
     $remoteServerSrc = (Resolve-Path ".\$CargoOutDir\remote_server.exe").Path
@@ -155,13 +172,21 @@ function BuildRemoteServer {
 }
 
 function ZipZedAndItsFriendsDebug {
+    $editorSymbols = ".\$CargoOutDir\qmrzed.pdb"
+    if (-not (Test-Path -LiteralPath $editorSymbols)) {
+        $editorSymbols = ".\$CargoOutDir\zed.pdb"
+    }
     $items = @(
-        ".\$CargoOutDir\zed.pdb",
+        $editorSymbols,
         ".\$CargoOutDir\cli.pdb",
         ".\$CargoOutDir\auto_update_helper.pdb",
         ".\$CargoOutDir\explorer_command_injector.pdb",
         ".\$CargoOutDir\remote_server.pdb"
-    )
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+    if ($items.Count -eq 0) {
+        Write-Output "No debug symbols to archive."
+        return
+    }
 
     Compress-Archive -Path $items -DestinationPath ".\$CargoOutDir\zed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip" -Force
 }
@@ -207,10 +232,12 @@ function MakeAppx {
         }
     }
     Copy-Item -Path "$manifestFile" -Destination "$innoDir\make_appx\AppxManifest.xml"
-    # Add makeAppx.exe to Path
-    $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64"
-    $env:Path += ';' + $sdk
-    makeAppx.exe pack /d "$innoDir\make_appx" /p "$innoDir\zed_explorer_command_injector.appx" /nv
+    $makeAppx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter makeappx.exe |
+        Where-Object { $_.FullName -match '\\x64\\makeappx\.exe$' } |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if (-not $makeAppx) { throw "makeappx.exe was not found in the Windows SDK." }
+    & $makeAppx.FullName pack /d "$innoDir\make_appx" /p "$innoDir\zed_explorer_command_injector.appx" /nv
 }
 
 function SignZedAndItsFriends {
@@ -265,60 +292,58 @@ function BuildInstaller {
     $issFilePath = "$innoDir\zed.iss"
     switch ($channel) {
         "stable" {
-            $appId = "{{2DB0DA96-CA55-49BB-AF4F-64AF36A86712}"
+            $appId = "{{C4A8E2F1-6B37-4D90-9A12-7E5F0C8B3D61}"
             $appIconName = "app-icon"
-            $appName = "Zed"
-            $appDisplayName = "Zed"
+            $appName = "QMR Zed"
+            $appDisplayName = "QMR Zed"
             $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Stable-Instance-Mutex"
+            # Must match format!("{}-Instance-Mutex", app_identifier()) in windows_only_instance.rs.
+            $appMutex = "QMRZed-Editor-Stable-Instance-Mutex"
             $appExeName = "Zed"
-            $regValueName = "Zed"
-            $appUserId = "ZedIndustries.Zed"
-            $appShellNameShort = "Z&ed"
-            $appAppxFullName = "ZedIndustries.Zed_1.0.0.0_neutral__japxn1gcva8rg"
+            $regValueName = "QMRZed"
+            $appUserId = "Sanstoolow0513.QMRZed"
+            $appShellNameShort = "Q&MR Zed"
+            # Not the official Zed package name, so setup does not remove that installation.
+            $appAppxFullName = "Sanstoolow0513.QMRZed_1.0.0.0_neutral__qmrstable"
         }
         "preview" {
-            $appId = "{{F70E4811-D0E2-4D88-AC99-D63752799F95}"
+            $appId = "{{D15B7A42-8E04-4F63-B2C9-0A6E3F91C7D8}"
             $appIconName = "app-icon-preview"
-            $appName = "Zed Preview"
-            $appDisplayName = "Zed Preview"
+            $appName = "QMR Zed Preview"
+            $appDisplayName = "QMR Zed Preview"
             $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Preview-Instance-Mutex"
+            $appMutex = "QMRZed-Editor-Preview-Instance-Mutex"
             $appExeName = "Zed"
-            $regValueName = "ZedPreview"
-            $appUserId = "ZedIndustries.Zed.Preview"
-            $appShellNameShort = "Z&ed Preview"
-            $appAppxFullName = "ZedIndustries.Zed.Preview_1.0.0.0_neutral__japxn1gcva8rg"
+            $regValueName = "QMRZedPreview"
+            $appUserId = "Sanstoolow0513.QMRZed.Preview"
+            $appShellNameShort = "Q&MR Zed Preview"
+            $appAppxFullName = "Sanstoolow0513.QMRZed.Preview_1.0.0.0_neutral__qmrpreview"
         }
         "nightly" {
-            $appId = "{{1BDB21D3-14E7-433C-843C-9C97382B2FE0}"
+            $appId = "{{E26C8B53-9F15-4074-A3DA-1B7F40A2D8E9}"
             $appIconName = "app-icon-nightly"
-            $appName = "Zed Nightly"
-            $appDisplayName = "Zed Nightly"
+            $appName = "QMR Zed Nightly"
+            $appDisplayName = "QMR Zed Nightly"
             $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Nightly-Instance-Mutex"
+            $appMutex = "QMRZed-Editor-Nightly-Instance-Mutex"
             $appExeName = "Zed"
-            $regValueName = "ZedNightly"
-            $appUserId = "ZedIndustries.Zed.Nightly"
-            $appShellNameShort = "Z&ed Editor Nightly"
-            $appAppxFullName = "ZedIndustries.Zed.Nightly_1.0.0.0_neutral__japxn1gcva8rg"
+            $regValueName = "QMRZedNightly"
+            $appUserId = "Sanstoolow0513.QMRZed.Nightly"
+            $appShellNameShort = "Q&MR Zed Nightly"
+            $appAppxFullName = "Sanstoolow0513.QMRZed.Nightly_1.0.0.0_neutral__qmrnightly"
         }
         "dev" {
-            $appId = "{{8357632E-24A4-4F32-BA97-E575B4D1FE5D}"
+            $appId = "{{F37D9C64-A026-4185-B4EB-2C8051B3E9FA}"
             $appIconName = "app-icon-dev"
-            $appName = "Zed Dev"
-            $appDisplayName = "Zed Dev"
+            $appName = "QMR Zed Dev"
+            $appDisplayName = "QMR Zed Dev"
             $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Dev-Instance-Mutex"
+            $appMutex = "QMRZed-Editor-Dev-Instance-Mutex"
             $appExeName = "Zed"
-            $regValueName = "ZedDev"
-            $appUserId = "ZedIndustries.Zed.Dev"
-            $appShellNameShort = "Z&ed Dev"
-            $appAppxFullName = "ZedIndustries.Zed.Dev_1.0.0.0_neutral__japxn1gcva8rg"
+            $regValueName = "QMRZedDev"
+            $appUserId = "Sanstoolow0513.QMRZed.Dev"
+            $appShellNameShort = "Q&MR Zed Dev"
+            $appAppxFullName = "Sanstoolow0513.QMRZed.Dev_1.0.0.0_neutral__qmrdev"
         }
         default {
             Write-Error "can't bundle installer for $channel."
