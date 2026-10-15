@@ -17,6 +17,11 @@ pub(crate) struct TerminalSwitcher {
 }
 
 impl TerminalSwitcher {
+    #[cfg(test)]
+    pub(crate) fn entries(&self) -> &[TerminalMetadata] {
+        &self.entries
+    }
+
     pub fn new(
         entries: Vec<TerminalMetadata>,
         reverse: bool,

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use gpui::KeyBindingContextPredicate;
 use serde_json::{Map, Value};
 
 pub fn migrate_workspace_terminals(value: &mut Value) -> Result<()> {
@@ -78,53 +79,215 @@ fn merge_missing(settings: &mut Map<String, Value>, key: &str, old: Map<String, 
     }
 }
 
+enum MigratedContext {
+    Always,
+    Never,
+    Predicate(KeyBindingContextPredicate),
+}
+
+fn is_removed_context(name: &str) -> bool {
+    matches!(
+        name,
+        "AcpThread"
+            | "AcpThreadSearchBar"
+            | "AgentDiff"
+            | "AgentFeedback"
+            | "AgentFeedbackMessageEditor"
+            | "MessageEditor"
+            | "Conversation"
+            | "InlineAssist"
+            | "InlineAssistant"
+            | "Assistant"
+            | "EditPredictionContext"
+            | "ThreadHistory"
+            | "SkillCreator"
+            | "RulesLibrary"
+            | "PromptLibrary"
+            | "edit_prediction"
+            | "edit_prediction_mode"
+    )
+}
+
+fn renamed_context(name: &str) -> Option<&'static str> {
+    match name {
+        "AgentPanel" => Some("WorkspaceTerminal"),
+        "AgentsSidebar" | "ThreadsSidebar" => Some("WorkspaceSidebar"),
+        "ThreadSwitcher" => Some("TerminalSwitcher"),
+        _ => None,
+    }
+}
+
+fn migrate_context_predicate(
+    predicate: &KeyBindingContextPredicate,
+    is_root: bool,
+) -> Option<MigratedContext> {
+    use KeyBindingContextPredicate as Predicate;
+    use MigratedContext::{Always, Never};
+
+    Some(match predicate {
+        Predicate::Identifier(name) if is_removed_context(name) => Never,
+        Predicate::Identifier(name) => MigratedContext::Predicate(Predicate::Identifier(
+            renamed_context(name)
+                .map(Into::into)
+                .unwrap_or_else(|| name.clone()),
+        )),
+        Predicate::Equal(name, _) if is_removed_context(name) => Never,
+        Predicate::NotEqual(name, _) if is_removed_context(name) => Always,
+        Predicate::Equal(name, value) => MigratedContext::Predicate(Predicate::Equal(
+            renamed_context(name)
+                .map(Into::into)
+                .unwrap_or_else(|| name.clone()),
+            value.clone(),
+        )),
+        Predicate::NotEqual(name, value) => MigratedContext::Predicate(Predicate::NotEqual(
+            renamed_context(name)
+                .map(Into::into)
+                .unwrap_or_else(|| name.clone()),
+            value.clone(),
+        )),
+        Predicate::Not(inner) => match migrate_context_predicate(inner, false)? {
+            Always => Never,
+            Never => Always,
+            MigratedContext::Predicate(inner) => {
+                MigratedContext::Predicate(Predicate::Not(Box::new(inner)))
+            }
+        },
+        Predicate::And(left, right) => match (
+            migrate_context_predicate(left, false)?,
+            migrate_context_predicate(right, false)?,
+        ) {
+            (Never, _) | (_, Never) => Never,
+            (Always, other) | (other, Always) => other,
+            (MigratedContext::Predicate(left), MigratedContext::Predicate(right)) => {
+                MigratedContext::Predicate(Predicate::And(Box::new(left), Box::new(right)))
+            }
+        },
+        Predicate::Or(left, right) => match (
+            migrate_context_predicate(left, false)?,
+            migrate_context_predicate(right, false)?,
+        ) {
+            (Always, _) | (_, Always) => Always,
+            (Never, other) | (other, Never) => other,
+            (MigratedContext::Predicate(left), MigratedContext::Predicate(right)) => {
+                MigratedContext::Predicate(Predicate::Or(Box::new(left), Box::new(right)))
+            }
+        },
+        Predicate::Descendant(parent, child) => match (
+            migrate_context_predicate(parent, false)?,
+            migrate_context_predicate(child, false)?,
+        ) {
+            (Never, _) | (_, Never) => Never,
+            (Always, MigratedContext::Predicate(child))
+                if is_root
+                    && context_has_no_ancestry_constraints(&child)
+                    && matches!(parent.as_ref(), Predicate::Not(inner)
+                        if matches!(inner.as_ref(), Predicate::Identifier(name) if is_removed_context(name))) =>
+            {
+                MigratedContext::Predicate(child)
+            }
+            (MigratedContext::Predicate(parent), MigratedContext::Predicate(child)) => {
+                MigratedContext::Predicate(Predicate::Descendant(Box::new(parent), Box::new(child)))
+            }
+            // A constant child still imposes a depth constraint. Keep unfamiliar ancestry
+            // expressions rather than moving their bindings to a different context.
+            _ => return None,
+        },
+    })
+}
+
+fn context_has_no_ancestry_constraints(predicate: &KeyBindingContextPredicate) -> bool {
+    use KeyBindingContextPredicate as Predicate;
+
+    match predicate {
+        Predicate::Identifier(_) | Predicate::Equal(..) | Predicate::NotEqual(..) => true,
+        Predicate::And(left, right) | Predicate::Or(left, right) => {
+            context_has_no_ancestry_constraints(left) && context_has_no_ancestry_constraints(right)
+        }
+        // Negation scans the entire context stack, which a descendant expression narrows.
+        Predicate::Not(_) | Predicate::Descendant(..) => false,
+    }
+}
+
+fn serialize_context(predicate: &KeyBindingContextPredicate) -> String {
+    use KeyBindingContextPredicate as Predicate;
+
+    match predicate {
+        Predicate::Identifier(name) => name.to_string(),
+        Predicate::Equal(name, value) => format!("{name} == {value}"),
+        Predicate::NotEqual(name, value) => format!("{name} != {value}"),
+        Predicate::Not(inner) => match inner.as_ref() {
+            Predicate::Identifier(name) => format!("!{name}"),
+            _ => format!("!({})", serialize_context(inner)),
+        },
+        Predicate::And(left, right) => {
+            format!(
+                "{} && {}",
+                serialize_context_operand(left),
+                serialize_context_operand(right)
+            )
+        }
+        Predicate::Or(left, right) => {
+            format!(
+                "{} || {}",
+                serialize_context_operand(left),
+                serialize_context_operand(right)
+            )
+        }
+        // GPUI's Display omits parentheses around nested descendant expressions.
+        Predicate::Descendant(parent, child) => {
+            format!(
+                "{} > {}",
+                serialize_context_operand(parent),
+                serialize_context_operand(child)
+            )
+        }
+    }
+}
+
+fn serialize_context_operand(predicate: &KeyBindingContextPredicate) -> String {
+    use KeyBindingContextPredicate as Predicate;
+
+    match predicate {
+        Predicate::And(..) | Predicate::Or(..) | Predicate::Descendant(..) => {
+            format!("({})", serialize_context(predicate))
+        }
+        _ => serialize_context(predicate),
+    }
+}
+
+fn migrate_keymap_context(context: &mut Value) -> bool {
+    let Some(name) = context.get("context").and_then(Value::as_str) else {
+        return true;
+    };
+    let Ok(original) = KeyBindingContextPredicate::parse(name) else {
+        return true;
+    };
+    let migrated = match migrate_context_predicate(&original, true) {
+        Some(MigratedContext::Never) => return false,
+        Some(MigratedContext::Always) => String::new(),
+        Some(MigratedContext::Predicate(predicate)) if predicate != original => {
+            let migrated = serialize_context(&predicate);
+            if !matches!(KeyBindingContextPredicate::parse(&migrated), Ok(parsed) if parsed == predicate)
+            {
+                log::error!("Failed to preserve keymap context structure during migration");
+                return true;
+            }
+            migrated
+        }
+        _ => return true,
+    };
+    if let Some(object) = context.as_object_mut() {
+        object.insert("context".into(), Value::String(migrated));
+    }
+    true
+}
+
 pub fn migrate_terminal_keymap(value: &mut Value) -> Result<()> {
     let Some(contexts) = value.as_array_mut() else {
         return Ok(());
     };
-    contexts.retain(|context| {
-        let name = context
-            .get("context")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let without_negative = name.replace("!edit_prediction", "");
-        ![
-            "AcpThread",
-            "AgentDiff",
-            "AgentFeedback",
-            "MessageEditor",
-            "Conversation",
-            "InlineAssist",
-            "Assistant",
-            "EditPredictionContext",
-            "ThreadHistory",
-            "SkillCreator",
-            "RulesLibrary",
-            "PromptLibrary",
-            "edit_prediction",
-        ]
-        .iter()
-        .any(|removed| without_negative.contains(removed))
-    });
+    contexts.retain_mut(migrate_keymap_context);
     for context in contexts {
-        if let Some(name) = context
-            .get("context")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-        {
-            if let Some(object) = context.as_object_mut() {
-                object.insert(
-                    "context".into(),
-                    Value::String(
-                        name.replace(" && !edit_prediction", "")
-                            .replace("AgentPanel", "WorkspaceTerminal")
-                            .replace("AgentsSidebar", "WorkspaceSidebar")
-                            .replace("ThreadsSidebar", "WorkspaceSidebar")
-                            .replace("ThreadSwitcher", "TerminalSwitcher"),
-                    ),
-                );
-            }
-        }
         let Some(bindings) = context.get_mut("bindings").and_then(Value::as_object_mut) else {
             continue;
         };
@@ -264,6 +427,193 @@ mod tests {
         assert_eq!(value[1]["bindings"]["ctrl-s"], "workspace::Save");
         assert!(value[1]["bindings"].get("ctrl-e").is_none());
         assert_eq!(crate::migrate_keymap(&migrated).unwrap(), None);
+    }
+
+    #[test]
+    fn complete_keymap_migration_preserves_negated_ai_context_customizations() {
+        let input = r#"[
+            // Keep my editor customizations.
+            {
+                "context": "!AcpThread > Editor && mode == full",
+                "use_key_equivalents": true,
+                "bindings": {
+                    "ctrl-s": "workspace::Save",
+                    "alt-enter": "editor::OpenExcerpts",
+                    "ctrl-l": ["editor::SelectToEndOfLine", {"stop_at_soft_wraps": true}],
+                    "ctrl-k": null,
+                    "ctrl-enter": "assistant::InlineAssist"
+                }
+            }
+        ]"#;
+        let migrated = crate::migrate_keymap(input).unwrap().unwrap();
+        let value: Value = settings_json::parse_json_with_comments(&migrated).unwrap();
+        assert_eq!(value.as_array().unwrap().len(), 1);
+        assert_eq!(value[0]["context"], "Editor && mode == full");
+        assert_eq!(value[0]["use_key_equivalents"], true);
+        assert_eq!(
+            value[0]["bindings"],
+            json!({
+                "ctrl-s": "workspace::Save",
+                "alt-enter": "editor::OpenExcerpts",
+                "ctrl-l": ["editor::SelectToEndOfLine", {"stop_at_soft_wraps": true}],
+                "ctrl-k": null,
+            })
+        );
+        assert_eq!(crate::migrate_keymap(&migrated).unwrap(), None);
+    }
+
+    #[test]
+    fn migrate_contexts_fold_only_removed_identifiers() {
+        for (context, expected) in [
+            (
+                " !( AcpThread ) > (Editor && mode == full) ",
+                Some("Editor && mode == full"),
+            ),
+            ("Editor && ! ( edit_prediction )", Some("Editor")),
+            ("Editor && !(AcpThread || InlineAssistant)", Some("Editor")),
+            ("Editor || AcpThreadSearchBar", Some("Editor")),
+            (
+                "Editor && (AcpThread || focused)",
+                Some("Editor && focused"),
+            ),
+            ("AcpThread > Editor", None),
+            ("AgentFeedbackMessageEditor > Editor", None),
+            ("InlineAssistant > Editor", None),
+            ("Editor && !!AcpThread", None),
+            ("Editor && edit_prediction_mode == eager", None),
+            ("Editor && edit_prediction_mode != eager", Some("Editor")),
+            ("!AcpThread", Some("")),
+            ("!AcpThread || Editor", Some("")),
+            ("Editor && !(AcpThread && focused)", Some("Editor")),
+            (
+                "Editor && !(AcpThread || focused)",
+                Some("Editor && !focused"),
+            ),
+            ("CustomAcpThread > Editor", Some("CustomAcpThread > Editor")),
+            ("AgentPanelExtra", Some("AgentPanelExtra")),
+            ("mode == AcpThread", Some("mode == AcpThread")),
+            ("mode != AgentPanel", Some("mode != AgentPanel")),
+            ("Editor && !!focused", Some("Editor && !!focused")),
+            ("", Some("")),
+        ] {
+            let mut value =
+                json!([{"context": context, "bindings": {"ctrl-s": "workspace::Save"}}]);
+            migrate_terminal_keymap(&mut value).unwrap();
+            if let Some(expected) = expected {
+                assert_eq!(value.as_array().unwrap().len(), 1, "{context}");
+                let actual = value[0]["context"].as_str().unwrap();
+                if expected.is_empty() {
+                    assert_eq!(actual, expected, "{context}");
+                } else {
+                    assert_eq!(
+                        KeyBindingContextPredicate::parse(actual).unwrap(),
+                        KeyBindingContextPredicate::parse(expected).unwrap(),
+                        "{context}"
+                    );
+                }
+                assert_eq!(value[0]["bindings"]["ctrl-s"], "workspace::Save");
+            } else {
+                assert!(value.as_array().unwrap().is_empty(), "{context}");
+            }
+            let migrated = value.clone();
+            migrate_terminal_keymap(&mut value).unwrap();
+            assert_eq!(value, migrated, "{context}");
+        }
+    }
+
+    #[test]
+    fn migrate_contexts_preserves_unfamiliar_or_invalid_expressions() {
+        for context in [
+            "Editor > !AcpThread",
+            "!AcpThread > !InlineAssistant",
+            "(Editor || !AcpThread) > Terminal",
+            "Workspace > (!AcpThread > Editor)",
+            "!(!AcpThread > Editor)",
+            "Editor && (AcpThread ||)",
+            "!(AgentPanel",
+            "  Editor && !CustomAcpThread  ",
+            "Editor && !!focused",
+        ] {
+            let mut value = json!([{"context": context, "bindings": {
+                "ctrl-s": "workspace::Save",
+                "ctrl-enter": "assistant::InlineAssist"
+            }}]);
+            migrate_terminal_keymap(&mut value).unwrap();
+            assert_eq!(value[0]["context"], context);
+            assert_eq!(value[0]["bindings"], json!({"ctrl-s": "workspace::Save"}));
+        }
+        let mut value = json!([
+            {"bindings": {"ctrl-s": "workspace::Save"}},
+            {"context": null, "bindings": {"ctrl-s": "workspace::Save"}},
+        ]);
+        let original = value.clone();
+        migrate_terminal_keymap(&mut value).unwrap();
+        assert_eq!(value, original);
+    }
+
+    #[test]
+    fn migrate_contexts_preserves_scoped_negation_and_ancestry() {
+        let contexts = [
+            gpui::KeyContext::parse("Workspace").unwrap(),
+            gpui::KeyContext::parse("Editor").unwrap(),
+        ];
+        for (context, expected_match) in [
+            ("!AcpThread > (Editor && !Workspace)", true),
+            ("!AcpThread > (Workspace > Editor)", false),
+        ] {
+            let original = KeyBindingContextPredicate::parse(context).unwrap();
+            assert_eq!(original.eval(&contexts), expected_match);
+            let mut value =
+                json!([{"context": context, "bindings": {"ctrl-s": "workspace::Save"}}]);
+            migrate_terminal_keymap(&mut value).unwrap();
+            assert_eq!(value[0]["context"], context);
+            let migrated =
+                KeyBindingContextPredicate::parse(value[0]["context"].as_str().unwrap()).unwrap();
+            assert_eq!(migrated.eval(&contexts), expected_match);
+            assert_eq!(value[0]["bindings"]["ctrl-s"], "workspace::Save");
+        }
+    }
+
+    #[test]
+    fn migrate_context_serialization_preserves_ancestry_and_boolean_grouping() {
+        for (context, expected) in [
+            (
+                "(AgentPanel > Terminal) && focused",
+                "(WorkspaceTerminal > Terminal) && focused",
+            ),
+            (
+                "Workspace > (AgentPanel > Terminal)",
+                "Workspace > (WorkspaceTerminal > Terminal)",
+            ),
+            (
+                "(AgentPanel > Terminal) > Editor",
+                "(WorkspaceTerminal > Terminal) > Editor",
+            ),
+            (
+                "(AgentPanel > Terminal) || Editor",
+                "(WorkspaceTerminal > Terminal) || Editor",
+            ),
+            (
+                "!(AgentPanel > Terminal)",
+                "!(WorkspaceTerminal > Terminal)",
+            ),
+            (
+                "ThreadsSidebar && (focused || !AcpThread)",
+                "WorkspaceSidebar",
+            ),
+        ] {
+            let mut value =
+                json!([{"context": context, "bindings": {"ctrl-s": "workspace::Save"}}]);
+            migrate_terminal_keymap(&mut value).unwrap();
+            assert_eq!(
+                KeyBindingContextPredicate::parse(value[0]["context"].as_str().unwrap()).unwrap(),
+                KeyBindingContextPredicate::parse(expected).unwrap(),
+                "{context}",
+            );
+            let migrated = value.clone();
+            migrate_terminal_keymap(&mut value).unwrap();
+            assert_eq!(value, migrated);
+        }
     }
 
     #[test]

@@ -645,7 +645,7 @@ pub(crate) fn push_release_update_notification(
 
     let mut job = dependant_job(&all_deps)
         .runs_on(runners::LINUX_SMALL)
-        .cond(Expression::new("always()"));
+        .cond(steps::repository_owner_guard_expression(true));
 
     for step in notify_slack(MessageType::Evaluated {
         script: notification_script,

@@ -17,7 +17,7 @@ use gpui::{
     Action, App, AsyncWindowContext, Entity, EventEmitter, FocusHandle, Focusable, PlatformDisplay,
     Subscription, Task, TaskExt, WeakEntity, WindowHandle, prelude::*,
 };
-use project::Project;
+use project::{Project, WorktreePaths};
 use search::{BufferSearchBar, buffer_search::Deploy as DeployBufferSearch};
 use serde::{Deserialize, Serialize};
 use settings::{Settings, TerminalNotificationDisplay};
@@ -223,16 +223,17 @@ pub fn init(cx: &mut App) {
 impl WorkspaceTerminalPanel {
     pub fn new(workspace: &Workspace, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let project = workspace.project().clone();
-        let subscription = cx.subscribe(&project, |this, _, event, cx| {
-            if matches!(
-                event,
-                project::Event::WorktreeAdded(_)
-                    | project::Event::WorktreeRemoved(_)
-                    | project::Event::WorktreeOrderChanged
-                    | project::Event::WorktreePathsChanged { .. }
-            ) {
+        let subscription = cx.subscribe(&project, |this, _, event, cx| match event {
+            project::Event::WorktreePathsChanged { old_worktree_paths } => {
+                this.move_terminal_paths(old_worktree_paths, cx);
                 this.persist_all_terminal_metadata(cx);
             }
+            project::Event::WorktreeAdded(_)
+            | project::Event::WorktreeRemoved(_)
+            | project::Event::WorktreeOrderChanged => {
+                this.persist_all_terminal_metadata(cx);
+            }
+            _ => {}
         });
         cx.on_release(|this, cx| {
             this.dismiss_all_terminal_notifications(cx);
@@ -633,6 +634,15 @@ impl WorkspaceTerminalPanel {
                 | TerminalEvent::Open(_) => {}
             },
         );
+        let focus_subscription = cx.on_focus_in(
+            &terminal_view.focus_handle(cx),
+            window,
+            move |this, _, cx| {
+                this.acknowledge_terminal_notification(terminal_id, cx);
+                cx.emit(WorkspaceTerminalEvent::ActiveViewFocused);
+                cx.notify();
+            },
+        );
 
         let last_known_terminal_title = initial_title
             .map(|title| title.to_string())
@@ -650,7 +660,7 @@ impl WorkspaceTerminalPanel {
             search_bar: None,
             notification_windows: Vec::new(),
             notification_subscriptions: Vec::new(),
-            _subscriptions: vec![view_subscription, terminal_subscription],
+            _subscriptions: vec![view_subscription, terminal_subscription, focus_subscription],
         };
         self.pending_terminal_spawns.remove(&terminal_id);
         terminal.refresh_metadata(cx);
@@ -670,15 +680,24 @@ impl WorkspaceTerminalPanel {
         cx: &mut Context<Self>,
     ) {
         self.requested_terminal = Some(terminal_id);
+        if !self.terminals.contains_key(&terminal_id) {
+            return;
+        }
+        self.acknowledge_terminal_notification(terminal_id, cx);
+        self.set_active_terminal(terminal_id, focus, window, cx);
+    }
+
+    fn acknowledge_terminal_notification(
+        &mut self,
+        terminal_id: TerminalId,
+        cx: &mut Context<Self>,
+    ) {
         let Some(terminal) = self.terminals.get_mut(&terminal_id) else {
             return;
         };
         let had_notification = terminal.has_notification;
         terminal.has_notification = false;
-        if had_notification {
-            self.dismiss_terminal_notifications(terminal_id, cx);
-        }
-        self.set_active_terminal(terminal_id, focus, window, cx);
+        self.dismiss_terminal_notifications(terminal_id, cx);
         if had_notification {
             cx.emit(WorkspaceTerminalEvent::EntryChanged);
             cx.notify();
@@ -694,6 +713,49 @@ impl WorkspaceTerminalPanel {
             cx.notify();
         }
     }
+    fn move_terminal_paths(&self, old_paths: &WorktreePaths, cx: &mut Context<Self>) {
+        let project = self.project.read(cx);
+        if project.is_via_collab() {
+            return;
+        }
+        let new_paths = project.worktree_paths(cx);
+        let remote_connection = project.remote_connection_options(cx);
+        let old_folder_paths = old_paths.folder_path_list();
+        let added_pairs: Vec<_> = new_paths
+            .ordered_pairs()
+            .filter(|(main_path, folder_path)| {
+                !old_paths.ordered_pairs().any(|(old_main, old_folder)| {
+                    old_main == *main_path && old_folder == *folder_path
+                })
+            })
+            .map(|(main_path, folder_path)| (main_path.clone(), folder_path.clone()))
+            .collect();
+        let removed_folder_paths: Vec<_> = old_folder_paths
+            .paths()
+            .iter()
+            .filter(|path| !new_paths.folder_path_list().paths().contains(path))
+            .cloned()
+            .collect();
+        if added_pairs.is_empty() && removed_folder_paths.is_empty() {
+            return;
+        }
+        TerminalMetadataStore::global(cx).update(cx, |store, cx| {
+            store.change_worktree_paths(
+                old_folder_paths,
+                remote_connection.as_ref(),
+                |paths| {
+                    for (main_path, folder_path) in &added_pairs {
+                        paths.add_path(main_path, folder_path);
+                    }
+                    for path in &removed_folder_paths {
+                        paths.remove_folder_path(path);
+                    }
+                },
+                cx,
+            );
+        });
+    }
+
     fn persist_all_terminal_metadata(&self, cx: &mut Context<Self>) {
         let terminal_ids = self.terminals.keys().copied().collect::<Vec<_>>();
         for terminal_id in terminal_ids {
@@ -1482,6 +1544,7 @@ mod tests {
     use super::*;
     use gpui::TestAppContext;
     use settings::SettingsStore;
+    use std::cell::Cell;
     use util::{path, paths::PathStyle};
 
     fn init_test(cx: &mut TestAppContext) {
@@ -1597,6 +1660,225 @@ mod tests {
                 assert_eq!(panel.read(cx).visible_terminal_view(), Some(&terminal_view));
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    async fn project_path_changes_reindex_unopened_terminals(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), serde_json::json!({"main.rs":""}))
+            .await;
+        fs.insert_tree(path!("/extra"), serde_json::json!({"other.rs":""}))
+            .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| WorkspaceTerminalPanel::new(workspace, window, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+        cx.run_until_parked();
+        let live_id = cx.update(|window, cx| add_terminal(&panel, window, cx));
+        let (saved, remote) = cx.update(|_, cx| {
+            let store = TerminalMetadataStore::global(cx);
+            let initial = store.read(cx).entry(live_id).unwrap().clone();
+            let saved: Vec<_> = ["Build", "Server"]
+                .into_iter()
+                .map(|title| TerminalMetadata {
+                    terminal_id: TerminalId::new(),
+                    custom_title: Some(title.into()),
+                    working_directory: Some(path!("/project/subdirectory").into()),
+                    ..initial.clone()
+                })
+                .collect();
+            let remote = TerminalMetadata {
+                terminal_id: TerminalId::new(),
+                remote_connection: Some(remote::RemoteConnectionOptions::Ssh(
+                    remote::SshConnectionOptions {
+                        host: "another-host".into(),
+                        ..Default::default()
+                    },
+                )),
+                ..initial
+            };
+            store.update(cx, |store, cx| {
+                for metadata in saved.iter().chain(std::iter::once(&remote)) {
+                    store.save(metadata.clone(), cx);
+                }
+            });
+            (saved, remote)
+        });
+        let mut old_paths = project.read_with(cx, |project, cx| project.worktree_paths(cx));
+        let (added, _) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(path!("/extra"), true, cx)
+            })
+            .await
+            .unwrap();
+        let added_id = added.read_with(cx, |worktree, _| worktree.id());
+
+        for remove in [false, true] {
+            if remove {
+                project.update(cx, |project, cx| project.remove_worktree(added_id, cx));
+            }
+            cx.run_until_parked();
+            let new_paths = project.read_with(cx, |project, cx| project.worktree_paths(cx));
+            assert_ne!(old_paths, new_paths);
+            cx.update(|_, cx| {
+                let store = TerminalMetadataStore::global(cx);
+                let store = store.read(cx);
+                assert_eq!(panel.read(cx).terminals.len(), 1);
+                assert!(
+                    store
+                        .entries_for_path(old_paths.folder_path_list(), None)
+                        .next()
+                        .is_none()
+                );
+                assert!(
+                    store
+                        .entries_for_main_worktree_path(old_paths.main_worktree_path_list(), None)
+                        .next()
+                        .is_none()
+                );
+                for terminal_id in std::iter::once(live_id)
+                    .chain(saved.iter().map(|metadata| metadata.terminal_id))
+                {
+                    assert!(
+                        store
+                            .entries_for_path(new_paths.folder_path_list(), None)
+                            .any(|metadata| metadata.terminal_id == terminal_id)
+                    );
+                    assert!(
+                        store
+                            .entries_for_main_worktree_path(
+                                new_paths.main_worktree_path_list(),
+                                None
+                            )
+                            .any(|metadata| metadata.terminal_id == terminal_id)
+                    );
+                }
+                for metadata in &saved {
+                    let expected = TerminalMetadata {
+                        worktree_paths: new_paths.clone(),
+                        ..metadata.clone()
+                    };
+                    assert_eq!(store.entry(metadata.terminal_id), Some(&expected));
+                }
+                assert_eq!(store.entry(remote.terminal_id), Some(&remote));
+            });
+            old_paths = new_paths;
+        }
+
+        let expected = cx.update(|_, cx| {
+            let store = TerminalMetadataStore::global(cx);
+            store.read(cx).entries().cloned().collect::<Vec<_>>()
+        });
+        cx.run_until_parked();
+        cx.update(|_, cx| TerminalMetadataStore::init_global(cx));
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let store = TerminalMetadataStore::global(cx);
+            for metadata in &expected {
+                assert_eq!(store.read(cx).entry(metadata.terminal_id), Some(metadata));
+            }
+        });
+    }
+
+    #[gpui::test]
+    async fn focusing_terminal_acknowledges_bells_without_popups(cx: &mut TestAppContext) {
+        assert_focusing_terminal_acknowledges_bells(TerminalNotificationDisplay::Never, cx).await;
+    }
+
+    #[gpui::test]
+    async fn focusing_terminal_acknowledges_bells_and_dismisses_popups(cx: &mut TestAppContext) {
+        assert_focusing_terminal_acknowledges_bells(TerminalNotificationDisplay::PrimaryScreen, cx)
+            .await;
+    }
+
+    async fn assert_focusing_terminal_acknowledges_bells(
+        notification_display: TerminalNotificationDisplay,
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.update(|cx| {
+            release_channel::init_test(
+                semver::Version::new(0, 1, 0),
+                release_channel::ReleaseChannel::Stable,
+                cx,
+            );
+            let mut settings = WorkspaceTerminalSettings::get_global(cx).clone();
+            settings.notify_on_bell = notification_display;
+            settings.play_sound_on_bell = settings::TerminalNotificationSound::Never;
+            WorkspaceTerminalSettings::override_global(settings, cx);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| WorkspaceTerminalPanel::new(workspace, window, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+        let terminal_id = cx.update(|window, cx| add_terminal(&panel, window, cx));
+        let terminal_view = panel.read_with(cx, |panel, _| {
+            panel.visible_terminal_view().unwrap().clone()
+        });
+        let terminal = terminal_view.read_with(cx, |view, _| view.terminal().clone());
+        let focused = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            let focused = focused.clone();
+            cx.subscribe(&panel, move |_, event, _| {
+                if matches!(event, WorkspaceTerminalEvent::ActiveViewFocused) {
+                    focused.set(focused.get() + 1);
+                }
+            })
+        });
+        cx.update(|window, cx| {
+            window.activate_window();
+            workspace.update(cx, |workspace, cx| {
+                workspace.focus_panel::<WorkspaceTerminalPanel>(window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        for _ in 0..2 {
+            panel.update(cx, |_, cx| cx.emit(PanelEvent::Close));
+            cx.run_until_parked();
+            cx.update(|window, cx| workspace.focus_handle(cx).focus(window, cx));
+            cx.run_until_parked();
+            terminal.update(cx, |_, cx| cx.emit(TerminalEvent::Bell));
+            cx.run_until_parked();
+            let popups = panel.read_with(cx, |panel, _| {
+                let terminal = panel.terminals.get(&terminal_id).unwrap();
+                assert!(terminal.has_notification);
+                assert_eq!(
+                    terminal.notification_windows.len(),
+                    usize::from(notification_display == TerminalNotificationDisplay::PrimaryScreen)
+                );
+                terminal.notification_windows.clone()
+            });
+            let focus_count = focused.get();
+            cx.dispatch_action(ToggleFocus);
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let panel = panel.read(cx);
+                assert_eq!(panel.visible_terminal_view(), Some(&terminal_view));
+                assert!(terminal_view.focus_handle(cx).is_focused(window));
+                let terminal = panel.terminals.get(&terminal_id).unwrap();
+                assert!(!terminal.has_notification);
+                assert!(terminal.notification_windows.is_empty());
+                for popup in popups {
+                    assert!(popup.entity(cx).is_err());
+                }
+            });
+            assert!(focused.get() > focus_count);
+        }
     }
 
     #[gpui::test]

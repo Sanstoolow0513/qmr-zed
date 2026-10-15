@@ -35,6 +35,7 @@ try {
 
     $metadata = cargo metadata --no-deps --format-version 1 --locked | ConvertFrom-Json
     $version = ($metadata.packages | Where-Object name -EQ 'zed').version
+    $sourceCommit = (git rev-parse HEAD).Trim()
     $env:ZED_RELEASE_CHANNEL = 'stable'
     $env:RELEASE_CHANNEL = 'stable'
     $env:RELEASE_VERSION = $version
@@ -49,8 +50,8 @@ try {
 
     $releaseDirectory = Join-Path $metadata.target_directory 'release'
     $binaryVersion = (Get-Item -LiteralPath "$releaseDirectory/qmrzed.exe").VersionInfo.ProductVersion
-    if (-not $binaryVersion.StartsWith("$version+stable.")) {
-        throw "Expected a stable-channel QMR Zed $version build, found $binaryVersion."
+    if (-not $binaryVersion.StartsWith("$version+stable.") -or -not $binaryVersion.EndsWith(".$sourceCommit")) {
+        throw "Expected a stable-channel QMR Zed $version build from $sourceCommit, found $binaryVersion."
     }
     $distributionDirectory = Join-Path $metadata.target_directory 'qmr-dist'
     New-Item -ItemType Directory -Path $distributionDirectory -Force | Out-Null
@@ -106,7 +107,7 @@ try {
         platform = $hostTriple
         repository = 'https://github.com/Sanstoolow0513/qmr-zed'
         branch = (git branch --show-current)
-        base_commit = (git rev-parse HEAD)
+        base_commit = $sourceCommit
         working_tree_changes = @(git status --porcelain)
         built_at_utc = [DateTime]::UtcNow.ToString('o')
         toolchain = (rustc --version)
@@ -114,6 +115,7 @@ try {
         source_archive = $sourceName
         source_sha256 = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
         automatic_updates = $false
+        remote_server_release = "https://github.com/Sanstoolow0513/qmr-zed/releases/tag/v$version"
         signed = $false
     }
     $manifest | ConvertTo-Json -Depth 4 | Set-Content "$packageDirectory/build-info.json" -Encoding utf8NoBOM
@@ -129,6 +131,7 @@ Data and logs: %LOCALAPPDATA%\QMRZed
 Official Zed settings and data are separate. Copy settings manually if desired.
 Updates: https://github.com/Sanstoolow0513/qmr-zed/releases
 Updates are manual; this application cannot update to official Zed builds.
+Remote connections download matching server binaries from the same fork release.
 
 This archive is unsigned. It does not register file associations or replace Zed.
 The source for this exact build is in the accompanying $sourceName archive.

@@ -5386,6 +5386,58 @@ mod tests {
 
     actions!(test_only, [ActionA, ActionB]);
 
+    #[gpui::test]
+    fn test_default_editor_shortcuts(cx: &mut TestAppContext) {
+        init_keymap_test(cx);
+
+        for (asset, modifier, inlay_hints) in [
+            ("keymaps/default-windows.json", "ctrl", "ctrl-shift-;"),
+            ("keymaps/default-linux.json", "ctrl", "ctrl-:"),
+            ("keymaps/default-macos.json", "cmd", "ctrl-:"),
+        ] {
+            cx.update(|cx| {
+                let mut bindings =
+                    settings::KeymapFile::load_asset_allow_partial_failure(asset, cx).unwrap();
+                for binding in &mut bindings {
+                    binding.set_meta(settings::KeybindSource::Default.meta());
+                }
+                let keymap = gpui::Keymap::new(bindings);
+                let full_editor = [
+                    gpui::KeyContext::parse("Workspace").unwrap(),
+                    gpui::KeyContext::parse("Editor mode = full").unwrap(),
+                ];
+                let single_line_editor = [
+                    gpui::KeyContext::parse("Workspace").unwrap(),
+                    gpui::KeyContext::parse("Editor mode = single_line").unwrap(),
+                ];
+                for (keystroke, action) in [
+                    ("alt-enter".to_string(), "editor::OpenExcerpts"),
+                    ("shift-enter".to_string(), "editor::ExpandExcerpts"),
+                    (format!("{modifier}-alt-enter"), "editor::OpenExcerptsSplit"),
+                    (format!("{modifier}-shift-e"), "pane::RevealInProjectPanel"),
+                    (format!("{modifier}-f8"), "editor::GoToHunk"),
+                    (format!("{modifier}-shift-f8"), "editor::GoToPreviousHunk"),
+                    (inlay_hints.to_string(), "editor::ToggleInlayHints"),
+                ] {
+                    let input = [gpui::Keystroke::parse(&keystroke).unwrap()];
+                    let (matches, _) = keymap.bindings_for_input(&input, &full_editor);
+                    assert_eq!(
+                        matches.first().map(|binding| binding.action().name()),
+                        Some(action),
+                        "{asset}: {keystroke} in a full editor",
+                    );
+                    let (matches, _) = keymap.bindings_for_input(&input, &single_line_editor);
+                    assert!(
+                        matches
+                            .iter()
+                            .all(|binding| binding.action().name() != action),
+                        "{asset}: {keystroke} must not apply to a single-line editor",
+                    );
+                }
+            });
+        }
+    }
+
     /// The actions the emacs keymap resolves for `keystroke` in `context`.
     fn emacs_bindings_for(keystroke: &str, context: &str, cx: &mut TestAppContext) -> Vec<String> {
         cx.update(|cx| {

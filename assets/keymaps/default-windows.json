@@ -715,6 +715,19 @@
     },
   },
   {
+    "context": "Editor && mode == full",
+    "use_key_equivalents": true,
+    "bindings": {
+      "alt-enter": "editor::OpenExcerpts",
+      "shift-enter": "editor::ExpandExcerpts",
+      "ctrl-alt-enter": "editor::OpenExcerptsSplit",
+      "ctrl-shift-e": "pane::RevealInProjectPanel",
+      "ctrl-f8": "editor::GoToHunk",
+      "ctrl-shift-f8": "editor::GoToPreviousHunk",
+      "ctrl-shift-;": "editor::ToggleInlayHints",
+    },
+  },
+  {
     "context": "Prompt",
     "use_key_equivalents": true,
     "bindings": {

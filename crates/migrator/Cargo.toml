@@ -16,6 +16,7 @@ doctest = false
 anyhow.workspace = true
 collections.workspace = true
 convert_case.workspace = true
+gpui.workspace = true
 log.workspace = true
 streaming-iterator.workspace = true
 tree-sitter-json.workspace = true

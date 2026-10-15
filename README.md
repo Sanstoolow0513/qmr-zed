@@ -36,6 +36,22 @@ automatic updates are disabled. The build manifest records the base commit and
 any uncommitted source changes. macOS and Linux packaging still uses upstream
 templates and has not been adapted for this distribution.
 
+SSH, WSL and dev-container connections download matching remote servers from
+this fork's GitHub Release. Release tags use `v` followed by the version in
+`crates/zed/Cargo.toml` (for example, `v2026.10.13`). The **QMR Zed release**
+workflow builds the Windows client and remote servers for Linux, macOS and
+Windows on x86_64 and aarch64 from the same commit. It publishes only after all
+six server archives and the client/source archives pass validation. Linux
+servers are static musl binaries. A release version and its tag must never be
+reused for different source code.
+
+To release, commit the reviewed changes, create the matching tag on this fork,
+and push that tag to `origin`. The workflow also supports a manual run against
+an existing tag. It requires no upstream credentials or private runners.
+Locally produced ZIPs require the matching fork Release to be available before
+first-time remote connections can download their server. The client reports a
+missing release instead of falling back to an unrelated official server.
+
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
 
