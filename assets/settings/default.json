@@ -783,7 +783,7 @@
   "search_wrap": true,
   // Search options to enable by default when opening new project and buffer searches.
   "search": {
-    // Whether to show the project search button in the status bar.
+    // Whether to show the project search button in the tools navigation.
     "button": true,
     // Whether to only match on whole words.
     "whole_word": false,
@@ -846,7 +846,7 @@
   // Can be a combination of "left", "right" and "bottom".
   "resize_all_panels_in_dock": ["left"],
   "project_panel": {
-    // Whether to show the project panel button in the status bar
+    // Whether to show the project panel button in the tools navigation
     "button": true,
     // Whether to hide the gitignore entries in the project panel.
     "hide_gitignore": false,
@@ -974,7 +974,7 @@
     },
   },
   "outline_panel": {
-    // Whether to show the outline panel button in the status bar
+    // Whether to show the outline panel button in the tools navigation
     "button": true,
     // Default width of the outline panel.
     "default_width": 300,
@@ -1040,7 +1040,7 @@
     "multi_buffer_hide_symbols": false,
   },
   "collaboration_panel": {
-    // Whether to show the collaboration panel button in the status bar.
+    // Whether to show the collaboration panel entry in the tools menu.
     "button": true,
     // Where to dock the collaboration panel. Can be 'left' or 'right'.
     "dock": "right",
@@ -1048,7 +1048,7 @@
     "default_width": 240,
   },
   "git_panel": {
-    // Whether to show the git panel button in the status bar.
+    // Whether to show the git panel button in the tools navigation.
     "button": true,
     // Where to dock the git panel. Can be 'left' or 'right'.
     "dock": "right",
@@ -1456,7 +1456,7 @@
   "lsp_document_links": true,
   // Diagnostics configuration.
   "diagnostics": {
-    // Whether to show the project diagnostics button in the status bar.
+    // Whether to show the project diagnostics button in the tools navigation.
     "button": true,
     // Whether to show warnings or not by default.
     //
@@ -1639,19 +1639,19 @@
     // 2. hour24
     "hour_format": "hour12",
   },
-  // Status bar-related settings.
+  // Editor toolbar options and legacy status bar settings.
   "status_bar": {
-    // Whether to show the status bar.
-    "experimental.show": true,
-    // Whether to show the name of the active file in the status bar.
+    // Legacy compatibility setting. The window no longer has a status bar.
+    "experimental.show": false,
+    // Legacy compatibility setting. File names appear in the editor toolbar.
     "show_active_file": false,
-    // Whether to show the active language button in the status bar.
+    // Whether to show the active language button in the editor toolbar.
     "active_language_button": true,
-    // Whether to show the cursor position button in the status bar.
+    // Whether to show the cursor position button in the editor toolbar.
     "cursor_position_button": true,
-    // Whether to show active line endings button in the status bar.
+    // Legacy compatibility setting. Line endings are in the editor settings menu.
     "line_endings_button": false,
-    // Control when to show the active encoding in the status bar.
+    // Legacy compatibility setting. Encoding is in the editor settings menu.
     "active_encoding_button": "non_utf8",
     // Whether to show an indicator while multi-stroke input is pending.
     // If the input has a timeout, a countdown is shown and hovering pauses it.
@@ -1761,7 +1761,7 @@
     // instead, and hyperlinks can still be opened with shift-cmd-click
     // (shift-ctrl-click).
     "open_links_in_mouse_mode": true,
-    // Whether to show the terminal button in the status bar
+    // Whether to show the terminal entry in the tools menu
     "button": true,
     // Any key-value pairs added to this list will be added to the terminal's
     // environment. Use `:` to separate multiple values.
@@ -2350,7 +2350,7 @@
   },
   // Common language server settings.
   "global_lsp_settings": {
-    // Whether to show the LSP servers button in the status bar.
+    // Whether to show language servers in the project status menu.
     "button": true,
     // The maximum amount of time to wait for responses from language servers, in seconds.
     // A value of 0 will result in no timeout being applied.

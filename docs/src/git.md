@@ -26,7 +26,9 @@ Setting `file_scan_depth` to `0` turns deferred activation off: every discovered
 
 The Git Panel shows the state of your working tree and Git's staging area.
 
-You can open the Git Panel using {#action git_panel::ToggleFocus}, or by clicking the Git icon in the status bar.
+Open the Git Panel with {#action git_panel::ToggleFocus}, or the Git icon in the
+tools navigation above the right-hand panel. When the panel is hidden, use the
+title bar's tools menu.
 
 In the panel you can see the state of your project at a glance: which repository and branch are active, what files have changed and the current staging state of each file.
 

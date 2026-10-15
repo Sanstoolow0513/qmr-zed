@@ -1261,11 +1261,8 @@ impl NotebookEditor {
                                     i18n::format(
                                         "{argument0} ({argument1}). Click to change kernel.",
                                         &[
-                                            ("argument0", &format!("{}", kernel_name)),
-                                            (
-                                                "argument1",
-                                                &format!("{}", kernel_status.to_string()),
-                                            ),
+                                            ("argument0", &kernel_name),
+                                            ("argument1", &kernel_status.to_string()),
                                         ],
                                         cx,
                                     )
@@ -1355,8 +1352,8 @@ impl NotebookEditor {
                         i18n::format(
                             "Kernel: {argument0} ({argument1}). Click to change.",
                             &[
-                                ("argument0", &format!("{}", kernel_name)),
-                                ("argument1", &format!("{}", kernel_status.to_string())),
+                                ("argument0", &kernel_name),
+                                ("argument1", &kernel_status.to_string()),
                             ],
                             cx,
                         )

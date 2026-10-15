@@ -642,10 +642,7 @@ impl RenderOnce for ExtensionCard {
                                     "Downloads: {argument0}",
                                     &[(
                                         "argument0",
-                                        &format!(
-                                            "{}",
-                                            format_number_with_commas(u128::from(download_count))
-                                        ),
+                                        &format_number_with_commas(u128::from(download_count)),
                                     )],
                                     cx,
                                 )

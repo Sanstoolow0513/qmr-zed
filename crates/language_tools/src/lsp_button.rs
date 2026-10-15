@@ -1386,6 +1386,17 @@ impl StatusItemView for LspButton {
     }
 }
 
+impl LspButton {
+    pub fn has_status(&self, cx: &App) -> bool {
+        let state = self.server_state.read(cx);
+        let is_restricted = state.workspace.upgrade().is_some_and(|workspace| {
+            let worktrees = workspace.read(cx).project().read(cx).worktree_store();
+            TrustedWorktrees::has_restricted_worktrees(&worktrees, cx)
+        });
+        is_restricted || (!state.language_servers.is_empty() && self.lsp_menu.is_some())
+    }
+}
+
 impl Render for LspButton {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl ui::IntoElement {
         let is_restricted = self
@@ -1399,9 +1410,7 @@ impl Render for LspButton {
             })
             .unwrap_or(false);
 
-        if !is_restricted
-            && (self.server_state.read(cx).language_servers.is_empty() || self.lsp_menu.is_none())
-        {
+        if !self.has_status(cx) {
             return div().hidden();
         }
 
@@ -1474,7 +1483,7 @@ impl Render for LspButton {
                         .ok()
                         .flatten()
                 })
-                .anchor(Anchor::BottomLeft)
+                .anchor(Anchor::TopRight)
                 .with_handle(self.popover_menu_handle.clone())
                 .trigger_with_tooltip(
                     IconButton::new("zed-lsp-tool-button", IconName::BoltOutlined)

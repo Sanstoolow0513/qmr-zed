@@ -542,8 +542,8 @@ impl MultiWorkspace {
         if let Some(previous_focus) = focus_handle {
             previous_focus.focus(window, cx);
         } else {
-            let pane = self.workspace().read(cx).active_pane().clone();
-            window.focus(&pane.read(cx).focus_handle(cx), cx);
+            let focus = self.workspace().read(cx).fallback_focus_handle(window, cx);
+            window.focus(&focus, cx);
         }
     }
 

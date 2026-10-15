@@ -4007,12 +4007,12 @@ fn search_and_files_page() -> SettingsPage {
 }
 
 fn window_and_layout_page() -> SettingsPage {
-    fn status_bar_section() -> [SettingsPageItem; 12] {
+    fn toolbar_and_tools_section() -> [SettingsPageItem; 9] {
         [
-            SettingsPageItem::SectionHeader("Status Bar"),
+            SettingsPageItem::SectionHeader("Toolbar & Tools"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Project Panel Button",
-                description: "Show the project panel button in the status bar.",
+                description: "Show the project panel button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("project_panel.button"),
@@ -4031,7 +4031,7 @@ fn window_and_layout_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Active Language Button",
-                description: "Show the active language button in the status bar.",
+                description: "Show the active language beside the editor toolbar controls.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("status_bar.active_language_button"),
@@ -4053,31 +4053,8 @@ fn window_and_layout_page() -> SettingsPage {
                 files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
-                title: "Active Encoding Button",
-                description: "Control when to show the active encoding in the status bar.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("status_bar.active_encoding_button"),
-                    pick: |settings_content| {
-                        settings_content
-                            .status_bar
-                            .as_ref()?
-                            .active_encoding_button
-                            .as_ref()
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content
-                            .status_bar
-                            .get_or_insert_default()
-                            .active_encoding_button = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
                 title: "Cursor Position Button",
-                description: "Show the cursor position button in the status bar.",
+                description: "Show the cursor position beside the editor toolbar controls.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("status_bar.cursor_position_button"),
@@ -4093,29 +4070,6 @@ fn window_and_layout_page() -> SettingsPage {
                             .status_bar
                             .get_or_insert_default()
                             .cursor_position_button = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Line Endings Button",
-                description: "Show the active line endings button in the status bar.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("status_bar.line_endings_button"),
-                    pick: |settings_content| {
-                        settings_content
-                            .status_bar
-                            .as_ref()?
-                            .line_endings_button
-                            .as_ref()
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content
-                            .status_bar
-                            .get_or_insert_default()
-                            .line_endings_button = value;
                     },
                 }),
                 metadata: None,
@@ -4146,7 +4100,7 @@ fn window_and_layout_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Terminal Button",
-                description: "Show the terminal button in the status bar.",
+                description: "Show the terminal entry in the tools menu.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("terminal.button"),
@@ -4160,7 +4114,7 @@ fn window_and_layout_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Diagnostics Button",
-                description: "Show the project diagnostics button in the status bar.",
+                description: "Show the project diagnostics button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("diagnostics.button"),
@@ -4174,7 +4128,7 @@ fn window_and_layout_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Project Search Button",
-                description: "Show the project search button in the status bar.",
+                description: "Show the project search button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("search.button"),
@@ -4194,36 +4148,13 @@ fn window_and_layout_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Debugger Button",
-                description: "Show the debugger button in the status bar.",
+                description: "Show the debugger entry in the tools menu.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("debugger.button"),
                     pick: |settings_content| settings_content.debugger.as_ref()?.button.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.debugger.get_or_insert_default().button = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Active File Name",
-                description: "Show the name of the active file in the status bar.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("status_bar.show_active_file"),
-                    pick: |settings_content| {
-                        settings_content
-                            .status_bar
-                            .as_ref()?
-                            .show_active_file
-                            .as_ref()
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content
-                            .status_bar
-                            .get_or_insert_default()
-                            .show_active_file = value;
                     },
                 }),
                 metadata: None,
@@ -5289,7 +5220,7 @@ fn window_and_layout_page() -> SettingsPage {
     SettingsPage {
         title: "Window & Layout",
         items: concat_sections![
-            status_bar_section(),
+            toolbar_and_tools_section(),
             title_bar_section(),
             tab_bar_section(),
             tab_settings_section(),
@@ -6126,7 +6057,7 @@ fn panels_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("Outline Panel"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Outline Panel Button",
-                description: "Show the outline panel button in the status bar.",
+                description: "Show the outline panel button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("outline_panel.button"),
@@ -6368,7 +6299,7 @@ fn panels_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("Git Panel"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Git Panel Button",
-                description: "Show the Git panel button in the status bar.",
+                description: "Show the Git panel button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("git_panel.button"),
@@ -6747,7 +6678,7 @@ fn panels_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("Collaboration Panel"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Collaboration Panel Button",
-                description: "Show the collaboration panel button in the status bar.",
+                description: "Show the collaboration panel button in the tools navigation.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("collaboration_panel.button"),
@@ -10480,7 +10411,7 @@ SettingsPageItem::SettingItem(SettingItem {
         }), metadata: None, files: USER,
     }),
 SettingsPageItem::SettingItem(SettingItem {
-        title: "Panel Button", description: "Show the workspace terminal button in the status bar.",
+        title: "Panel Button", description: "Show the workspace terminal entry in the tools menu.",
         field: Box::new(SettingField { organization_override: None,
             json_path: Some("workspace_terminal.button"),
             pick: |content| content.workspace_terminal.as_ref()?.button.as_ref(),

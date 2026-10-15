@@ -50,18 +50,27 @@ impl LanguageSelector {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) -> Option<()> {
-        let registry = workspace.app_state().languages.clone();
         let buffer = workspace
             .active_item(cx)?
             .act_as::<Editor>(cx)?
             .read(cx)
             .active_buffer(cx)?;
+        Self::toggle_for_buffer(workspace, buffer, window, cx);
+        Some(())
+    }
+
+    fn toggle_for_buffer(
+        workspace: &mut Workspace,
+        buffer: Entity<Buffer>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let registry = workspace.app_state().languages.clone();
         let project = workspace.project().clone();
 
         workspace.toggle_modal(window, cx, move |window, cx| {
             LanguageSelector::new(buffer, project, registry, window, cx)
         });
-        Some(())
     }
 
     fn new(
@@ -594,6 +603,81 @@ mod tests {
             buffer.set_language(None, cx);
         });
         assert_selected_language_for_editor(&workspace, &empty_editor, None, cx);
+    }
+
+    #[gpui::test]
+    async fn test_language_toolbar_targets_its_inactive_pane(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/test"), json!({}))
+            .await;
+        let project = Project::test(app_state.fs.clone(), [path!("/test").as_ref()], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        register_test_languages(&project, cx);
+        let first_editor = open_new_buffer_editor(&workspace, &project, cx).await;
+        set_editor_language(&project, &first_editor, "Rust", cx).await;
+        let first_language = workspace.update_in(cx, |workspace, window, cx| {
+            let language = cx.new(|_| ActiveBufferLanguage::new(workspace));
+            let pane = workspace.active_pane().clone();
+            pane.read(cx).toolbar().clone().update(cx, |toolbar, cx| {
+                toolbar.add_item(language.clone(), window, cx);
+            });
+            let second_pane =
+                workspace.split_pane(pane, workspace::SplitDirection::Right, window, cx);
+            window.focus(&second_pane.focus_handle(cx), cx);
+            language
+        });
+        cx.run_until_parked();
+        let second_editor = open_new_buffer_editor(&workspace, &project, cx).await;
+        set_editor_language(&project, &second_editor, "TypeScript", cx).await;
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.activate_item(&second_editor, true, true, window, cx));
+        });
+        cx.run_until_parked();
+        first_language.update_in(cx, |language, window, cx| {
+            language.toggle_language(window, cx);
+        });
+        cx.run_until_parked();
+        let picker = active_picker(&workspace, cx);
+        let first_buffer = first_editor.read_with(cx, |editor, cx| {
+            editor.active_buffer(cx).expect("first buffer")
+        });
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(picker.delegate.buffer, first_buffer);
+            let selected_language = picker
+                .delegate
+                .current_language_candidate_index
+                .and_then(|index| picker.delegate.candidates.get(index))
+                .expect("current language");
+            assert_eq!(selected_language.string, "Rust");
+        });
+        picker.update_in(cx, |picker, window, cx| {
+            picker.update_matches("Ruby".to_string(), window, cx)
+        });
+        cx.run_until_parked();
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.confirm(false, window, cx)
+        });
+        cx.run_until_parked();
+        first_buffer.read_with(cx, |buffer, _| {
+            assert_eq!(buffer.language().expect("language").name().as_ref(), "Ruby")
+        });
+        second_editor.read_with(cx, |editor, cx| {
+            let buffer = editor.active_buffer(cx).expect("second buffer");
+            assert_eq!(
+                buffer
+                    .read(cx)
+                    .language()
+                    .expect("language")
+                    .name()
+                    .as_ref(),
+                "TypeScript"
+            );
+        });
     }
 
     #[gpui::test]

@@ -37,7 +37,7 @@ pub struct WorkspaceSettingsContent {
     ///
     /// Default: false
     pub confirm_quit: Option<bool>,
-    /// Whether or not to show the call status icon in the status bar.
+    /// Legacy setting retained for compatibility. No call status indicator is displayed.
     ///
     /// Default: true
     pub show_call_status_icon: Option<bool>,
@@ -556,28 +556,28 @@ pub struct TabBarSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq, Eq)]
 pub struct StatusBarSettingsContent {
-    /// Whether to show the status bar.
+    /// Legacy setting retained for compatibility. The window no longer has a status bar.
     ///
-    /// Default: true
+    /// Default: false
     #[serde(rename = "experimental.show")]
     pub show: Option<bool>,
-    /// Whether to show the name of the active file in the status bar.
+    /// Legacy setting retained for compatibility. The file name is shown in the editor toolbar.
     ///
     /// Default: false
     pub show_active_file: Option<bool>,
-    /// Whether to display the active language button in the status bar.
+    /// Whether to display the active language button in the editor toolbar.
     ///
     /// Default: true
     pub active_language_button: Option<bool>,
-    /// Whether to show the cursor position button in the status bar.
+    /// Whether to show the cursor position button in the editor toolbar.
     ///
     /// Default: true
     pub cursor_position_button: Option<bool>,
-    /// Whether to show active line endings button in the status bar.
+    /// Legacy setting retained for compatibility. Line endings are available in the editor settings menu.
     ///
     /// Default: false
     pub line_endings_button: Option<bool>,
-    /// Whether to show the active encoding button in the status bar.
+    /// Legacy setting retained for compatibility. Encoding is available in the editor settings menu.
     ///
     /// Default: non_utf8
     pub active_encoding_button: Option<EncodingDisplayOptions>,
@@ -812,7 +812,7 @@ pub struct ProjectPanelAutoOpenSettings {
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct ProjectPanelSettingsContent {
-    /// Whether to show the project panel button in the status bar.
+    /// Whether to show the project panel button in the tools navigation.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -1224,7 +1224,7 @@ pub struct WorkspaceSidebarSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct WorkspaceTerminalSettingsContent {
-    /// Show the workspace terminal panel button in the status bar.
+    /// Show the workspace terminal entry in the tools menu.
     pub button: Option<bool>,
     /// Dock the workspace terminal panel on the left or right.
     pub dock: Option<DockPosition>,

@@ -73,4 +73,67 @@ async fn terminal_entries_filter_collapse_and_close(cx: &mut TestAppContext) {
             "closing a terminal preserves its project"
         );
     });
+
+    sidebar.update_in(cx, |sidebar, window, cx| {
+        sidebar.filter_editor.update(cx, |editor, cx| {
+            editor.set_text("no matching projects or terminals", window, cx)
+        });
+        sidebar.update_entries(cx);
+        assert!(sidebar.entries.is_empty());
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+
+    let header = cx
+        .debug_bounds("workspace-sidebar-header")
+        .expect("the header remains visible when filtering returns no entries");
+    let add_project = cx
+        .debug_bounds("ICON-FolderAdd")
+        .expect("add project remains reachable without visible entries");
+    assert!(header.contains(&add_project.center()));
+    let clear_filter = cx
+        .debug_bounds("ICON-Close")
+        .expect("an unmatched search can still be cleared");
+    assert!(header.contains(&clear_filter.center()));
+    cx.simulate_click(clear_filter.center(), gpui::Modifiers::none());
+    cx.run_until_parked();
+    sidebar.read_with(cx, |sidebar, cx| {
+        assert!(!sidebar.has_filter_query(cx));
+        assert_eq!(sidebar.entries.len(), 1);
+    });
+
+    let close_sidebar = cx
+        .debug_bounds("ICON-ThreadsSidebarLeftOpen")
+        .expect("the sidebar toggle is available in the header");
+    assert!(header.contains(&close_sidebar.center()));
+    cx.simulate_click(close_sidebar.center(), gpui::Modifiers::none());
+    multi_workspace.read_with(cx, |workspace, _| assert!(!workspace.sidebar_open()));
+
+    cx.update(|_, cx| {
+        let mut settings = WorkspaceSidebarSettings::get_global(cx).clone();
+        settings.position = settings::SidebarDockPosition::Right;
+        WorkspaceSidebarSettings::override_global(settings, cx);
+    });
+    sidebar.update_in(cx, |sidebar, window, cx| {
+        sidebar.set_width(Some(px(200.)), cx);
+        sidebar.filter_editor.update(cx, |editor, cx| {
+            editor.set_text("no matching projects or terminals", window, cx)
+        });
+        sidebar.update_entries(cx);
+    });
+    multi_workspace.update(cx, |workspace, cx| workspace.open_sidebar(cx));
+    cx.run_until_parked();
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let header = cx
+        .debug_bounds("workspace-sidebar-header")
+        .expect("the narrow right sidebar retains its search header");
+    assert!(header.size.width <= px(200.));
+    for selector in [
+        "ICON-FolderAdd",
+        "ICON-Close",
+        "ICON-ThreadsSidebarRightOpen",
+    ] {
+        let button = cx.debug_bounds(selector).expect("header action is visible");
+        assert!(header.contains(&button.center()));
+    }
 }

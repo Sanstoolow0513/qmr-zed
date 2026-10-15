@@ -1314,6 +1314,9 @@ impl Panel for WorkspaceTerminalPanel {
     fn supports_flexible_size(&self) -> bool {
         true
     }
+    fn expands_into_empty_center(&self) -> bool {
+        true
+    }
     fn has_flexible_size(&self, _: &Window, cx: &App) -> bool {
         WorkspaceTerminalSettings::get_global(cx).flexible
     }
@@ -1370,16 +1373,21 @@ impl Render for WorkspaceTerminalPanel {
             }))
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .flex_none()
                     .px_2()
-                    .py_1()
+                    .h(px(32.))
                     .gap_2()
                     .border_b_1()
                     .border_color(cx.theme().colors().border)
-                    .child(Icon::new(IconName::Terminal))
+                    .child(Icon::new(IconName::Terminal).size(IconSize::Medium))
                     .child(
                         div()
                             .id("workspace-terminal-title")
                             .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if let Some(id) = terminal_id {
                                     this.edit_terminal_title(id, window, cx);
@@ -1407,6 +1415,9 @@ impl Render for WorkspaceTerminalPanel {
                     )
                     .child(
                         IconButton::new("new-workspace-terminal", IconName::Plus)
+                            .icon_size(IconSize::Medium)
+                            .size(ButtonSize::Medium)
+                            .width(px(28.))
                             .tooltip(Tooltip::localized_text("New Terminal"))
                             .disabled(
                                 !self.supports_terminal(cx)
@@ -1417,7 +1428,21 @@ impl Render for WorkspaceTerminalPanel {
                             })),
                     )
                     .child(
+                        IconButton::new("hide-workspace-terminal", IconName::GenericMinimize)
+                            .icon_size(IconSize::Medium)
+                            .size(ButtonSize::Medium)
+                            .width(px(28.))
+                            .aria_label(i18n::text("Hide Terminal Panel", cx))
+                            .tooltip(Tooltip::localized_text("Hide Terminal Panel"))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(PanelEvent::Close);
+                            })),
+                    )
+                    .child(
                         IconButton::new("close-workspace-terminal", IconName::Close)
+                            .icon_size(IconSize::Medium)
+                            .size(ButtonSize::Medium)
+                            .width(px(28.))
                             .tooltip(Tooltip::localized_text("Close Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if let Some(id) = terminal_id {
@@ -1513,6 +1538,65 @@ mod tests {
             );
             terminal_id
         })
+    }
+
+    #[gpui::test]
+    async fn hiding_terminal_panel_preserves_session(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), serde_json::json!({"main.rs":""}))
+            .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let (workspace, panel, terminal_id, terminal_view) = window
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let panel = workspace.update(cx, |workspace, cx| {
+                    let panel = cx.new(|cx| WorkspaceTerminalPanel::new(workspace, window, cx));
+                    workspace.add_panel(panel.clone(), window, cx);
+                    panel
+                });
+                let terminal_id = add_terminal(&panel, window, cx);
+                let terminal_view = panel.read(cx).visible_terminal_view().unwrap().clone();
+                panel.update(cx, |_, cx| cx.emit(PanelEvent::Activate));
+                (workspace, panel, terminal_id, terminal_view)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |_, _, cx| {
+                assert_eq!(
+                    workspace.read(cx).expanded_dock_position(cx),
+                    Some(DockPosition::Left)
+                );
+                panel.update(cx, |_, cx| cx.emit(PanelEvent::Close));
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |_, _, cx| {
+                assert_eq!(workspace.read(cx).expanded_dock_position(cx), None);
+                assert_eq!(panel.read(cx).active_terminal_id(), Some(terminal_id));
+                assert_eq!(panel.read(cx).visible_terminal_view(), Some(&terminal_view));
+                assert!(
+                    TerminalMetadataStore::global(cx)
+                        .read(cx)
+                        .entry(terminal_id)
+                        .is_some()
+                );
+                panel.update(cx, |_, cx| cx.emit(PanelEvent::Activate));
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |_, _, cx| {
+                assert_eq!(
+                    workspace.read(cx).expanded_dock_position(cx),
+                    Some(DockPosition::Left)
+                );
+                assert_eq!(panel.read(cx).visible_terminal_view(), Some(&terminal_view));
+            })
+            .unwrap();
     }
 
     #[gpui::test]

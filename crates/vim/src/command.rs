@@ -577,11 +577,7 @@ cx)
         fn err(s: String, window: &mut Window, cx: &mut Context<Editor>) {
             let _ = window.prompt(
                 gpui::PromptLevel::Critical,
-                &i18n::format(
-                    "Invalid argument: {argument0}",
-                    &[("argument0", &format!("{}", s))],
-                    cx,
-                ),
+                &i18n::format("Invalid argument: {argument0}", &[("argument0", &s)], cx),
                 None,
                 &[i18n::static_text("Cancel", cx)],
                 cx,

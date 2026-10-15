@@ -44,7 +44,6 @@ use gpui::{
     WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions,
     image_cache, img, point, px, retain_all,
 };
-use image_viewer::ImageInfo;
 use language::Capability;
 use language_onboarding::BasedPyrightBanner;
 use language_tools::lsp_button::{self, LspButton};
@@ -551,51 +550,68 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
 
         let search_button = cx.new(|_| search::search_status_button::SearchButton::new());
         let diagnostic_summary =
-            cx.new(|cx| diagnostics::items::DiagnosticIndicator::new(workspace, cx));
-        let active_file_name = cx.new(|_| workspace::active_file_name::ActiveFileName::new());
+            cx.new(|cx| diagnostics::items::DiagnosticIndicator::new_toolbar(workspace, cx));
         let activity_indicator = activity_indicator::ActivityIndicator::new(workspace, window, cx);
-        let active_buffer_encoding =
-            cx.new(|_| encoding_selector::ActiveBufferEncoding::new(workspace));
-        let active_buffer_language =
-            cx.new(|_| language_selector::ActiveBufferLanguage::new(workspace));
         let active_toolchain_language =
             cx.new(|cx| toolchain_selector::ActiveToolchain::new(workspace, window, cx));
-        let vim_mode_indicator = cx.new(|cx| vim::ModeIndicator::new(window, cx));
         let pending_keystrokes_indicator =
             cx.new(|cx| which_key::PendingKeystrokesIndicator::new(window, cx));
-        let image_info = cx.new(|_cx| ImageInfo::new(workspace));
+        workspace.add_transient_status(pending_keystrokes_indicator.into(), cx);
 
         let lsp_button_menu_handle = PopoverMenuHandle::default();
         let lsp_button =
             cx.new(|cx| LspButton::new(workspace, lsp_button_menu_handle.clone(), window, cx));
         workspace.register_action({
+            let tools = workspace.tools().clone();
             move |_, _: &lsp_button::ToggleMenu, window, cx| {
-                lsp_button_menu_handle.toggle(window, cx);
+                tools.update(cx, |tools, cx| tools.show_menu(window, cx));
+                let handle = lsp_button_menu_handle.clone();
+                window.on_next_frame(move |window, cx| handle.toggle(window, cx));
             }
         });
-
-        let cursor_position =
-            cx.new(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
-        let line_ending_indicator =
-            cx.new(|_| line_ending_selector::LineEndingIndicator::default());
-        let git_blame_status = cx.new(|_| git_ui::GitBlameStatus::default());
-
+        workspace.tools().update(cx, |tools, cx| {
+            tools.add_project_action(
+                "project-search",
+                "Project Search",
+                search_button.into(),
+                Box::new(workspace::DeploySearch::default()),
+                std::sync::Arc::new(|cx| editor::EditorSettings::get_global(cx).search.button),
+                cx,
+            );
+            tools.add_project_action(
+                "project-diagnostics",
+                "Project Diagnostics",
+                diagnostic_summary.clone().into(),
+                Box::new(diagnostics::Deploy),
+                std::sync::Arc::new(|cx| {
+                    project::project_settings::ProjectSettings::get_global(cx)
+                        .diagnostics
+                        .button
+                }),
+                cx,
+            );
+            tools.add_status_item(
+                lsp_button.clone().into(),
+                {
+                    let lsp_button = lsp_button.clone();
+                    move |cx| lsp_button.read(cx).has_status(cx)
+                },
+                cx,
+            );
+            tools.add_status_item(
+                activity_indicator.clone().into(),
+                {
+                    let activity_indicator = activity_indicator.clone();
+                    move |cx| activity_indicator.update(cx, |activity, cx| activity.has_status(cx))
+                },
+                cx,
+            );
+        });
         workspace.status_bar().update(cx, |status_bar, cx| {
-            status_bar.add_left_item(search_button, window, cx);
             status_bar.add_left_item(lsp_button, window, cx);
             status_bar.add_left_item(diagnostic_summary, window, cx);
-            status_bar.add_left_item(active_file_name, window, cx);
-            status_bar.add_left_item(git_blame_status, window, cx);
             status_bar.add_left_item(activity_indicator, window, cx);
-            status_bar.add_right_item(active_buffer_encoding, window, cx);
-            status_bar.add_right_item(active_buffer_language, window, cx);
             status_bar.add_right_item(active_toolchain_language, window, cx);
-            status_bar.add_right_item(line_ending_indicator, window, cx);
-            status_bar.add_right_item(cursor_position, window, cx);
-            status_bar.add_right_item(image_info, window, cx);
-            // Keep these last so they stay leftmost and can change without moving the other items.
-            status_bar.add_right_item(vim_mode_indicator, window, cx);
-            status_bar.add_right_item(pending_keystrokes_indicator, window, cx);
         });
 
         let panels_task = initialize_panels(window, cx);
@@ -1329,6 +1345,12 @@ fn initialize_pane(
             let quick_action_bar =
                 cx.new(|cx| QuickActionBar::new(buffer_search_bar, workspace, cx));
             toolbar.add_item(quick_action_bar, window, cx);
+            let active_buffer_language =
+                cx.new(|_| language_selector::ActiveBufferLanguage::new(workspace));
+            toolbar.add_item(active_buffer_language, window, cx);
+            let cursor_position =
+                cx.new(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
+            toolbar.add_item(cursor_position, window, cx);
             let diagnostic_editor_controls = cx.new(|_| diagnostics::ToolbarControls::new());
             toolbar.add_item(diagnostic_editor_controls, window, cx);
             let project_search_bar = cx.new(|_| ProjectSearchBar::new());

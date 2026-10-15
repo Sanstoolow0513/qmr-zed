@@ -104,8 +104,7 @@ impl PendingKeystrokesIndicator {
 
     fn enabled(cx: &App) -> bool {
         let status_bar_settings = StatusBarSettings::get_global(cx);
-        status_bar_settings.show
-            && status_bar_settings.pending_keystrokes_indicator
+        status_bar_settings.pending_keystrokes_indicator
             && !VimModeSetting::is_enabled(cx)
             && !HelixModeSetting::is_enabled(cx)
     }
@@ -365,7 +364,7 @@ impl Render for PendingKeystrokesIndicator {
 
             div()
                 .absolute()
-                .top_0()
+                .top(px(-4.))
                 .right_0()
                 .w_0()
                 .h_0()
@@ -376,6 +375,10 @@ impl Render for PendingKeystrokesIndicator {
             .id("pending-keystrokes-indicator-wrapper")
             .debug_selector(|| "PENDING_KEYSTROKES_INDICATOR".into())
             .relative()
+            .p_1()
+            .rounded_md()
+            .bg(cx.theme().colors().elevated_surface_background)
+            .shadow_sm()
             .child(button)
             .when_some(popover, |this, popover| this.child(popover))
             .on_hover(cx.listener(|this, pointer_over: &bool, window, cx| {
@@ -1113,6 +1116,25 @@ mod tests {
         assert_eq!(snapshot.keystrokes, ["ctrl-b", "h"]);
         assert!(snapshot.popover_visible);
         assert!(snapshot.timeout_paused);
+    }
+
+    #[gpui::test]
+    fn test_pending_input_survives_legacy_footer_visibility_setting(cx: &mut TestAppContext) {
+        for visibility in [false, true] {
+            let (indicator, _, cx) = setup_indicator_test(cx, timed_bindings());
+            set_user_settings(
+                cx,
+                &format!(r#"{{"status_bar":{{"experimental.show":{visibility}}}}}"#),
+            );
+            cx.simulate_keystrokes("ctrl-b");
+            cx.run_until_parked();
+            assert!(
+                indicator
+                    .read_with(cx, |indicator, _| indicator_snapshot(indicator))
+                    .is_some()
+            );
+            assert!(cx.debug_bounds("PENDING_KEYSTROKES_INDICATOR").is_some());
+        }
     }
 
     #[gpui::test]

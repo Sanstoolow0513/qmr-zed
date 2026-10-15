@@ -229,10 +229,11 @@ impl QuickActionBar {
                 ButtonLike::new_rounded_right(element_id("dropdown"))
                     .child(
                         Icon::new(IconName::ChevronDown)
-                            .size(IconSize::XSmall)
+                            .size(IconSize::Medium)
                             .color(Color::Muted),
                     )
-                    .width(rems(1.))
+                    .size(ButtonSize::Medium)
+                    .width(rems_from_px(28_f32))
                     .disabled(menu_state.popover_disabled),
                 Tooltip::localized_text("REPL Menu"),
             );
@@ -240,18 +241,22 @@ impl QuickActionBar {
         let button = ButtonLike::new_rounded_left("toggle_repl_icon")
             .child(if menu_state.icon_is_animating {
                 Icon::new(menu_state.icon)
+                    .size(IconSize::Medium)
                     .color(menu_state.icon_color)
                     .with_rotate_animation(5)
                     .into_any_element()
             } else {
                 IconWithIndicator::new(
-                    Icon::new(IconName::ReplNeutral).color(menu_state.icon_color),
+                    Icon::new(IconName::ReplNeutral)
+                        .size(IconSize::Medium)
+                        .color(menu_state.icon_color),
                     menu_state.indicator,
                 )
                 .indicator_border_color(Some(cx.theme().colors().toolbar_background))
                 .into_any_element()
             })
-            .size(ButtonSize::Compact)
+            .size(ButtonSize::Medium)
+            .width(rems_from_px(28_f32))
             .style(ButtonStyle::Subtle)
             .tooltip(Tooltip::text(menu_state.tooltip))
             .on_click(|_, window, cx| window.dispatch_action(Box::new(repl::Run {}), cx))
@@ -278,7 +283,9 @@ impl QuickActionBar {
                 .child(self.render_kernel_selector(cx))
                 .child(
                     IconButton::new("toggle_repl_icon", IconName::ReplNeutral)
-                        .size(ButtonSize::Compact)
+                        .icon_size(IconSize::Medium)
+                        .size(ButtonSize::Medium)
+                        .width(rems_from_px(28_f32))
                         .icon_color(Color::Muted)
                         .style(ButtonStyle::Subtle)
                         .tooltip(Tooltip::text(tooltip))
@@ -350,7 +357,7 @@ impl QuickActionBar {
             worktree_id,
             ButtonLike::new("kernel-selector")
                 .style(ButtonStyle::Subtle)
-                .size(ButtonSize::Compact)
+                .size(ButtonSize::Medium)
                 .child(
                     h_flex()
                         .w_full()
@@ -396,8 +403,9 @@ impl QuickActionBar {
                 .child(
                     IconButton::new("toggle_repl_icon", IconName::ReplNeutral)
                         .style(ButtonStyle::Subtle)
-                        .shape(ui::IconButtonShape::Square)
-                        .icon_size(ui::IconSize::Small)
+                        .icon_size(IconSize::Medium)
+                        .size(ButtonSize::Medium)
+                        .width(rems_from_px(28_f32))
                         .icon_color(Color::Muted)
                         .tooltip(Tooltip::text(tooltip))
                         .on_click(|_, _window, cx| {

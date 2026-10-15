@@ -58,6 +58,9 @@ pub trait Panel: Focusable + EventEmitter<PanelEvent> + Render + Sized {
     fn supports_flexible_size(&self) -> bool {
         false
     }
+    fn expands_into_empty_center(&self) -> bool {
+        false
+    }
     fn has_flexible_size(&self, _window: &Window, _cx: &App) -> bool {
         false
     }
@@ -120,6 +123,7 @@ pub trait PanelHandle: Send + Sync {
     fn initial_size_state(&self, window: &Window, cx: &App) -> PanelSizeState;
     fn size_state_changed(&self, window: &mut Window, cx: &mut App);
     fn supports_flexible_size(&self, cx: &App) -> bool;
+    fn expands_into_empty_center(&self, cx: &App) -> bool;
     fn has_flexible_size(&self, window: &Window, cx: &App) -> bool;
     fn set_flexible_size(&self, flexible: bool, window: &mut Window, cx: &mut App);
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
@@ -219,6 +223,10 @@ where
         self.read(cx).supports_flexible_size()
     }
 
+    fn expands_into_empty_center(&self, cx: &App) -> bool {
+        self.read(cx).expands_into_empty_center()
+    }
+
     fn has_flexible_size(&self, window: &Window, cx: &App) -> bool {
         self.read(cx).has_flexible_size(window, cx)
     }
@@ -290,6 +298,7 @@ pub struct Dock {
     focus_follows_mouse: FocusFollowsMouse,
     restoration: DockRestoreState,
     zoom_layer_open: bool,
+    expanded_in_center: bool,
     modal_layer: Entity<ModalLayer>,
     _subscriptions: [Subscription; 2],
 }
@@ -458,6 +467,7 @@ impl Dock {
                 _subscriptions: [focus_subscription, zoom_subscription],
                 restoration: DockRestoreState::Restoring { pending: None },
                 zoom_layer_open: false,
+                expanded_in_center: false,
                 modal_layer,
             }
         });
@@ -515,7 +525,16 @@ impl Dock {
     }
 
     fn resizable(&self, cx: &App) -> bool {
-        !(self.zoom_layer_open || self.modal_layer.read(cx).has_active_modal())
+        !(self.expanded_in_center
+            || self.zoom_layer_open
+            || self.modal_layer.read(cx).has_active_modal())
+    }
+
+    pub(crate) fn set_expanded_in_center(&mut self, expanded: bool, cx: &mut Context<Self>) {
+        if self.expanded_in_center != expanded {
+            self.expanded_in_center = expanded;
+            cx.notify();
+        }
     }
 
     pub fn panel<T: Panel>(&self) -> Option<Entity<T>> {
@@ -1352,7 +1371,7 @@ impl Render for Dock {
                     Axis::Horizontal => this.w_full().h_full().flex_row(),
                     Axis::Vertical => this.h_full().w_full().flex_col(),
                 })
-                .map(|this| match self.position() {
+                .when(!self.expanded_in_center, |this| match self.position() {
                     DockPosition::Left => this.border_r_1(),
                     DockPosition::Right => this.border_l_1(),
                     DockPosition::Bottom => this.border_t_1(),
@@ -1393,210 +1412,213 @@ impl PanelButtons {
     }
 }
 
-impl Render for PanelButtons {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dock = self.dock.read(cx);
-        let active_index = dock.active_panel_index;
-        let is_open = dock.is_open;
-        let dock_position = dock.position;
+#[derive(Clone)]
+pub(crate) struct PanelTool {
+    pub key: &'static str,
+    pub label: SharedString,
+    pub icon: IconName,
+    pub selected: bool,
+    dock: Entity<Dock>,
+    panel: Arc<dyn PanelHandle>,
+}
 
-        let (menu_anchor, menu_attach) = match dock.position {
-            DockPosition::Left => (Anchor::BottomLeft, Anchor::TopLeft),
-            DockPosition::Bottom | DockPosition::Right => (Anchor::BottomRight, Anchor::TopRight),
-        };
-
-        let dock_entity = self.dock.clone();
-        let workspace = dock.workspace.clone();
-        let mut buttons: Vec<_> = dock
+impl PanelTool {
+    pub fn collect(dock: &Entity<Dock>, window: &Window, cx: &App) -> Vec<Self> {
+        let state = dock.read(cx);
+        state
             .panel_entries
             .iter()
             .enumerate()
-            .filter_map(|(i, entry)| {
-                let icon = entry.panel.icon(window, cx)?;
-                let icon_tooltip = entry
-                    .panel
-                    .icon_tooltip(window, cx)
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("can't render a panel button without an icon tooltip")
-                    })
-                    .log_err()?;
-                let name = entry.panel.persistent_name();
-                let panel = entry.panel.clone();
-                let supports_flexible = panel.supports_flexible_size(cx);
-                let currently_flexible = panel.has_flexible_size(window, cx);
-                let dock_for_menu = dock_entity.clone();
-                let workspace_for_menu = workspace.clone();
-
-                let is_active_button = Some(i) == active_index && is_open;
-                let (action, tooltip) = if is_active_button {
-                    let action = dock.toggle_action();
-
-                    let tooltip: SharedString =
-                        format!("Close {} Dock", dock.position.label()).into();
-
-                    (action, tooltip)
-                } else {
-                    let action = entry.panel.toggle_action(window, cx);
-
-                    (action, icon_tooltip.into())
-                };
-
-                let focus_handle = dock.focus_handle(cx);
-                let icon_label = entry.panel.icon_label(window, cx);
-
-                Some(
-                    right_click_menu(name)
-                        .menu(move |window, cx| {
-                            const POSITIONS: [DockPosition; 3] = [
-                                DockPosition::Left,
-                                DockPosition::Right,
-                                DockPosition::Bottom,
-                            ];
-
-                            let panel_hide = panel.hide_button_setting(cx);
-                            ContextMenu::build(window, cx, |mut menu, _, cx| {
-                                let mut has_position_entries = false;
-                                for position in POSITIONS {
-                                    if panel.position_is_valid(position, cx) {
-                                        let is_current = position == dock_position;
-                                        let panel = panel.clone();
-                                        menu = menu.toggleable_entry(
-                                            format!("Dock {}", position.label()),
-                                            is_current,
-                                            IconPosition::Start,
-                                            None,
-                                            move |window, cx| {
-                                                if !is_current {
-                                                    panel.set_position(position, window, cx);
-                                                }
-                                            },
-                                        );
-                                        has_position_entries = true;
-                                    }
-                                }
-                                if supports_flexible {
-                                    if has_position_entries {
-                                        menu = menu.separator();
-                                    }
-                                    let panel_for_flex = panel.clone();
-                                    let dock_for_flex = dock_for_menu.clone();
-                                    let workspace_for_flex = workspace_for_menu.clone();
-                                    menu = menu
-                                        .toggleable_entry(
-                                            "Flex Width",
-                                            currently_flexible,
-                                            IconPosition::Start,
-                                            None,
-                                            move |window, cx| {
-                                                if !currently_flexible {
-                                                    if let Some(ws) = workspace_for_flex.upgrade() {
-                                                        ws.update(cx, |workspace, cx| {
-                                                            workspace
-                                                                .toggle_dock_panel_flexible_size(
-                                                                    &dock_for_flex,
-                                                                    panel_for_flex.as_ref(),
-                                                                    window,
-                                                                    cx,
-                                                                );
-                                                        });
-                                                    }
-                                                }
-                                            },
-                                        )
-                                        .localize_last();
-                                    let panel_for_fixed = panel.clone();
-                                    let dock_for_fixed = dock_for_menu.clone();
-                                    let workspace_for_fixed = workspace_for_menu.clone();
-                                    menu = menu
-                                        .toggleable_entry(
-                                            "Fixed Width",
-                                            !currently_flexible,
-                                            IconPosition::Start,
-                                            None,
-                                            move |window, cx| {
-                                                if currently_flexible {
-                                                    if let Some(ws) = workspace_for_fixed.upgrade()
-                                                    {
-                                                        ws.update(cx, |workspace, cx| {
-                                                            workspace
-                                                                .toggle_dock_panel_flexible_size(
-                                                                    &dock_for_fixed,
-                                                                    panel_for_fixed.as_ref(),
-                                                                    window,
-                                                                    cx,
-                                                                );
-                                                        });
-                                                    }
-                                                }
-                                            },
-                                        )
-                                        .localize_last();
-                                }
-                                if let Some(hide) = panel_hide {
-                                    menu = crate::status_bar::add_hide_button_entry(
-                                        menu.separator(),
-                                        hide,
-                                    );
-                                }
-                                menu
-                            })
-                        })
-                        .anchor(menu_anchor)
-                        .attach(menu_attach)
-                        .trigger(move |is_active, _window, _cx| {
-                            // Include active state in element ID to invalidate the cached
-                            // tooltip when panel state changes (e.g., via keyboard shortcut)
-                            let button = IconButton::new((name, is_active_button as u64), icon)
-                                .icon_size(IconSize::Small)
-                                .toggle_state(is_active_button)
-                                .tab_index(0isize)
-                                .aria_label(icon_tooltip)
-                                .on_click({
-                                    let action = action.boxed_clone();
-                                    move |_, window, cx| {
-                                        window.focus(&focus_handle, cx);
-                                        window.dispatch_action(action.boxed_clone(), cx)
-                                    }
-                                })
-                                .when(!is_active, |this| {
-                                    this.tooltip(move |_window, cx| {
-                                        Tooltip::for_action(tooltip.clone(), &*action, cx)
-                                    })
-                                });
-
-                            div().relative().child(button).when_some(
-                                icon_label
-                                    .clone()
-                                    .filter(|_| !is_active_button)
-                                    .and_then(|label| label.parse::<usize>().ok()),
-                                |this, count| this.child(CountBadge::new(count)),
-                            )
-                        }),
-                )
+            .filter_map(|(index, entry)| {
+                if !entry.panel.enabled(cx) {
+                    return None;
+                }
+                Some(Self {
+                    key: entry.panel.panel_key(),
+                    label: entry.panel.icon_tooltip(window, cx)?.into(),
+                    icon: entry.panel.icon(window, cx)?,
+                    selected: state.is_open && state.active_panel_index == Some(index),
+                    dock: dock.clone(),
+                    panel: entry.panel.clone(),
+                })
             })
-            .collect();
+            .collect()
+    }
 
+    pub fn activate(&self, window: &mut Window, cx: &mut App) {
+        let action = if self.selected {
+            self.dock.read(cx).toggle_action()
+        } else {
+            self.panel.toggle_action(window, cx)
+        };
+        window.focus(&self.dock.read(cx).focus_handle(cx), cx);
+        window.dispatch_action(action, cx);
+    }
+
+    pub fn render(&self, top: bool, window: &mut Window, cx: &mut App) -> AnyElement {
+        self.render_content(top, false, window, cx)
+    }
+
+    pub fn render_menu_row(&self, window: &mut Window, cx: &mut App) -> AnyElement {
+        self.render_content(true, true, window, cx)
+    }
+
+    fn render_content(
+        &self,
+        top: bool,
+        menu_row: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let tool = self.clone();
+        let menu_tool = self.clone();
+        let label = self.label.clone();
+        let action = self.panel.toggle_action(window, cx);
+        let count = self
+            .panel
+            .icon_label(window, cx)
+            .and_then(|count| count.parse::<usize>().ok());
+        right_click_menu(self.key)
+            .anchor(if top {
+                Anchor::TopRight
+            } else {
+                Anchor::BottomRight
+            })
+            .attach(if top {
+                Anchor::BottomRight
+            } else {
+                Anchor::TopRight
+            })
+            .menu(move |window, cx| {
+                let dock_position = menu_tool.dock.read(cx).position;
+                let workspace = menu_tool.dock.read(cx).workspace.clone();
+                let panel = menu_tool.panel.clone();
+                let dock = menu_tool.dock.clone();
+                let flexible = panel.has_flexible_size(window, cx);
+                ContextMenu::build(window, cx, |mut menu, _, cx| {
+                    for position in [
+                        DockPosition::Left,
+                        DockPosition::Right,
+                        DockPosition::Bottom,
+                    ] {
+                        if panel.position_is_valid(position, cx) {
+                            let panel = panel.clone();
+                            menu = menu
+                                .toggleable_entry(
+                                    format!("Dock {}", position.label()),
+                                    position == dock_position,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if position != dock_position {
+                                            panel.set_position(position, window, cx);
+                                        }
+                                    },
+                                )
+                                .localize_last();
+                        }
+                    }
+                    if panel.supports_flexible_size(cx) {
+                        menu = menu.separator();
+                        for (label, value) in [("Flex Width", true), ("Fixed Width", false)] {
+                            let panel = panel.clone();
+                            let dock = dock.clone();
+                            let workspace = workspace.clone();
+                            menu = menu
+                                .toggleable_entry(
+                                    label,
+                                    flexible == value,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if flexible != value
+                                            && let Some(workspace) = workspace.upgrade()
+                                        {
+                                            workspace.update(cx, |workspace, cx| {
+                                                workspace.toggle_dock_panel_flexible_size(
+                                                    &dock,
+                                                    panel.as_ref(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                        }
+                                    },
+                                )
+                                .localize_last();
+                        }
+                    }
+                    if let Some(hide) = panel.hide_button_setting(cx) {
+                        menu = crate::status_bar::add_hide_button_entry(menu.separator(), hide);
+                    }
+                    menu
+                })
+            })
+            .trigger(move |menu_open, _, cx| {
+                let action = action.boxed_clone();
+                let label = label.clone();
+                if menu_row {
+                    return h_flex()
+                        .w_full()
+                        .gap_2()
+                        .child(Icon::new(tool.icon).size(IconSize::Medium))
+                        .child(Label::new(i18n::text(label, cx)))
+                        .when(tool.selected, |this| {
+                            this.child(Icon::new(IconName::Check).size(IconSize::Small))
+                        })
+                        .into_any_element();
+                }
+                let tool_for_click = tool.clone();
+                div()
+                    .relative()
+                    .child(
+                        IconButton::new((tool.key, tool.selected as u64), tool.icon)
+                            .icon_size(if top {
+                                IconSize::Medium
+                            } else {
+                                IconSize::Small
+                            })
+                            .when(top, |button| {
+                                button.size(ButtonSize::Medium).width(rems_from_px(28_f32))
+                            })
+                            .toggle_state(tool.selected)
+                            .tab_index(0isize)
+                            .aria_label(label.clone())
+                            .on_click(move |_, window, cx| tool_for_click.activate(window, cx))
+                            .when(!menu_open, |button| {
+                                button.tooltip(move |_, cx| {
+                                    Tooltip::for_action(label.clone(), &*action, cx)
+                                })
+                            }),
+                    )
+                    .when_some(count.filter(|_| !tool.selected), |this, count| {
+                        this.child(CountBadge::new(count))
+                    })
+                    .into_any_element()
+            })
+            .into_any_element()
+    }
+}
+
+impl Render for PanelButtons {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let dock_position = self.dock.read(cx).position;
+        let mut tools = PanelTool::collect(&self.dock, window, cx);
         if dock_position == DockPosition::Right {
-            buttons.reverse();
+            tools.reverse();
         }
-
-        let has_buttons = !buttons.is_empty();
-
+        let has_buttons = !tools.is_empty();
         h_flex()
             .gap_1()
-            .when(
-                has_buttons
-                    && (dock.position == DockPosition::Bottom
-                        || dock.position == DockPosition::Right),
-                |this| this.child(Divider::vertical().color(DividerColor::Border)),
-            )
-            .children(buttons)
-            .when(has_buttons && dock.position == DockPosition::Left, |this| {
+            .when(has_buttons && dock_position != DockPosition::Left, |this| {
+                this.child(Divider::vertical().color(DividerColor::Border))
+            })
+            .children(tools.iter().map(|tool| tool.render(false, window, cx)))
+            .when(has_buttons && dock_position == DockPosition::Left, |this| {
                 this.child(Divider::vertical().color(DividerColor::Border))
             })
     }
 }
-
 impl StatusItemView for PanelButtons {
     fn set_active_pane_item(
         &mut self,
@@ -1627,6 +1649,7 @@ pub mod test {
         pub activation_focus_handle: Option<FocusHandle>,
         pub default_size: Pixels,
         pub flexible: bool,
+        pub expands_into_empty_center: bool,
         pub activation_priority: u32,
     }
     actions!(test_only, [ToggleTestPanel]);
@@ -1643,6 +1666,7 @@ pub mod test {
                 activation_focus_handle: None,
                 default_size: px(300.),
                 flexible: false,
+                expands_into_empty_center: false,
                 activation_priority,
             }
         }
@@ -1722,6 +1746,10 @@ pub mod test {
 
         fn supports_flexible_size(&self) -> bool {
             self.flexible
+        }
+
+        fn expands_into_empty_center(&self) -> bool {
+            self.expands_into_empty_center
         }
 
         fn has_flexible_size(&self, _window: &Window, _: &App) -> bool {

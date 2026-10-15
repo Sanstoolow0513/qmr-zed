@@ -315,7 +315,7 @@ pub struct FetchSettings {
 #[with_fallible_options]
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct GlobalLspSettingsContent {
-    /// Whether to show the LSP servers button in the status bar.
+    /// Whether to show language servers in the project status menu.
     ///
     /// Default: `true`
     pub button: Option<bool>,
@@ -630,7 +630,7 @@ pub enum InlineBlameLocation {
     /// Show git blame inline at the current line.
     #[default]
     Inline,
-    /// Show git blame in the status bar at the bottom of the window.
+    /// Legacy value; displays git blame inline at the current line.
     StatusBar,
 }
 
@@ -771,7 +771,7 @@ pub enum GitPathStyle {
 #[with_fallible_options]
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct DiagnosticsSettingsContent {
-    /// Whether to show the project diagnostics button in the status bar.
+    /// Whether to show the project diagnostics button in the tools navigation.
     pub button: Option<bool>,
 
     /// Whether or not to include warning diagnostics.

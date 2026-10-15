@@ -1,7 +1,7 @@
 use crate::ItemHandle;
 use gpui::{
     AnyView, App, Context, Div, Entity, EntityId, EventEmitter, Global, KeyContext,
-    ParentElement as _, Render, Styled, Window,
+    ParentElement as _, Pixels, Render, Styled, Window, canvas,
 };
 use language::LanguageRegistry;
 use std::sync::Arc;
@@ -38,6 +38,14 @@ pub trait ToolbarItemView: Render + EventEmitter<ToolbarItemEvent> {
     }
 
     fn contribute_context(&self, _context: &mut KeyContext, _cx: &App) {}
+
+    fn available_width_changed(
+        &mut self,
+        _width: Pixels,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+    }
 }
 
 trait ToolbarItemViewHandle: Send {
@@ -51,6 +59,7 @@ trait ToolbarItemViewHandle: Send {
     ) -> ToolbarItemLocation;
     fn focus_changed(&mut self, pane_focused: bool, window: &mut Window, cx: &mut App);
     fn contribute_context(&self, context: &mut KeyContext, cx: &App);
+    fn available_width_changed(&self, width: Pixels, window: &mut Window, cx: &mut App);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -66,6 +75,7 @@ pub struct Toolbar {
     hidden: bool,
     can_navigate: bool,
     items: Vec<(Box<dyn ToolbarItemViewHandle>, ToolbarItemLocation)>,
+    available_width: Option<Pixels>,
 }
 
 impl Toolbar {
@@ -120,6 +130,33 @@ impl Render for Toolbar {
         v_flex()
             .group("toolbar")
             .relative()
+            .child({
+                let toolbar = cx.weak_entity();
+                canvas(
+                    move |bounds, window, cx| {
+                        let Some(toolbar) = toolbar.upgrade() else {
+                            return;
+                        };
+                        if toolbar.read(cx).available_width == Some(bounds.size.width) {
+                            return;
+                        }
+                        window.defer(cx, move |window, cx| {
+                            toolbar.update(cx, |toolbar, cx| {
+                                if toolbar.available_width == Some(bounds.size.width) {
+                                    return;
+                                }
+                                toolbar.available_width = Some(bounds.size.width);
+                                for (item, _) in &toolbar.items {
+                                    item.available_width_changed(bounds.size.width, window, cx);
+                                }
+                            });
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full()
+            })
             .py(DynamicSpacing::Base06.rems(cx))
             .px(DynamicSpacing::Base08.rems(cx))
             .when(has_left_items || has_right_items, |this| {
@@ -138,6 +175,7 @@ impl Render for Toolbar {
                             this.child(
                                 h_flex()
                                     .min_h_8()
+                                    .min_w_0()
                                     .flex_auto()
                                     .justify_start()
                                     .overflow_x_hidden()
@@ -173,6 +211,7 @@ impl Toolbar {
             items: Default::default(),
             hidden: false,
             can_navigate: true,
+            available_width: None,
         }
     }
 
@@ -186,6 +225,9 @@ impl Toolbar {
         T: 'static + ToolbarItemView,
     {
         let location = item.set_active_pane_item(self.active_item.as_deref(), window, cx);
+        if let Some(width) = self.available_width {
+            item.available_width_changed(width, window, cx);
+        }
         cx.subscribe(&item, |this, item, event, cx| {
             if let Some((_, current_location)) = this
                 .items
@@ -283,5 +325,11 @@ impl<T: ToolbarItemView> ToolbarItemViewHandle for Entity<T> {
 
     fn contribute_context(&self, context: &mut KeyContext, cx: &App) {
         self.read(cx).contribute_context(context, cx)
+    }
+
+    fn available_width_changed(&self, width: Pixels, window: &mut Window, cx: &mut App) {
+        self.update(cx, |this, cx| {
+            this.available_width_changed(width, window, cx);
+        });
     }
 }

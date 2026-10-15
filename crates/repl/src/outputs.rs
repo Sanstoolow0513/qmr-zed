@@ -787,12 +787,7 @@ impl Render for ExecutionView {
                 .color(Color::Muted)
                 .into_any_element(),
             ExecutionStatus::KernelErrored(error) => Label::new(
-                i18n::format(
-                    "Kernel error: {argument0}",
-                    &[("argument0", &format!("{}", error))],
-                    cx,
-                )
-                .to_string(),
+                i18n::format("Kernel error: {argument0}", &[("argument0", error)], cx).to_string(),
             )
             .color(Color::Error)
             .into_any_element(),

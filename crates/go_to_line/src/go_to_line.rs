@@ -602,9 +602,14 @@ mod tests {
         let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
         workspace.update_in(cx, |workspace, window, cx| {
             let cursor_position = cx.new(|_| CursorPosition::new(workspace));
-            workspace.status_bar().update(cx, |status_bar, cx| {
-                status_bar.add_right_item(cursor_position, window, cx);
-            });
+            workspace
+                .active_pane()
+                .read(cx)
+                .toolbar()
+                .clone()
+                .update(cx, |toolbar, cx| {
+                    toolbar.add_item(cursor_position, window, cx);
+                });
         });
 
         let worktree_id = workspace.update(cx, |workspace, cx| {
@@ -636,7 +641,9 @@ mod tests {
                     selections: 1,
                 },
                 workspace
-                    .status_bar()
+                    .active_pane()
+                    .read(cx)
+                    .toolbar()
                     .read(cx)
                     .item_of_type::<CursorPosition>()
                     .expect("missing cursor position item")
@@ -657,7 +664,9 @@ mod tests {
                     selections: 1,
                 },
                 workspace
-                    .status_bar()
+                    .active_pane()
+                    .read(cx)
+                    .toolbar()
                     .read(cx)
                     .item_of_type::<CursorPosition>()
                     .expect("missing cursor position item")
@@ -688,9 +697,14 @@ mod tests {
         let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
         workspace.update_in(cx, |workspace, window, cx| {
             let cursor_position = cx.new(|_| CursorPosition::new(workspace));
-            workspace.status_bar().update(cx, |status_bar, cx| {
-                status_bar.add_right_item(cursor_position, window, cx);
-            });
+            workspace
+                .active_pane()
+                .read(cx)
+                .toolbar()
+                .clone()
+                .update(cx, |toolbar, cx| {
+                    toolbar.add_item(cursor_position, window, cx);
+                });
         });
 
         let worktree_id = workspace.update(cx, |workspace, cx| {
@@ -767,9 +781,14 @@ mod tests {
         let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
         workspace.update_in(cx, |workspace, window, cx| {
             let cursor_position = cx.new(|_| CursorPosition::new(workspace));
-            workspace.status_bar().update(cx, |status_bar, cx| {
-                status_bar.add_right_item(cursor_position, window, cx);
-            });
+            workspace
+                .active_pane()
+                .read(cx)
+                .toolbar()
+                .clone()
+                .update(cx, |toolbar, cx| {
+                    toolbar.add_item(cursor_position, window, cx);
+                });
         });
 
         let worktree_id = workspace.update(cx, |workspace, cx| {
@@ -830,7 +849,9 @@ mod tests {
     ) -> UserCaretPosition {
         workspace.update(cx, |workspace, cx| {
             workspace
-                .status_bar()
+                .active_pane()
+                .read(cx)
+                .toolbar()
                 .read(cx)
                 .item_of_type::<CursorPosition>()
                 .expect("missing cursor position item")
@@ -838,6 +859,113 @@ mod tests {
                 .position()
                 .expect("No position found")
         })
+    }
+
+    #[gpui::test]
+    async fn test_cursor_toolbar_keeps_each_panes_editor(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/dir"),
+            json!({"a.rs": "first\nsecond", "b.rs": "other"}),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("worktree")
+                .read(cx)
+                .id()
+        });
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path((worktree_id, rel_path("a.rs")), None, true, window, cx)
+            })
+            .await
+            .expect("first file")
+            .downcast::<Editor>()
+            .expect("first editor");
+        let first_position = workspace.update_in(cx, |workspace, window, cx| {
+            let position = cx.new(|_| CursorPosition::new(workspace));
+            let pane = workspace.active_pane().clone();
+            pane.read(cx).toolbar().clone().update(cx, |toolbar, cx| {
+                toolbar.add_item(position.clone(), window, cx);
+            });
+            let second_pane =
+                workspace.split_pane(pane, workspace::SplitDirection::Right, window, cx);
+            window.focus(&second_pane.focus_handle(cx), cx);
+            position
+        });
+        cx.run_until_parked();
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path((worktree_id, rel_path("b.rs")), None, true, window, cx)
+            })
+            .await
+            .expect("second file")
+            .downcast::<Editor>()
+            .expect("second editor");
+        let second_position = workspace.update_in(cx, |workspace, window, cx| {
+            let position = cx.new(|_| CursorPosition::new(workspace));
+            workspace
+                .active_pane()
+                .read(cx)
+                .toolbar()
+                .clone()
+                .update(cx, |toolbar, cx| {
+                    toolbar.add_item(position.clone(), window, cx);
+                });
+            position
+        });
+        first_editor.update_in(cx, |editor, window, cx| {
+            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
+                selections.select_ranges([Point::new(1, 2)..Point::new(1, 2)]);
+            });
+        });
+        second_editor.update_in(cx, |editor, window, cx| {
+            editor.move_right(&MoveRight, window, cx);
+        });
+        cx.run_until_parked();
+        first_position.read_with(cx, |position, _| {
+            assert_eq!(position.position(), Some(user_caret_position(2, 3)));
+        });
+        second_position.read_with(cx, |position, _| {
+            assert_eq!(position.position(), Some(user_caret_position(1, 2)));
+        });
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                workspace.active_item(cx).expect("active item").item_id(),
+                second_editor.entity_id()
+            );
+        });
+        first_position.update_in(cx, |position, window, cx| {
+            position.toggle_go_to_line(window, cx);
+        });
+        let modal = workspace.read_with(cx, |workspace, cx| {
+            let modal = workspace
+                .active_modal::<GoToLine>(cx)
+                .expect("go to line modal");
+            assert_eq!(modal.read(cx).active_editor, first_editor);
+            modal
+        });
+        modal.update_in(cx, |modal, window, cx| {
+            modal.line_editor.update(cx, |editor, cx| {
+                editor.set_text("1:1", window, cx);
+            });
+            modal.confirm(&menu::Confirm, window, cx);
+        });
+        cx.run_until_parked();
+        first_position.read_with(cx, |position, _| {
+            assert_eq!(position.position(), Some(user_caret_position(1, 1)));
+        });
+        second_position.read_with(cx, |position, _| {
+            assert_eq!(position.position(), Some(user_caret_position(1, 2)));
+        });
     }
 
     fn user_caret_position(line: u32, character: u32) -> UserCaretPosition {

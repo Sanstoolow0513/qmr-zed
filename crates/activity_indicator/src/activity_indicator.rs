@@ -382,6 +382,10 @@ impl ActivityIndicator {
         self.content_to_render(cx).map(|content| content.message)
     }
 
+    pub fn has_status(&mut self, cx: &mut Context<Self>) -> bool {
+        self.content_to_render(cx).is_some()
+    }
+
     fn content_to_render(&mut self, cx: &mut Context<Self>) -> Option<Content> {
         if let Some(content) = self.primary_content(cx) {
             return Some(content);
@@ -782,7 +786,7 @@ impl Render for ActivityIndicator {
                         }))
                     }),
                 )
-                .anchor(gpui::Anchor::BottomLeft)
+                .anchor(gpui::Anchor::TopRight)
                 .when(!has_click_handler, |this| {
                     this.menu(move |window, cx| {
                         let strong_this = activity_indicator.upgrade()?;

@@ -319,7 +319,7 @@ Options: `"bottom"` (default), `"left"`, `"right"`
 
 ### Terminal Button
 
-Hide the terminal button in the status bar:
+Hide the terminal entry in the tools menu:
 
 ```json [settings]
 {

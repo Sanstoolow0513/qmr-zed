@@ -662,7 +662,7 @@ pub struct DebuggerSettingsContent {
     ///
     /// Default: true
     pub save_breakpoints: Option<bool>,
-    /// Whether to show the debug button in the status bar.
+    /// Whether to show the debugger entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -749,7 +749,7 @@ pub struct CallSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct GitPanelSettingsContent {
-    /// Whether to show the panel button in the status bar.
+    /// Whether to show the panel entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -962,7 +962,7 @@ pub struct ScrollbarSettings {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
 pub struct PanelSettingsContent {
-    /// Whether to show the panel button in the status bar.
+    /// Whether to show the panel entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -1223,7 +1223,7 @@ pub enum HourFormat {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
 pub struct OutlinePanelSettingsContent {
-    /// Whether to show the outline panel button in the status bar.
+    /// Whether to show the outline panel button in the tools navigation.
     ///
     /// Default: true
     pub button: Option<bool>,

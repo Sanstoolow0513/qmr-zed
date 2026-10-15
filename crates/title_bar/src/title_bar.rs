@@ -47,8 +47,8 @@ use ui::{
 use update_version::UpdateVersion;
 use util::ResultExt;
 use workspace::{
-    AccessibleMode, MultiWorkspace, ToggleWorktreeSecurity, Workspace,
-    notifications::NotifyResultExt,
+    AccessibleMode, MultiWorkspace, SidebarSide, ToggleWorkspaceSidebar, ToggleWorktreeSecurity,
+    Workspace, notifications::NotifyResultExt, sidebar_side_context_menu,
 };
 
 use zed_actions::OpenRemote;
@@ -180,6 +180,10 @@ impl Render for TitleBar {
                 .and_then(|ws| ws.read(cx).multi_workspace().cloned())
             {
                 self.multi_workspace = Some(mw.clone());
+                if let Some(multi_workspace) = mw.upgrade() {
+                    self._subscriptions
+                        .push(cx.observe(&multi_workspace, |_, _, cx| cx.notify()));
+                }
                 self.platform_titlebar.update(cx, |titlebar, _cx| {
                     titlebar.set_multi_workspace(mw);
                 });
@@ -260,6 +264,7 @@ impl Render for TitleBar {
             h_flex()
                 .h_full()
                 .gap_0p5()
+                .children(self.render_sidebar_toggle(SidebarSide::Left, cx))
                 .map(|title_bar| {
                     let mut render_project_items = title_bar_settings.show_branch_name
                         || title_bar_settings.show_project_items;
@@ -312,10 +317,17 @@ impl Render for TitleBar {
                 .pr_1()
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .children(self.workspace.upgrade().and_then(|workspace| {
+                    let workspace = workspace.read(cx);
+                    workspace
+                        .tools_visible_in_titlebar(cx)
+                        .then(|| workspace.tools().clone())
+                }))
                 .child(self.update_version.clone())
                 .when(TitleBarSettings::get_global(cx).show_user_menu, |this| {
                     this.child(self.render_user_menu_button(cx))
                 })
+                .children(self.render_sidebar_toggle(SidebarSide::Right, cx))
                 .into_any_element(),
         );
 
@@ -386,6 +398,9 @@ impl TitleBar {
         };
 
         let mut subscriptions = Vec::new();
+        if let Some(multi_workspace) = multi_workspace.as_ref().and_then(WeakEntity::upgrade) {
+            subscriptions.push(cx.observe(&multi_workspace, |_, _, cx| cx.notify()));
+        }
         subscriptions.push(
             cx.observe(&workspace.weak_handle().upgrade().unwrap(), |_, _, cx| {
                 cx.notify()
@@ -449,6 +464,68 @@ impl TitleBar {
         this.observe_diagnostics(cx);
 
         this
+    }
+
+    fn render_sidebar_toggle(
+        &self,
+        side: SidebarSide,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let multi_workspace = self.multi_workspace.as_ref()?.upgrade()?;
+        let multi_workspace = multi_workspace.read(cx);
+        if !multi_workspace.multi_workspace_enabled(cx)
+            || multi_workspace.sidebar_open()
+            || multi_workspace.sidebar_side(cx) != side
+        {
+            return None;
+        }
+        let on_right = side == SidebarSide::Right;
+        let has_notifications = multi_workspace.sidebar_has_notifications(cx);
+        let indicator_border = cx.theme().colors().title_bar_background;
+
+        Some(
+            sidebar_side_context_menu("sidebar-titlebar-toggle-menu", cx)
+                .anchor(if on_right {
+                    Anchor::TopRight
+                } else {
+                    Anchor::TopLeft
+                })
+                .attach(if on_right {
+                    Anchor::BottomRight
+                } else {
+                    Anchor::BottomLeft
+                })
+                .trigger(move |_, _, cx| {
+                    IconButton::new(
+                        "toggle-workspace-sidebar",
+                        if on_right {
+                            IconName::ThreadsSidebarRightClosed
+                        } else {
+                            IconName::ThreadsSidebarLeftClosed
+                        },
+                    )
+                    .icon_size(IconSize::Medium)
+                    .size(ButtonSize::Medium)
+                    .width(px(28.0))
+                    .tab_index(0isize)
+                    .aria_label(i18n::text("Toggle Sidebar", cx))
+                    .when(has_notifications, |this| {
+                        this.indicator(Indicator::dot().color(Color::Accent))
+                            .indicator_border_color(Some(indicator_border))
+                    })
+                    .tooltip(|_, cx| {
+                        Tooltip::localized_for_action("Toggle Sidebar", &ToggleWorkspaceSidebar, cx)
+                    })
+                    .on_click(|_, window, cx| {
+                        if let Some(multi_workspace) = window.root::<MultiWorkspace>().flatten() {
+                            multi_workspace.update(cx, |multi_workspace, cx| {
+                                multi_workspace.toggle_sidebar(window, cx);
+                            });
+                        }
+                    })
+                })
+                .into_any_element(),
+        )
     }
 
     fn worktree_count(&self, cx: &App) -> usize {

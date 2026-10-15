@@ -247,7 +247,7 @@ impl Render for KeyContextView {
             .child(Label::localized("Last Keystroke").mt_4().size(LabelSize::Large))
             .when_some(self.pending_keystrokes.as_ref(), |el, keystrokes| {
                 el.child(
-                    Label::new(i18n::format("Waiting for more input: {argument0}", &[("argument0", &format!("{}", keystrokes.iter().map(|k| k.unparse()).join(" ")))], cx).to_string())
+                    Label::new(i18n::format("Waiting for more input: {argument0}", &[("argument0", &keystrokes.iter().map(|k| k.unparse()).join(" "))], cx).to_string())
                     .ml(px(12.)),
                 )
             })

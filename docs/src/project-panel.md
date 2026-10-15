@@ -7,8 +7,9 @@ description: Navigate workspace files and directories with Zed's project panel. 
 
 The project panel shows a tree view of your workspace's files and directories.
 Toggle it with {#action project_panel::ToggleFocus} ({#kb
-project_panel::ToggleFocus}), or click the **Project Panel** button in the
-status bar.
+project_panel::ToggleFocus}), or click the file button in the tools navigation
+above the right-hand panel. When the panel is hidden, use the title bar's tools
+menu.
 
 ![Project Panel](https://images.zed.dev/docs/project-panel/panel.png)
 

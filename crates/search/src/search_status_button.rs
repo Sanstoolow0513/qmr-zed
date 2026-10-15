@@ -29,7 +29,9 @@ impl Render for SearchButton {
         let focus_handle = self.pane_item_focus_handle.clone();
         button.child(
             IconButton::new("project-search-indicator", SEARCH_ICON)
-                .icon_size(IconSize::Small)
+                .icon_size(IconSize::Medium)
+                .size(ui::ButtonSize::Medium)
+                .width(ui::rems_from_px(28_f32))
                 .tab_index(0isize)
                 .aria_label(i18n::text("Project Search", cx))
                 .tooltip(move |_window, cx| {

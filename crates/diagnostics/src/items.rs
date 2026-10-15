@@ -16,6 +16,7 @@ use crate::{Deploy, IncludeWarnings, ProjectDiagnosticsEditor};
 
 /// The status bar item that displays diagnostic counts.
 pub struct DiagnosticIndicator {
+    compact: bool,
     summary: project::DiagnosticSummary,
     workspace: WeakEntity<Workspace>,
     current_diagnostic: Option<Diagnostic>,
@@ -33,63 +34,89 @@ impl Render for DiagnosticIndicator {
             return indicator.hidden();
         }
 
-        let diagnostic_indicator = match (self.summary.error_count, self.summary.warning_count) {
-            (0, 0) => h_flex().child(
-                Icon::new(IconName::Check)
-                    .size(IconSize::Small)
-                    .color(Color::Default),
-            ),
-            (error_count, warning_count) => h_flex()
-                .gap_1()
-                .when(error_count > 0, |this| {
-                    this.child(
-                        Icon::new(IconName::XCircle)
-                            .size(IconSize::Small)
-                            .color(Color::Error),
-                    )
-                    .child(Label::new(error_count.to_string()).size(LabelSize::Small))
-                })
-                .when(warning_count > 0, |this| {
-                    this.child(
-                        Icon::new(IconName::Warning)
-                            .size(IconSize::Small)
-                            .color(Color::Warning),
-                    )
-                    .child(Label::new(warning_count.to_string()).size(LabelSize::Small))
-                }),
+        let diagnostic_indicator = if self.compact {
+            let count = self.summary.error_count + self.summary.warning_count;
+            h_flex()
+                .relative()
+                .justify_center()
+                .w_7()
+                .h_7()
+                .child(
+                    Icon::new(if count == 0 {
+                        IconName::Check
+                    } else {
+                        IconName::Warning
+                    })
+                    .size(IconSize::Medium)
+                    .color(if self.summary.error_count > 0 {
+                        Color::Error
+                    } else if count > 0 {
+                        Color::Warning
+                    } else {
+                        Color::Default
+                    }),
+                )
+                .when(count > 0, |this| this.child(ui::CountBadge::new(count)))
+        } else {
+            match (self.summary.error_count, self.summary.warning_count) {
+                (0, 0) => h_flex().child(
+                    Icon::new(IconName::Check)
+                        .size(IconSize::Small)
+                        .color(Color::Default),
+                ),
+                (error_count, warning_count) => h_flex()
+                    .gap_1()
+                    .when(error_count > 0, |this| {
+                        this.child(
+                            Icon::new(IconName::XCircle)
+                                .size(IconSize::Small)
+                                .color(Color::Error),
+                        )
+                        .child(Label::new(error_count.to_string()).size(LabelSize::Small))
+                    })
+                    .when(warning_count > 0, |this| {
+                        this.child(
+                            Icon::new(IconName::Warning)
+                                .size(IconSize::Small)
+                                .color(Color::Warning),
+                        )
+                        .child(Label::new(warning_count.to_string()).size(LabelSize::Small))
+                    }),
+            }
         };
 
-        let status = if let Some(diagnostic) = &self.current_diagnostic {
-            let message = diagnostic
-                .message
-                .as_str()
-                .split_once('\n')
-                .map_or(diagnostic.message.as_str(), |(first, _)| first);
-            let diagnostics_already_active = self.any_active_diagnostics(cx);
-            let tooltip = if !diagnostics_already_active {
-                "Expand Diagnostics"
+        let status =
+            if let Some(diagnostic) = self.current_diagnostic.as_ref().filter(|_| !self.compact) {
+                let message = diagnostic
+                    .message
+                    .as_str()
+                    .split_once('\n')
+                    .map_or(diagnostic.message.as_str(), |(first, _)| first);
+                let diagnostics_already_active = self.any_active_diagnostics(cx);
+                let tooltip = if !diagnostics_already_active {
+                    "Expand Diagnostics"
+                } else {
+                    "Next Diagnostic"
+                };
+                Some(
+                    Button::new("diagnostic_message", SharedString::new(message))
+                        .label_size(LabelSize::Small)
+                        .truncate(true)
+                        .tab_index(0isize)
+                        .tooltip(move |_window, cx| {
+                            Tooltip::for_action(
+                                tooltip,
+                                &editor::actions::GoToDiagnostic::default(),
+                                cx,
+                            )
+                        })
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.go_to_next_diagnostic(window, cx)
+                        })),
+                )
             } else {
-                "Next Diagnostic"
+                None
             };
-            Some(
-                Button::new("diagnostic_message", SharedString::new(message))
-                    .label_size(LabelSize::Small)
-                    .truncate(true)
-                    .tab_index(0isize)
-                    .tooltip(move |_window, cx| {
-                        Tooltip::for_action(
-                            tooltip,
-                            &editor::actions::GoToDiagnostic::default(),
-                            cx,
-                        )
-                    })
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.go_to_next_diagnostic(window, cx)),
-                    ),
-            )
-        } else {
-            None
-        };
 
         let diagnostics_label = match (self.summary.error_count, self.summary.warning_count) {
             (0, 0) => "Project diagnostics: no problems".to_string(),
@@ -114,6 +141,9 @@ impl Render for DiagnosticIndicator {
         indicator
             .child(
                 ButtonLike::new("diagnostic-indicator")
+                    .when(self.compact, |button| {
+                        button.size(ButtonSize::Medium).width(rems_from_px(28_f32))
+                    })
                     .child(diagnostic_indicator)
                     .tab_index(0isize)
                     .aria_label(diagnostics_label)
@@ -143,6 +173,11 @@ impl Render for DiagnosticIndicator {
 }
 
 impl DiagnosticIndicator {
+    pub fn new_toolbar(workspace: &Workspace, cx: &mut Context<Self>) -> Self {
+        let mut indicator = Self::new(workspace, cx);
+        indicator.compact = true;
+        indicator
+    }
     pub fn new(workspace: &Workspace, cx: &mut Context<Self>) -> Self {
         let project = workspace.project();
         cx.subscribe(project, |this, project, event, cx| match event {
@@ -174,6 +209,7 @@ impl DiagnosticIndicator {
         .detach();
 
         Self {
+            compact: false,
             summary: project.read(cx).diagnostic_summary(false, cx),
             active_editor: None,
             workspace: workspace.weak_handle(),

@@ -1966,9 +1966,7 @@ impl Editor {
     }
 
     pub(super) fn render_git_blame_inline(&self, window: &Window, cx: &App) -> bool {
-        ProjectSettings::get_global(cx).git.inline_blame.location
-            == project::project_settings::InlineBlameLocation::Inline
-            && self.show_git_blame_inline
+        self.show_git_blame_inline
             && (self.focus_handle.is_focused(window) || self.inline_blame_popover.is_some())
             && !self.newest_selection_head_on_empty_line(cx)
             && self.has_blame_entries(cx)

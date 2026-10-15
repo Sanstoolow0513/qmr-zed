@@ -596,7 +596,7 @@ impl Sidebar {
     fn render_entry(
         &mut self,
         index: usize,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(entry) = self.entries.get(index).cloned() else {
@@ -628,11 +628,15 @@ impl Sidebar {
                                 IconName::ChevronRight
                             },
                         )
+                        .icon_size(IconSize::Small)
+                        .width(px(24.0))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.set_group_expanded(&toggle_key, !expanded, cx);
                             this.update_entries(cx);
                             cx.stop_propagation();
-                        })),
+                        }))
+                        .render(window, cx)
+                        .height(px(24.0).into()),
                     )
                     .child(
                         div()
@@ -642,11 +646,15 @@ impl Sidebar {
                     )
                     .child(
                         IconButton::new(("new-terminal", index), IconName::Plus)
+                            .icon_size(IconSize::Small)
+                            .width(px(24.0))
                             .tooltip(Tooltip::localized_text("New Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_group(new_key.clone(), true, window, cx);
                                 cx.stop_propagation();
-                            })),
+                            }))
+                            .render(window, cx)
+                            .height(px(24.0).into()),
                     )
                     .child(
                         PopoverMenu::new(("project-menu", index))
@@ -705,10 +713,13 @@ impl Sidebar {
                                     }))
                                 }
                             })
-                            .trigger(IconButton::new(
-                                ("project-options", index),
-                                IconName::Ellipsis,
-                            )),
+                            .trigger(
+                                IconButton::new(("project-options", index), IconName::Ellipsis)
+                                    .icon_size(IconSize::Small)
+                                    .width(px(24.0))
+                                    .render(window, cx)
+                                    .height(px(24.0).into()),
+                            ),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.selection = Some(index);
@@ -762,6 +773,8 @@ impl Sidebar {
                     )
                     .child(
                         IconButton::new(("close-terminal", index), IconName::Close)
+                            .icon_size(IconSize::Small)
+                            .width(px(24.0))
                             .tooltip(Tooltip::localized_text("Close Terminal"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if let Some(panel) =
@@ -779,7 +792,9 @@ impl Sidebar {
                                 }
                                 this.update_entries(cx);
                                 cx.stop_propagation();
-                            })),
+                            }))
+                            .render(window, cx)
+                            .height(px(24.0).into()),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_entry(index, window, cx)
@@ -821,12 +836,7 @@ impl Sidebar {
             });
         }
     }
-    fn render_sidebar_header(
-        &self,
-        no_open_projects: bool,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_sidebar_header(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_query = self.has_filter_query(cx);
         let sidebar_on_left = self.side(cx) == SidebarSide::Left;
         let sidebar_on_right = self.side(cx) == SidebarSide::Right;
@@ -836,22 +846,77 @@ impl Sidebar {
         let right_window_controls =
             !cfg!(target_os = "macos") && not_fullscreen && sidebar_on_right;
         let header_height = platform_title_bar_height(window);
+        let left_controls = left_window_controls
+            .then(|| Self::render_left_window_controls(window, cx))
+            .flatten();
+        let right_controls = right_window_controls
+            .then(|| Self::render_right_window_controls(window, cx))
+            .flatten();
+        let controls_width = if traffic_lights {
+            px(ui::utils::TRAFFIC_LIGHT_PADDING)
+        } else if cfg!(target_os = "windows") && right_controls.is_some() {
+            px(108.)
+        } else if left_controls.is_some() || right_controls.is_some() {
+            let count = cx.button_layout().map_or(0, |layout| {
+                let buttons = if sidebar_on_left {
+                    layout.left
+                } else {
+                    layout.right
+                };
+                buttons.iter().flatten().count()
+            });
+            window.rem_size() * (count as f32 * 2. + 0.75)
+        } else {
+            px(0.)
+        };
+        let separate_controls = controls_width > px(0.) && self.width - controls_width < px(160.);
+        let mut search_controls = Some(
+            h_flex()
+                .debug_selector(|| "workspace-sidebar-header".to_string())
+                .flex_1()
+                .min_w_0()
+                .gap_1()
+                .child(self.render_sidebar_toggle_button(cx))
+                .child(self.render_filter_input(cx))
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .when(
+                            self.width - controls_width >= px(300.)
+                                && self.selection.is_some()
+                                && !self.filter_editor.focus_handle(cx).is_focused(window),
+                            |this| this.child(KeyBinding::for_action(&FocusSidebarFilter, cx)),
+                        )
+                        .when(has_query, |this| {
+                            this.child(
+                                IconButton::new("clear_filter", IconName::Close)
+                                    .icon_size(IconSize::Medium)
+                                    .size(ButtonSize::Medium)
+                                    .width(px(28.0))
+                                    .tooltip(Tooltip::localized_text("Clear Search"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.reset_filter_editor_text(window, cx);
+                                        this.update_entries(cx);
+                                    })),
+                            )
+                        }),
+                )
+                .child(self.render_recent_projects_button(cx)),
+        );
 
-        h_flex()
+        let header = h_flex()
             .h(header_height)
+            .flex_none()
             .map(|header| match window.window_decorations() {
-                // Without projects there's no bottom border to match the title bar's.
                 Decorations::Client { .. } => apply_title_bar_insets(
                     header,
                     left_window_controls,
                     right_window_controls,
-                    no_open_projects,
+                    separate_controls,
                 ),
                 Decorations::Server => header.mt_px().pb_px(),
             })
-            .when(left_window_controls, |this| {
-                this.children(Self::render_left_window_controls(window, cx))
-            })
+            .children(left_controls)
             .map(|this| {
                 if traffic_lights {
                     this.pl(px(ui::utils::TRAFFIC_LIGHT_PADDING))
@@ -863,43 +928,28 @@ impl Sidebar {
             })
             .when(!right_window_controls, |this| this.pr_1p5())
             .gap_1()
-            .when(!no_open_projects, |this| {
+            .when(!separate_controls, |this| {
                 this.border_b_1()
                     .border_color(cx.theme().colors().border)
                     .when(traffic_lights, |this| {
                         this.child(Divider::vertical().color(ui::DividerColor::Border))
                     })
-                    .child(
-                        div().ml_1().child(
-                            Icon::new(IconName::MagnifyingGlass)
-                                .size(IconSize::Small)
-                                .color(Color::Muted),
-                        ),
-                    )
-                    .child(self.render_filter_input(cx))
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .when(
-                                self.selection.is_some()
-                                    && !self.filter_editor.focus_handle(cx).is_focused(window),
-                                |this| this.child(KeyBinding::for_action(&FocusSidebarFilter, cx)),
-                            )
-                            .when(has_query, |this| {
-                                this.child(
-                                    IconButton::new("clear_filter", IconName::Close)
-                                        .icon_size(IconSize::Small)
-                                        .tooltip(Tooltip::localized_text("Clear Search"))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.reset_filter_editor_text(window, cx);
-                                            this.update_entries(cx);
-                                        })),
-                                )
-                            }),
-                    )
+                    .children(search_controls.take())
             })
-            .when(right_window_controls, |this| {
-                this.children(Self::render_right_window_controls(window, cx))
+            .when(separate_controls, |this| this.child(div().flex_1()))
+            .children(right_controls);
+        v_flex()
+            .flex_none()
+            .child(header)
+            .when_some(search_controls, |this, row| {
+                this.child(
+                    row.h(header_height)
+                        .flex_none()
+                        .w_full()
+                        .px_1p5()
+                        .border_b_1()
+                        .border_color(cx.theme().colors().border),
+                )
             })
     }
     fn render_left_window_controls(window: &Window, cx: &mut App) -> Option<AnyElement> {
@@ -916,19 +966,19 @@ impl Sidebar {
             window,
         )
     }
-    fn render_sidebar_toggle_button(&self, _cx: &mut Context<Self>) -> impl IntoElement {
-        let on_right = WorkspaceSidebarSettings::get_global(_cx).side() == SidebarSide::Right;
+    fn render_sidebar_toggle_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let on_right = self.side(cx) == SidebarSide::Right;
 
-        sidebar_side_context_menu("sidebar-toggle-menu", _cx)
+        sidebar_side_context_menu("sidebar-toggle-menu", cx)
             .anchor(if on_right {
-                gpui::Anchor::BottomRight
-            } else {
-                gpui::Anchor::BottomLeft
-            })
-            .attach(if on_right {
                 gpui::Anchor::TopRight
             } else {
                 gpui::Anchor::TopLeft
+            })
+            .attach(if on_right {
+                gpui::Anchor::BottomRight
+            } else {
+                gpui::Anchor::BottomLeft
             })
             .trigger(move |_is_active, _window, _cx| {
                 let icon = if on_right {
@@ -937,7 +987,11 @@ impl Sidebar {
                     IconName::ThreadsSidebarLeftOpen
                 };
                 IconButton::new("sidebar-close-toggle", icon)
-                    .icon_size(IconSize::Small)
+                    .icon_size(IconSize::Medium)
+                    .size(ButtonSize::Medium)
+                    .width(px(28.0))
+                    .aria_label("Toggle Sidebar")
+                    .tab_index(0isize)
                     .tooltip(Tooltip::element(move |_window, cx| {
                         v_flex()
                             .gap_1()
@@ -1015,15 +1069,20 @@ impl Sidebar {
             })
             .trigger_with_tooltip(
                 IconButton::new("open-project", IconName::FolderAdd)
-                    .icon_size(IconSize::Small)
+                    .icon_size(IconSize::Medium)
+                    .size(ButtonSize::Medium)
+                    .width(px(28.0))
+                    .aria_label("Add Project")
+                    .tab_index(0isize)
                     .selected_style(ButtonStyle::Tinted(TintColor::Accent)),
                 |_window, cx| Tooltip::for_action("Add Project", &OpenRecent::default(), cx),
             )
             .offset(gpui::Point {
                 x: px(-2.0),
-                y: px(-2.0),
+                y: px(2.0),
             })
-            .anchor(gpui::Anchor::BottomRight)
+            .anchor(gpui::Anchor::TopRight)
+            .attach(gpui::Anchor::BottomRight)
     }
 }
 impl WorkspaceSidebar for Sidebar {
@@ -1218,7 +1277,7 @@ impl Render for Sidebar {
             .on_action(
                 cx.listener(|this, _: &menu::Confirm, window, cx| this.editor_confirm(window, cx)),
             )
-            .child(self.render_sidebar_header(self.entries.is_empty(), window, cx))
+            .child(self.render_sidebar_header(window, cx))
             .child(
                 div().flex_1().overflow_hidden().child(
                     gpui::list(
@@ -1229,16 +1288,6 @@ impl Render for Sidebar {
                     )
                     .size_full(),
                 ),
-            )
-            .child(
-                h_flex()
-                    .p_1()
-                    .gap_1()
-                    .border_t_1()
-                    .border_color(cx.theme().colors().border)
-                    .child(self.render_sidebar_toggle_button(cx))
-                    .child(div().flex_1())
-                    .child(self.render_recent_projects_button(cx)),
             )
     }
 }
