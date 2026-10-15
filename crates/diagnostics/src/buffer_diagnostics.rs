@@ -864,8 +864,8 @@ impl Item for BufferDiagnosticsEditor {
             .into_any_element()
     }
 
-    fn tab_content_text(&self, _detail: usize, _app: &App) -> SharedString {
-        "Buffer Diagnostics".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Buffer Diagnostics", cx)
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
@@ -919,7 +919,7 @@ impl Render for BufferDiagnosticsEditor {
                         .child(
                             Button::new("open-file", filename)
                                 .style(ButtonStyle::Transparent)
-                                .tooltip(Tooltip::text("Open File"))
+                                .tooltip(Tooltip::localized_text("Open File"))
                                 .on_click(cx.listener(|buffer_diagnostics, _, window, cx| {
                                     if let Some(workspace) = Workspace::for_window(window, cx) {
                                         workspace.update(cx, |workspace, cx| {

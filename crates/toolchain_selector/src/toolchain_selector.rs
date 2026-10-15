@@ -175,22 +175,24 @@ impl AddToolchainState {
                                 .p_1()
                                 .justify_between()
                                 .gap_2()
-                                .child(Label::new("Select Toolchain Path").color(Color::Muted).map(
-                                    |this| {
-                                        if is_loading {
-                                            this.with_animation(
-                                                "select-toolchain-label",
-                                                Animation::new(Duration::from_secs(2))
-                                                    .repeat()
-                                                    .with_easing(pulsating_between(0.4, 0.8)),
-                                                |label, delta| label.alpha(delta),
-                                            )
-                                            .into_any()
-                                        } else {
-                                            this.into_any_element()
-                                        }
-                                    },
-                                ))
+                                .child(
+                                    Label::localized("Select Toolchain Path")
+                                        .color(Color::Muted)
+                                        .map(|this| {
+                                            if is_loading {
+                                                this.with_animation(
+                                                    "select-toolchain-label",
+                                                    Animation::new(Duration::from_secs(2))
+                                                        .repeat()
+                                                        .with_easing(pulsating_between(0.4, 0.8)),
+                                                    |label, delta| label.alpha(delta),
+                                                )
+                                                .into_any()
+                                            } else {
+                                                this.into_any_element()
+                                            }
+                                        }),
+                                )
                                 .when_some(error, |this, error| {
                                     this.child(Label::new(error).color(Color::Error))
                                 }),
@@ -435,7 +437,7 @@ impl Render for AddToolchainState {
                             .child(
                                 v_flex()
                                     .child(
-                                        Label::new("Scope")
+                                        Label::localized("Scope")
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)
                                             .mt_1()
@@ -1147,7 +1149,7 @@ impl PickerDelegate for ToolchainSelectorDelegate {
                                 }),
                         )
                         .child(
-                            Button::new("select", "Select")
+                            Button::localized("select", "Select")
                                 .key_binding(KeyBinding::for_action_in(
                                     &menu::Confirm,
                                     &self.focus_handle,

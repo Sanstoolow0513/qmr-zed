@@ -225,11 +225,11 @@ impl Component for Divider {
                             .w_full()
                             .gap_4()
                             .px_4()
-                            .child(Label::new("Section One"))
+                            .child(Label::localized("Section One"))
                             .child(Divider::horizontal())
-                            .child(Label::new("Section Two"))
+                            .child(Label::localized("Section Two"))
                             .child(Divider::horizontal_dashed())
-                            .child(Label::new("Section Three"))
+                            .child(Label::localized("Section Three"))
                             .into_any_element(),
                     )],
                 ),

@@ -1,5 +1,5 @@
 mod app_menus;
-pub mod edit_prediction_registry;
+
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_only_instance;
 mod migrate;
@@ -15,8 +15,6 @@ pub mod visual_tests;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_only_instance;
 
-use agent_settings::{UserAgentsMdState, init_user_agents_md};
-use agent_ui::AgentDiffToolbar;
 use anyhow::Context as _;
 pub use app_menus::*;
 use assets::Assets;
@@ -40,13 +38,12 @@ use git_ui::staged_diff::StagedDiffToolbar;
 use git_ui::unstaged_diff::UnstagedDiffToolbar;
 use git_ui_core::file_diff_view::FileDiffStyleToolbar;
 use gpui::{
-    Action, App, AppContext as _, AsyncWindowContext, ClipboardItem, Context, DismissEvent,
-    Element, Entity, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement,
-    PathPromptOptions, PromptLevel, ReadGlobal, SharedString, Size, Task, TaskExt, TitlebarOptions,
-    UpdateGlobal, WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    actions, image_cache, img, point, px, retain_all,
+    Action, App, AppContext as _, ClipboardItem, Context, DismissEvent, Element, Entity,
+    FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement, PathPromptOptions,
+    PromptLevel, ReadGlobal, SharedString, Size, Task, TaskExt, TitlebarOptions, UpdateGlobal,
+    WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions,
+    image_cache, img, point, px, retain_all,
 };
-use image_viewer::ImageInfo;
 use language::Capability;
 use language_onboarding::BasedPyrightBanner;
 use language_tools::lsp_button::{self, LspButton};
@@ -99,9 +96,9 @@ use vim_mode_setting::VimModeSetting;
 use workspace::notifications::{NotificationId, dismiss_app_notification, show_app_notification};
 
 use workspace::{
-    AppState, MultiWorkspace, NewFile, NewWindow, OpenLog, Panel, Toast, Workspace,
-    WorkspaceSettings, create_and_open_local_file,
-    notifications::simple_message_notification::MessageNotification, open_new,
+    AppState, MultiWorkspace, NewFile, NewWindow, OpenLog, Toast, Workspace, WorkspaceSettings,
+    create_and_open_local_file, notifications::simple_message_notification::MessageNotification,
+    open_new,
 };
 use workspace::{CloseProject, CloseWindow, RestoreBanner, with_active_or_new_workspace};
 use workspace::{Pane, notifications::DetachAndPromptErr};
@@ -502,38 +499,6 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
 
         let window_handle = window.window_handle();
         let multi_workspace_handle = cx.entity();
-        cx.subscribe_in(
-            &multi_workspace_handle,
-            window,
-            |this, _multi_workspace, event: &workspace::MultiWorkspaceEvent, window, cx| {
-                let workspace::MultiWorkspaceEvent::ActiveWorkspaceChanged { source_workspace } =
-                    event
-                else {
-                    return;
-                };
-
-                let active_workspace = this.workspace().clone();
-                let source_workspace = source_workspace.clone();
-                active_workspace.update(cx, |workspace, cx| {
-                    if let Some(ref source) = source_workspace {
-                        if let Some(panel) = workspace.panel::<agent_ui::AgentPanel>(cx) {
-                            panel.update(cx, |panel, cx| {
-                                panel.initialize_from_source_workspace_if_needed(
-                                    source.clone(),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        }
-                    }
-
-                    ensure_agent_panel_for_workspace(workspace, source_workspace, window, cx)
-                        .detach_and_log_err(cx);
-                });
-            },
-        )
-        .detach();
-
         cx.defer(move |cx| {
             window_handle
                 .update(cx, |_, window, cx| {
@@ -583,72 +548,70 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
             }
         }
 
-        let edit_prediction_menu_handle = PopoverMenuHandle::default();
-        let edit_prediction_ui = cx.new(|cx| {
-            edit_prediction_ui::EditPredictionButton::new(
-                app_state.fs.clone(),
-                app_state.user_store.clone(),
-                edit_prediction_menu_handle.clone(),
-                workspace.project().clone(),
-                cx,
-            )
-        });
-        workspace.register_action({
-            move |_, _: &edit_prediction_ui::ToggleMenu, window, cx| {
-                edit_prediction_menu_handle.toggle(window, cx);
-            }
-        });
-
         let search_button = cx.new(|_| search::search_status_button::SearchButton::new());
         let diagnostic_summary =
-            cx.new(|cx| diagnostics::items::DiagnosticIndicator::new(workspace, cx));
-        let active_file_name = cx.new(|_| workspace::active_file_name::ActiveFileName::new());
+            cx.new(|cx| diagnostics::items::DiagnosticIndicator::new_toolbar(workspace, cx));
         let activity_indicator = activity_indicator::ActivityIndicator::new(workspace, window, cx);
-        let active_buffer_encoding =
-            cx.new(|_| encoding_selector::ActiveBufferEncoding::new(workspace));
-        let active_buffer_language =
-            cx.new(|_| language_selector::ActiveBufferLanguage::new(workspace));
         let active_toolchain_language =
             cx.new(|cx| toolchain_selector::ActiveToolchain::new(workspace, window, cx));
-        let vim_mode_indicator = cx.new(|cx| vim::ModeIndicator::new(window, cx));
         let pending_keystrokes_indicator =
             cx.new(|cx| which_key::PendingKeystrokesIndicator::new(window, cx));
-        let image_info = cx.new(|_cx| ImageInfo::new(workspace));
+        workspace.add_transient_status(pending_keystrokes_indicator.into(), cx);
 
         let lsp_button_menu_handle = PopoverMenuHandle::default();
         let lsp_button =
             cx.new(|cx| LspButton::new(workspace, lsp_button_menu_handle.clone(), window, cx));
         workspace.register_action({
+            let tools = workspace.tools().clone();
             move |_, _: &lsp_button::ToggleMenu, window, cx| {
-                lsp_button_menu_handle.toggle(window, cx);
+                tools.update(cx, |tools, cx| tools.show_menu(window, cx));
+                let handle = lsp_button_menu_handle.clone();
+                window.on_next_frame(move |window, cx| handle.toggle(window, cx));
             }
         });
-
-        let cursor_position =
-            cx.new(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
-        let line_ending_indicator =
-            cx.new(|_| line_ending_selector::LineEndingIndicator::default());
-        let git_blame_status = cx.new(|_| git_ui::GitBlameStatus::default());
-        let merge_conflict_indicator =
-            cx.new(|cx| git_ui::MergeConflictIndicator::new(workspace, cx));
+        workspace.tools().update(cx, |tools, cx| {
+            tools.add_project_action(
+                "project-search",
+                "Project Search",
+                search_button.into(),
+                Box::new(workspace::DeploySearch::default()),
+                std::sync::Arc::new(|cx| editor::EditorSettings::get_global(cx).search.button),
+                cx,
+            );
+            tools.add_project_action(
+                "project-diagnostics",
+                "Project Diagnostics",
+                diagnostic_summary.clone().into(),
+                Box::new(diagnostics::Deploy),
+                std::sync::Arc::new(|cx| {
+                    project::project_settings::ProjectSettings::get_global(cx)
+                        .diagnostics
+                        .button
+                }),
+                cx,
+            );
+            tools.add_status_item(
+                lsp_button.clone().into(),
+                {
+                    let lsp_button = lsp_button.clone();
+                    move |cx| lsp_button.read(cx).has_status(cx)
+                },
+                cx,
+            );
+            tools.add_status_item(
+                activity_indicator.clone().into(),
+                {
+                    let activity_indicator = activity_indicator.clone();
+                    move |cx| activity_indicator.update(cx, |activity, cx| activity.has_status(cx))
+                },
+                cx,
+            );
+        });
         workspace.status_bar().update(cx, |status_bar, cx| {
-            status_bar.add_left_item(search_button, window, cx);
             status_bar.add_left_item(lsp_button, window, cx);
             status_bar.add_left_item(diagnostic_summary, window, cx);
-            status_bar.add_left_item(active_file_name, window, cx);
-            status_bar.add_left_item(git_blame_status, window, cx);
-            status_bar.add_left_item(merge_conflict_indicator, window, cx);
             status_bar.add_left_item(activity_indicator, window, cx);
-            status_bar.add_right_item(edit_prediction_ui, window, cx);
-            status_bar.add_right_item(active_buffer_encoding, window, cx);
-            status_bar.add_right_item(active_buffer_language, window, cx);
             status_bar.add_right_item(active_toolchain_language, window, cx);
-            status_bar.add_right_item(line_ending_indicator, window, cx);
-            status_bar.add_right_item(cursor_position, window, cx);
-            status_bar.add_right_item(image_info, window, cx);
-            // Keep these last so they stay leftmost and can change without moving the other items.
-            status_bar.add_right_item(vim_mode_indicator, window, cx);
-            status_bar.add_right_item(pending_keystrokes_indicator, window, cx);
         });
 
         let panels_task = initialize_panels(window, cx);
@@ -676,9 +639,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start inotify",
+            i18n::static_text("Could not start inotify", cx),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[i18n::static_text("Troubleshoot and Quit", cx)],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -707,9 +670,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start ReadDirectoryChangesW",
+            i18n::static_text("Could not start ReadDirectoryChangesW", cx),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[i18n::static_text("Troubleshoot and Quit", cx)],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -757,9 +720,12 @@ fn show_software_emulation_warning_if_needed(
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Unsupported GPU",
+            i18n::static_text("Unsupported GPU", cx),
             Some(&message),
-            &["Skip", "Troubleshoot and Quit"],
+            &[
+                i18n::static_text("Skip", cx),
+                i18n::static_text("Troubleshoot and Quit", cx),
+            ],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -780,8 +746,6 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
         let outline_panel = OutlinePanel::load(workspace_handle.clone(), cx.clone());
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
         let git_panel = GitPanel::load(workspace_handle.clone(), cx.clone());
-        let channels_panel =
-            collab_ui::collab_panel::CollabPanel::load(workspace_handle.clone(), cx.clone());
         let debug_panel = DebugPanel::load(workspace_handle.clone(), cx);
 
         async fn add_panel_when_ready(
@@ -804,9 +768,8 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(outline_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(terminal_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
-            add_panel_when_ready(channels_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
-            initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
+            terminal_view::workspace_terminal_panel::WorkspaceTerminalPanel::load(workspace_handle.clone(), cx.clone()).map(|result| { result.log_err(); }),
         );
 
         workspace_handle.update(cx, |workspace, cx| {
@@ -815,100 +778,6 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
 
         anyhow::Ok(())
     })
-}
-
-fn setup_or_teardown_ai_panel<P: Panel>(
-    workspace: &mut Workspace,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-    load_panel: impl FnOnce(
-        WeakEntity<Workspace>,
-        AsyncWindowContext,
-    ) -> Task<anyhow::Result<Entity<P>>>
-    + 'static,
-) -> Task<anyhow::Result<()>> {
-    let disable_ai = SettingsStore::global(cx)
-        .get::<DisableAiSettings>(None)
-        .disable_ai
-        || cfg!(test);
-    let existing_panel = workspace.panel::<P>(cx);
-    match (disable_ai, existing_panel) {
-        (false, None) => cx.spawn_in(window, async move |workspace, cx| {
-            let panel = load_panel(workspace.clone(), cx.clone()).await?;
-            workspace.update_in(cx, |workspace, window, cx| {
-                let disable_ai = SettingsStore::global(cx)
-                    .get::<DisableAiSettings>(None)
-                    .disable_ai;
-                let have_panel = workspace.panel::<P>(cx).is_some();
-                if !disable_ai && !have_panel {
-                    workspace.add_panel(panel, window, cx);
-                }
-            })
-        }),
-        (true, Some(existing_panel)) => {
-            workspace.remove_panel::<P>(&existing_panel, window, cx);
-            Task::ready(Ok(()))
-        }
-        _ => Task::ready(Ok(())),
-    }
-}
-
-fn ensure_agent_panel_for_workspace(
-    workspace: &mut Workspace,
-    source_workspace: Option<WeakEntity<Workspace>>,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-) -> Task<anyhow::Result<()>> {
-    let task = setup_or_teardown_ai_panel(workspace, window, cx, move |workspace, cx| {
-        agent_ui::AgentPanel::load(workspace, cx)
-    });
-
-    cx.spawn_in(window, async move |workspace, cx| {
-        task.await?;
-        workspace.update_in(cx, |workspace, window, cx| {
-            if let Some(source_workspace) = source_workspace.clone()
-                && let Some(panel) = workspace.panel::<agent_ui::AgentPanel>(cx)
-            {
-                panel.update(cx, |panel, cx| {
-                    panel.initialize_from_source_workspace_if_needed(source_workspace, window, cx);
-                });
-            }
-        })
-    })
-}
-
-async fn initialize_agent_panel(
-    workspace_handle: WeakEntity<Workspace>,
-    mut cx: AsyncWindowContext,
-) -> anyhow::Result<()> {
-    workspace_handle
-        .update_in(&mut cx, |workspace, window, cx| {
-            ensure_agent_panel_for_workspace(workspace, None, window, cx)
-        })?
-        .await?;
-
-    workspace_handle.update_in(&mut cx, |workspace, window, cx| {
-        cx.observe_global_in::<SettingsStore>(window, move |workspace, window, cx| {
-            ensure_agent_panel_for_workspace(workspace, None, window, cx).detach_and_log_err(cx);
-        })
-        .detach();
-
-        // Register the actions that are shared between `assistant` and `assistant2`.
-        //
-        // We need to do this here instead of within the individual `init`
-        // functions so that we only register the actions once.
-        //
-        // Once we ship `assistant2` we can push this back down into `agent::agent_panel::init`.
-        if !cfg!(test) {
-            workspace
-                .register_action(agent_ui::AgentPanel::toggle_focus)
-                .register_action(agent_ui::AgentPanel::focus)
-                .register_action(agent_ui::AgentPanel::toggle)
-                .register_action(agent_ui::InlineAssistant::inline_assist);
-        }
-    })?;
-
-    anyhow::Ok(())
 }
 
 fn register_actions(
@@ -1258,14 +1127,10 @@ fn register_actions(
                     update_settings_file(fs.clone(), cx, move |settings, _| {
                         settings.theme.ui_font_size = None;
                         settings.theme.buffer_font_size = None;
-                        settings.theme.agent_ui_font_size = None;
-                        settings.theme.agent_buffer_font_size = None;
                     });
                 } else {
                     theme_settings::reset_ui_font_size(cx);
                     theme_settings::reset_buffer_font_size(cx);
-                    theme_settings::reset_agent_ui_font_size(cx);
-                    theme_settings::reset_agent_buffer_font_size(cx);
                 }
             }
         })
@@ -1412,8 +1277,6 @@ fn register_actions(
         });
     }
 
-    workspace.register_action(sidebar::dump_workspace_info);
-
     #[cfg(debug_assertions)]
     workspace.register_action(|workspace, _: &ShowWorkspaceError, _, cx| {
         struct DebugError;
@@ -1482,6 +1345,12 @@ fn initialize_pane(
             let quick_action_bar =
                 cx.new(|cx| QuickActionBar::new(buffer_search_bar, workspace, cx));
             toolbar.add_item(quick_action_bar, window, cx);
+            let active_buffer_language =
+                cx.new(|_| language_selector::ActiveBufferLanguage::new(workspace));
+            toolbar.add_item(active_buffer_language, window, cx);
+            let cursor_position =
+                cx.new(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
+            toolbar.add_item(cursor_position, window, cx);
             let diagnostic_editor_controls = cx.new(|_| diagnostics::ToolbarControls::new());
             toolbar.add_item(diagnostic_editor_controls, window, cx);
             let project_search_bar = cx.new(|_| ProjectSearchBar::new());
@@ -1490,8 +1359,6 @@ fn initialize_pane(
             toolbar.add_item(lsp_log_item, window, cx);
             let dap_log_item = cx.new(|_| debugger_tools::DapLogToolbarItemView::new());
             toolbar.add_item(dap_log_item, window, cx);
-            let acp_tools_item = cx.new(|_| acp_tools::AcpToolsToolbarItemView::new());
-            toolbar.add_item(acp_tools_item, window, cx);
             let telemetry_log_item =
                 cx.new(|cx| telemetry_log::TelemetryLogToolbarItemView::new(window, cx));
             toolbar.add_item(telemetry_log_item, window, cx);
@@ -1515,8 +1382,6 @@ fn initialize_pane(
             toolbar.add_item(solo_diff_git_toolbar, window, cx);
             let commit_view_toolbar = cx.new(|_| CommitViewToolbar::new());
             toolbar.add_item(commit_view_toolbar, window, cx);
-            let agent_diff_toolbar = cx.new(AgentDiffToolbar::new);
-            toolbar.add_item(agent_diff_toolbar, window, cx);
             let basedpyright_banner = cx.new(|cx| BasedPyrightBanner::new(workspace, cx));
             toolbar.add_item(basedpyright_banner, window, cx);
             let image_view_toolbar = cx.new(|_| image_viewer::ImageViewToolbarControls::new());
@@ -1625,14 +1490,14 @@ fn open_about_window(cx: &mut App) {
                             .child(Headline::new(self.message.clone()))
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
-                                    Label::new("Commit")
+                                    Label::localized("Commit")
                                         .color(Color::Muted)
                                         .size(LabelSize::XSmall),
                                 )
                                 .child(Label::new(commit).size(LabelSize::Small))
                             })
                             .child(
-                                Label::new("Version")
+                                Label::localized("Version")
                                     .color(Color::Muted)
                                     .size(LabelSize::XSmall),
                             )
@@ -1650,7 +1515,7 @@ fn open_about_window(cx: &mut App) {
                                         window.remove_window();
                                     }))
                                     .child(
-                                        Button::new("ok", "OK")
+                                        Button::localized("ok", "OK")
                                             .full_width()
                                             .style(ButtonStyle::OutlinedGhost)
                                             .toggle_state(ok_is_focused)
@@ -1670,7 +1535,7 @@ fn open_about_window(cx: &mut App) {
                                         },
                                     ))
                                     .child(
-                                        Button::new("copy", "Copy")
+                                        Button::localized("copy", "Copy")
                                             .full_width()
                                             .style(ButtonStyle::Tinted(TintColor::Accent))
                                             .toggle_state(copy_is_focused)
@@ -1717,7 +1582,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About Zed".into()),
+                title: Some(i18n::text("About QMR Zed", cx)),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),
@@ -1775,9 +1640,12 @@ fn quit(_: &Quit, cx: &mut App) {
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Info,
-                        "Are you sure you want to quit?",
+                        i18n::static_text("Are you sure you want to quit?", cx),
                         None,
-                        &["Quit", "Cancel"],
+                        &[
+                            i18n::static_text("Quit", cx),
+                            i18n::static_text("Cancel", cx),
+                        ],
                         cx,
                     )
                 })
@@ -2081,30 +1949,32 @@ fn init_reduce_motion(cx: &mut App) {
     cx.observe_global::<SettingsStore>(apply).detach();
 }
 
-/// Starts watching `~/.config/zed/AGENTS.md` (or the platform equivalent) and
-/// surfaces any read errors using the same notification UI as settings errors.
-///
-/// The file itself is loaded into [`agent_settings::UserAgentsMd`] for inclusion
-/// in prompts.
-pub fn watch_user_agents_md(fs: Arc<dyn fs::Fs>, cx: &mut App) {
-    struct UserAgentsMdParseError;
-    let notification_id = NotificationId::unique::<UserAgentsMdParseError>();
-
-    init_user_agents_md(fs, cx, move |state, cx| match state {
-        UserAgentsMdState::Loaded(_) | UserAgentsMdState::Empty => {
-            dismiss_app_notification(&notification_id, cx);
+pub fn observe_display_language(cx: &mut App) {
+    struct DisplayLanguageChanged;
+    let mut requested = settings::DisplayLanguageSettings::get_global(cx).locale();
+    cx.observe_global::<SettingsStore>(move |cx| {
+        let next = settings::DisplayLanguageSettings::get_global(cx).locale();
+        if requested == next {
+            return;
         }
-        UserAgentsMdState::Error(message) => {
-            let path = paths::agents_file().display().to_string();
-            log::error!("Failed to load user AGENTS.md from {path}: {message}");
-            let body = format!("Failed to load {path}\n{message}");
-            let notification_id = notification_id.clone();
-            show_app_notification(notification_id, cx, move |cx| {
-                let body = body.clone();
-                cx.new(|cx| MessageNotification::new(body, cx))
+        requested = next;
+        let id = NotificationId::unique::<DisplayLanguageChanged>();
+        if settings::DisplayLanguageSettings::restart_required(cx) {
+            show_app_notification(id, cx, |cx| {
+                cx.new(|cx| {
+                    MessageNotification::new(
+                        i18n::text("Restart to apply the display language change.", cx),
+                        cx,
+                    )
+                    .primary_message(i18n::text("Restart Now", cx))
+                    .primary_on_click(|_, cx| workspace::reload(cx))
+                })
             });
+        } else {
+            dismiss_app_notification(&id, cx);
         }
-    });
+    })
+    .detach();
 }
 
 pub fn watch_settings_files(fs: Arc<dyn fs::Fs>, cx: &mut App) {
@@ -2890,7 +2760,7 @@ mod tests {
     use node_runtime::NodeRuntime;
     use pretty_assertions::{assert_eq, assert_ne};
     use project::{Project, ProjectPath};
-    use prompt_store::PromptBuilder;
+
     use remote::RemoteClient;
     use remote_server::{HeadlessAppState, HeadlessProject};
     use semver::Version;
@@ -5516,6 +5386,58 @@ mod tests {
 
     actions!(test_only, [ActionA, ActionB]);
 
+    #[gpui::test]
+    fn test_default_editor_shortcuts(cx: &mut TestAppContext) {
+        init_keymap_test(cx);
+
+        for (asset, modifier, inlay_hints) in [
+            ("keymaps/default-windows.json", "ctrl", "ctrl-shift-;"),
+            ("keymaps/default-linux.json", "ctrl", "ctrl-:"),
+            ("keymaps/default-macos.json", "cmd", "ctrl-:"),
+        ] {
+            cx.update(|cx| {
+                let mut bindings =
+                    settings::KeymapFile::load_asset_allow_partial_failure(asset, cx).unwrap();
+                for binding in &mut bindings {
+                    binding.set_meta(settings::KeybindSource::Default.meta());
+                }
+                let keymap = gpui::Keymap::new(bindings);
+                let full_editor = [
+                    gpui::KeyContext::parse("Workspace").unwrap(),
+                    gpui::KeyContext::parse("Editor mode = full").unwrap(),
+                ];
+                let single_line_editor = [
+                    gpui::KeyContext::parse("Workspace").unwrap(),
+                    gpui::KeyContext::parse("Editor mode = single_line").unwrap(),
+                ];
+                for (keystroke, action) in [
+                    ("alt-enter".to_string(), "editor::OpenExcerpts"),
+                    ("shift-enter".to_string(), "editor::ExpandExcerpts"),
+                    (format!("{modifier}-alt-enter"), "editor::OpenExcerptsSplit"),
+                    (format!("{modifier}-shift-e"), "pane::RevealInProjectPanel"),
+                    (format!("{modifier}-f8"), "editor::GoToHunk"),
+                    (format!("{modifier}-shift-f8"), "editor::GoToPreviousHunk"),
+                    (inlay_hints.to_string(), "editor::ToggleInlayHints"),
+                ] {
+                    let input = [gpui::Keystroke::parse(&keystroke).unwrap()];
+                    let (matches, _) = keymap.bindings_for_input(&input, &full_editor);
+                    assert_eq!(
+                        matches.first().map(|binding| binding.action().name()),
+                        Some(action),
+                        "{asset}: {keystroke} in a full editor",
+                    );
+                    let (matches, _) = keymap.bindings_for_input(&input, &single_line_editor);
+                    assert!(
+                        matches
+                            .iter()
+                            .all(|binding| binding.action().name() != action),
+                        "{asset}: {keystroke} must not apply to a single-line editor",
+                    );
+                }
+            });
+        }
+    }
+
     /// The actions the emacs keymap resolves for `keystroke` in `context`.
     fn emacs_bindings_for(keystroke: &str, context: &str, cx: &mut TestAppContext) -> Vec<String> {
         cx.update(|cx| {
@@ -5898,14 +5820,9 @@ mod tests {
             let expected_namespaces = vec![
                 "action",
                 "activity_indicator",
-                "agent",
-                "agents_sidebar",
                 "app_menu",
-                "assistant",
-                "assistant2",
                 "auto_update",
                 "branch_picker",
-                "bedrock",
                 "branches",
                 "buffer_search",
                 "call_hierarchy",
@@ -5916,14 +5833,10 @@ mod tests {
                 "collab_panel",
                 "command_palette",
                 "console",
-                "context_server",
-                "copilot",
-                "copilot_edit_predictions",
                 "debug_panel",
                 "debugger",
                 "dev",
                 "diagnostics",
-                "edit_prediction",
                 "editor",
                 "encoding_selector",
                 "feedback",
@@ -5937,7 +5850,6 @@ mod tests {
                 "highlights_tree_view",
                 "icon_theme_selector",
                 "image_viewer",
-                "inline_assistant",
                 "journal",
                 "keymap_editor",
                 "keystroke_input",
@@ -5966,7 +5878,6 @@ mod tests {
                 "search",
                 "settings_editor",
                 "settings_profile_selector",
-                "skill_creator",
                 "snippets",
                 "stash_picker",
                 "svg",
@@ -5986,11 +5897,11 @@ mod tests {
                 "which_key",
                 "window",
                 "workspace",
+                "workspace_sidebar",
+                "workspace_terminal",
                 "worktree_picker",
                 "zed",
                 "zed_actions",
-                "zed_predict_onboarding",
-                "zeta",
             ];
             assert_eq!(
                 all_namespaces,
@@ -6182,38 +6093,8 @@ mod tests {
             project_panel::init(cx);
             outline_panel::init(cx);
             terminal_view::init(cx);
-            let credentials_provider = zed_credentials_provider::global(cx);
-            copilot_chat::init(
-                app_state.client.http_client(),
-                credentials_provider,
-                copilot_chat::CopilotChatConfiguration::default(),
-                cx,
-            );
             image_viewer::init(cx);
-            language_model::init(cx);
-            client::RefreshLlmTokenListener::register(
-                app_state.client.clone(),
-                app_state.user_store.clone(),
-                cx,
-            );
-            language_models::init(app_state.user_store.clone(), app_state.client.clone(), cx);
-            web_search::init(cx);
-            web_search_providers::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-            let prompt_builder = PromptBuilder::load(app_state.fs.clone(), false, cx);
-            project::AgentRegistryStore::init_global(
-                cx,
-                app_state.fs.clone(),
-                app_state.client.http_client(),
-            );
-            agent_ui::init(
-                app_state.fs.clone(),
-                prompt_builder,
-                app_state.languages.clone(),
-                true,
-                false,
-                cx,
-            );
-
+            terminal_view::workspace_terminal_panel::init(cx);
             repl::init(app_state.fs.clone(), cx);
             repl::notebook::init(cx);
             tasks_ui::init(cx);
@@ -6393,28 +6274,6 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_disable_ai_crash(cx: &mut gpui::TestAppContext) {
-        let app_state = init_test(cx);
-        cx.update(init);
-        let project = Project::test(app_state.fs.clone(), [], cx).await;
-        let _window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
-
-        cx.run_until_parked();
-
-        cx.update(|cx| {
-            SettingsStore::update_global(cx, |settings_store, cx| {
-                settings_store.update_user_settings(cx, |settings| {
-                    settings.project.disable_ai = Some(SaturatingBool(true));
-                });
-            });
-        });
-
-        cx.run_until_parked();
-
-        // If this panics, the test has failed
-    }
-
-    #[gpui::test]
     async fn test_invalid_global_tasks_file_shows_notification_on_startup(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -6477,67 +6336,6 @@ mod tests {
             shown_notifications, 0,
             "fixing the global tasks file should dismiss the notification"
         );
-    }
-
-    #[gpui::test]
-    async fn test_disable_ai_filters_keybindings(cx: &mut gpui::TestAppContext) {
-        let _app_state = init_keymap_test(cx);
-
-        // With AI enabled, the default keymap should include the assistant
-        // bindings that intercept e.g. ctrl-enter in the editor.
-        cx.update(load_default_keymap);
-        cx.update(|cx| {
-            let keymap = cx.key_bindings();
-            let keymap = keymap.borrow();
-            let has_ai_binding = keymap.bindings().any(|binding| is_ai_keybinding(binding));
-            assert!(
-                has_ai_binding,
-                "expected AI-namespaced bindings in the default keymap before disabling AI"
-            );
-        });
-
-        cx.update(|cx| {
-            SettingsStore::update_global(cx, |settings_store, cx| {
-                settings_store.update_user_settings(cx, |settings| {
-                    settings.project.disable_ai = Some(SaturatingBool(true));
-                });
-            });
-        });
-
-        // The default keymap should drop every AI-namespaced binding so that
-        // lower-precedence editor defaults can run instead.
-        cx.update(|cx| {
-            cx.clear_key_bindings();
-            load_default_keymap(cx);
-        });
-        cx.update(|cx| {
-            let keymap = cx.key_bindings();
-            let keymap = keymap.borrow();
-            if let Some(binding) = keymap.bindings().find(|b| is_ai_keybinding(b)) {
-                panic!(
-                    "expected no AI-namespaced bindings after disabling AI, but found `{}`",
-                    binding.action().name()
-                );
-            }
-        });
-
-        // User-defined bindings to AI actions should also be filtered.
-        let user_binding = KeyBinding::new(
-            "ctrl-enter",
-            zed_actions::assistant::InlineAssist { prompt: None },
-            None,
-        );
-        cx.update(|cx| reload_keymaps(cx, vec![user_binding]));
-        cx.update(|cx| {
-            let keymap = cx.key_bindings();
-            let keymap = keymap.borrow();
-            if let Some(binding) = keymap.bindings().find(|b| is_ai_keybinding(b)) {
-                panic!(
-                    "expected user binding `{}` to be filtered when AI is disabled",
-                    binding.action().name()
-                );
-            }
-        });
     }
 
     #[gpui::test]
@@ -7440,6 +7238,11 @@ mod tests {
             "all 3 workspaces should have session_ids in the DB"
         );
 
+        window_a
+            .read_with(cx, |mw, _| {
+                assert_eq!(mw.project_group_keys().len(), 2, "window A before closing")
+            })
+            .unwrap();
         // Close the original windows.
         window_a
             .update(cx, |_, window, _| window.remove_window())
@@ -8171,9 +7974,10 @@ mod tests {
 
         cx.update(|cx| reload_keymaps(cx, Vec::new()));
         cx.update(|cx| {
+            assert!(!has_view_item(cx, "Agent Panel"));
             assert!(
-                has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel in the View menu when AI is enabled"
+                has_view_item(cx, "Workspace Terminals"),
+                "expected Workspace Terminals in the View menu"
             );
             assert!(
                 has_view_item(cx, "Diagnostics"),
@@ -8192,9 +7996,10 @@ mod tests {
             reload_keymaps(cx, Vec::new());
         });
         cx.update(|cx| {
+            assert!(!has_view_item(cx, "Agent Panel"));
             assert!(
-                !has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel to be removed from the View menu after disabling AI"
+                has_view_item(cx, "Workspace Terminals"),
+                "legacy AI settings must preserve Workspace Terminals"
             );
             assert!(
                 has_view_item(cx, "Diagnostics"),
@@ -8211,93 +8016,10 @@ mod tests {
         });
         cx.update(|cx| reload_keymaps(cx, Vec::new()));
         cx.update(|cx| {
+            assert!(!has_view_item(cx, "Agent Panel"));
             assert!(
-                has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel back in the View menu after re-enabling AI"
-            );
-            assert!(
-                has_view_item(cx, "Diagnostics"),
-                "expected Diagnostics to remain in the View menu"
-            );
-        });
-    }
-
-    #[gpui::test]
-    async fn test_disable_ai_menu_update_with_malformed_keymap(cx: &mut TestAppContext) {
-        let executor = cx.executor();
-        let app_state = init_keymap_test(cx);
-        cx.update(|cx| reload_keymaps(cx, Vec::new()));
-        cx.update(|cx| {
-            assert!(
-                has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel before disabling AI"
-            );
-            assert!(
-                has_view_item(cx, "Diagnostics"),
-                "expected Diagnostics in the View menu"
-            );
-        });
-
-        app_state
-            .fs
-            .save(
-                "/keymap.json".as_ref(),
-                &r#"!@!@this is not valid json"#.into(),
-                Default::default(),
-            )
-            .await
-            .expect("failed to save malformed keymap.json to the fake fs");
-        executor.run_until_parked();
-
-        cx.update(|cx| {
-            let (keymap_rx, keymap_watcher) = watch_config_file(
-                &executor,
-                app_state.fs.clone(),
-                PathBuf::from("/keymap.json"),
-            );
-            watch_settings_files(app_state.fs.clone(), cx);
-            handle_keymap_file_changes(keymap_rx, keymap_watcher, cx);
-        });
-        executor.run_until_parked();
-
-        app_state
-            .fs
-            .save(
-                paths::settings_file(),
-                &r#"{"disable_ai": true}"#.into(),
-                Default::default(),
-            )
-            .await
-            .expect("failed to save disable_ai=true to the fake settings file");
-        executor.advance_clock(Duration::from_secs(2));
-        executor.run_until_parked();
-
-        cx.update(|cx| {
-            assert!(
-                !has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel removed even though the keymap file is malformed"
-            );
-            assert!(
-                has_view_item(cx, "Diagnostics"),
-                "expected Diagnostics to remain in the View menu"
-            );
-        });
-
-        app_state
-            .fs
-            .save(
-                paths::settings_file(),
-                &r#"{"disable_ai": false}"#.into(),
-                Default::default(),
-            )
-            .await
-            .expect("failed to save disable_ai=false to the fake settings file");
-        executor.run_until_parked();
-
-        cx.update(|cx| {
-            assert!(
-                has_view_item(cx, "Agent Panel"),
-                "expected Agent Panel added back even though the keymap file is malformed"
+                has_view_item(cx, "Workspace Terminals"),
+                "legacy AI settings must preserve Workspace Terminals"
             );
             assert!(
                 has_view_item(cx, "Diagnostics"),

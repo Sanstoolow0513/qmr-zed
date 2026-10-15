@@ -79,7 +79,7 @@ fn render_inspector(
                 .border_color(colors.border_variant)
                 .child(
                     IconButton::new("pick-mode", IconName::MagnifyingGlass)
-                        .tooltip(Tooltip::text("Start inspector pick mode"))
+                        .tooltip(Tooltip::localized_text("Start inspector pick mode"))
                         .selected_icon_color(Color::Selected)
                         .toggle_state(inspector.is_picking())
                         .on_click(cx.listener(|inspector, _, window, _cx| {
@@ -87,7 +87,11 @@ fn render_inspector(
                             window.refresh();
                         })),
                 )
-                .child(h_flex().justify_end().child(Label::new("GPUI Inspector"))),
+                .child(
+                    h_flex()
+                        .justify_end()
+                        .child(Label::localized("GPUI Inspector")),
+                ),
         )
         .child(
             v_flex()
@@ -119,12 +123,12 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
         .child(
             h_flex()
                 .justify_between()
-                .child(Label::new("Element ID").size(LabelSize::Large))
+                .child(Label::localized("Element ID").size(LabelSize::Large))
                 .child(
                     div()
                         .id("instance-id")
                         .text_ui(cx)
-                        .tooltip(Tooltip::text(
+                        .tooltip(Tooltip::localized_text(
                             "Disambiguates elements from the same source location",
                         ))
                         .child(format!("Instance {}", inspector_id.instance_id)),
@@ -139,7 +143,7 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
                 .font_buffer(cx)
                 .text_xs()
                 .child(source_location_string)
-                .tooltip(Tooltip::text("Click to open by running Zed CLI"))
+                .tooltip(Tooltip::localized_text("Click to open by running Zed CLI"))
                 .on_click(move |_, _window, cx| {
                     cx.background_spawn(open_zed_source_location(source_location))
                         .detach_and_log_err(cx);
@@ -150,7 +154,7 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
                 .id("global-id")
                 .text_ui(cx)
                 .min_h_20()
-                .tooltip(Tooltip::text(
+                .tooltip(Tooltip::localized_text(
                     "GlobalElementId of the nearest ancestor with an ID",
                 ))
                 .child(inspector_id.path.global_id.to_string()),

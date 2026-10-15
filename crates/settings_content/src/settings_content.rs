@@ -1,10 +1,10 @@
 mod action;
-mod agent;
+
 mod editor;
 mod extension;
 mod fallible_options;
 mod language;
-mod language_model;
+
 pub mod merge_from;
 mod project;
 mod serde_helper;
@@ -14,13 +14,13 @@ mod title_bar;
 mod workspace;
 
 pub use action::{ActionName, ActionWithArguments, CommandAliasTarget};
-pub use agent::*;
+
 use anyhow::Context;
 pub use editor::*;
 pub use extension::*;
 pub use fallible_options::*;
 pub use language::*;
-pub use language_model::*;
+
 pub use merge_from::MergeFrom as MergeFromTrait;
 pub use project::*;
 use serde::de::DeserializeOwned;
@@ -169,9 +169,37 @@ pub enum ReduceMotionMode {
     Off,
 }
 
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+pub enum DisplayLanguage {
+    #[default]
+    #[serde(rename = "zh-CN")]
+    #[strum(serialize = "简体中文")]
+    SimplifiedChinese,
+    #[serde(rename = "en")]
+    #[strum(serialize = "English")]
+    English,
+}
+
 #[with_fallible_options]
 #[derive(Debug, PartialEq, Default, Clone, Serialize, JsonSchema, MergeFrom)]
 pub struct SettingsContent {
+    /// Display language of the application interface. Changes require a restart.
+    /// Default: zh-CN
+    pub display_language: Option<DisplayLanguage>,
+
     #[serde(flatten)]
     pub project: ProjectSettingsContent,
 
@@ -206,8 +234,10 @@ pub struct SettingsContent {
 
     pub preview_tabs: Option<PreviewTabsSettingsContent>,
 
-    pub agent: Option<AgentSettingsContent>,
-    pub agent_servers: Option<AllAgentServersSettings>,
+    /// Project and terminal navigation sidebar.
+    pub workspace_sidebar: Option<WorkspaceSidebarSettingsContent>,
+    /// Terminal sessions managed by the workspace sidebar.
+    pub workspace_terminal: Option<WorkspaceTerminalSettingsContent>,
 
     /// Configuration of audio in Zed.
     pub audio: Option<AudioSettingsContent>,
@@ -267,10 +297,6 @@ pub struct SettingsContent {
     pub log: Option<HashMap<String, String>>,
 
     pub line_indicator_format: Option<LineIndicatorFormat>,
-
-    pub language_models: Option<AllLanguageModelSettingsContent>,
-
-    pub copilot: Option<CopilotSettingsContent>,
 
     pub outline_panel: Option<OutlinePanelSettingsContent>,
 
@@ -404,11 +430,10 @@ impl SettingsContent {
 fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
-        call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, agent,
-        agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
+        display_language, call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, workspace_sidebar, workspace_terminal, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
-        journal, log, line_indicator_format, language_models, copilot, outline_panel, project_panel,
+        journal, log, line_indicator_format, outline_panel, project_panel,
         node, proxy, reduce_motion, server_url, credentials_url, session, telemetry, terminal,
         title_bar, vim_mode, calls, which_key, vim, modeline_lines, feature_flags,
         instrumentation,
@@ -615,11 +640,6 @@ pub struct TelemetrySettingsContent {
     ///
     /// Default: true
     pub metrics: Option<bool>,
-    /// Allow sending requests to Anthropic models that cannot be offered with
-    /// Zero Data Retention.
-    ///
-    /// Default: false
-    pub anthropic_retention: Option<bool>,
 }
 
 impl Default for TelemetrySettingsContent {
@@ -627,7 +647,6 @@ impl Default for TelemetrySettingsContent {
         Self {
             diagnostics: Some(true),
             metrics: Some(true),
-            anthropic_retention: Some(false),
         }
     }
 }
@@ -643,7 +662,7 @@ pub struct DebuggerSettingsContent {
     ///
     /// Default: true
     pub save_breakpoints: Option<bool>,
-    /// Whether to show the debug button in the status bar.
+    /// Whether to show the debugger entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -730,7 +749,7 @@ pub struct CallSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct GitPanelSettingsContent {
-    /// Whether to show the panel button in the status bar.
+    /// Whether to show the panel entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -943,7 +962,7 @@ pub struct ScrollbarSettings {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
 pub struct PanelSettingsContent {
-    /// Whether to show the panel button in the status bar.
+    /// Whether to show the panel entry in the tools menu.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -1081,9 +1100,6 @@ pub struct VimSettingsContent {
     pub custom_digraphs: Option<HashMap<String, Arc<str>>>,
     pub highlight_on_yank_duration: Option<u64>,
     pub cursor_shape: Option<CursorShapeSettings>,
-    /// When enabled, edit predictions are shown in Vim normal mode.
-    /// By default, edit predictions are only shown in insert and replace modes.
-    pub show_edit_predictions_in_normal_mode: Option<bool>,
 }
 
 #[derive(
@@ -1207,7 +1223,7 @@ pub enum HourFormat {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
 pub struct OutlinePanelSettingsContent {
-    /// Whether to show the outline panel button in the status bar.
+    /// Whether to show the outline panel button in the tools navigation.
     ///
     /// Default: true
     pub button: Option<bool>,

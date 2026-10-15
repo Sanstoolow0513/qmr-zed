@@ -154,12 +154,12 @@ impl Render for MultibufferHint {
                                     .size(IconSize::XSmall)
                                     .color(Color::Muted),
                             )
-                            .child(Label::new(
+                            .child(Label::localized(
                                 "Edit and save files directly in the results multibuffer!",
                             )),
                     )
                     .child(
-                        Button::new("open_docs", "Learn More")
+                        Button::localized("open_docs", "Learn More")
                             .end_icon(
                                 Icon::new(IconName::ArrowUpRight)
                                     .size(IconSize::Small)
@@ -180,7 +180,7 @@ impl Render for MultibufferHint {
                             ToolbarItemLocation::Hidden,
                         ))
                     }))
-                    .tooltip(Tooltip::text("Dismiss Hint")),
+                    .tooltip(Tooltip::localized_text("Dismiss Hint")),
             )
             .into_any_element()
     }

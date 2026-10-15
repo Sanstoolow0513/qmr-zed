@@ -20,7 +20,7 @@ pub struct PlanInfo {
     #[serde(rename = "plan_v3")]
     pub plan: KnownOrUnknown<Plan, String>,
     pub subscription_period: Option<SubscriptionPeriod>,
-    pub usage: cloud_llm_client::CurrentUsage,
+    pub usage: CurrentUsage,
     pub trial_started_at: Option<Timestamp>,
     pub is_account_too_young: bool,
     pub has_overdue_invoices: bool,
@@ -64,5 +64,32 @@ mod tests {
 
         let plan = serde_json::from_value::<Plan>(json!("zed_student")).unwrap();
         assert_eq!(plan, Plan::ZedStudent);
+    }
+}
+
+// Retain the account response wire shape without depending on the AI client.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct CurrentUsage {
+    pub edit_predictions: UsageData,
+}
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct UsageData {
+    pub used: u32,
+    pub limit: UsageLimit,
+}
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageLimit {
+    Limited(i32),
+    Unlimited,
+}
+impl std::str::FromStr for UsageLimit {
+    type Err = std::num::ParseIntError;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "unlimited" {
+            Ok(Self::Unlimited)
+        } else {
+            value.parse().map(Self::Limited)
+        }
     }
 }

@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Use a Gateway - Zed
 description: Configure OpenRouter, Vercel AI Gateway, Amazon Bedrock, and other gateway or cloud model platforms in Zed.
@@ -20,7 +22,7 @@ Use OpenRouter when you want to route Zed AI features through OpenRouter.
 
 1. Visit [OpenRouter](https://openrouter.ai) and create an account.
 2. Generate an API key from your [OpenRouter keys page](https://openrouter.ai/keys).
-3. Open **Settings → AI → LLM Providers** with {#action agent::OpenSettings} and find the OpenRouter row.
+3. Open **Settings → AI → LLM Providers** with `agent::OpenSettings` and find the OpenRouter row.
 4. Enter your OpenRouter API key.
 
 Zed also reads `OPENROUTER_API_KEY` from the local Zed process environment.
@@ -104,7 +106,7 @@ Supported fields include `order`, `allow_fallbacks`, `require_parameters`, `data
 Use Vercel AI Gateway when you want to route Zed AI features through Vercel.
 
 1. Create an API key from your Vercel AI Gateway keys page.
-2. Open **Settings → AI → LLM Providers** with {#action agent::OpenSettings} and find the Vercel AI Gateway row.
+2. Open **Settings → AI → LLM Providers** with `agent::OpenSettings` and find the Vercel AI Gateway row.
 3. Enter your Vercel AI Gateway API key.
 
 Zed also reads `VERCEL_AI_GATEWAY_API_KEY` from the local Zed process environment.
@@ -160,7 +162,7 @@ For a named profile, configure Bedrock in settings:
 }
 ```
 
-For static credentials, open [Agent Settings](./agent-settings.md) with {#action agent::OpenSettings}, go to the Amazon Bedrock section, and enter the access key ID, secret access key, and region.
+For static credentials, open [Agent Settings](./agent-settings.md) with `agent::OpenSettings`, go to the Amazon Bedrock section, and enter the access key ID, secret access key, and region.
 
 For a Bedrock API key, choose API key authentication:
 

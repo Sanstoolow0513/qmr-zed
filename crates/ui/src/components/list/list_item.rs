@@ -493,14 +493,14 @@ impl Component for ListItem {
                         single_example(
                             "Simple",
                             ListItem::new("simple")
-                                .child(Label::new("Simple list item"))
+                                .child(Label::localized("Simple list item"))
                                 .into_any_element(),
                         ),
                         single_example(
                             "With Icon",
                             ListItem::new("with_icon")
                                 .start_slot(Icon::new(IconName::File))
-                                .child(Label::new("List item with icon"))
+                                .child(Label::localized("List item with icon"))
                                 .into_any_element(),
                         ),
                         single_example(
@@ -508,7 +508,7 @@ impl Component for ListItem {
                             ListItem::new("selected")
                                 .toggle_state(true)
                                 .start_slot(Icon::new(IconName::Check))
-                                .child(Label::new("Selected item"))
+                                .child(Label::localized("Selected item"))
                                 .into_any_element(),
                         ),
                     ],
@@ -520,21 +520,21 @@ impl Component for ListItem {
                             "Dense",
                             ListItem::new("dense")
                                 .spacing(ListItemSpacing::Dense)
-                                .child(Label::new("Dense spacing"))
+                                .child(Label::localized("Dense spacing"))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Extra Dense",
                             ListItem::new("extra_dense")
                                 .spacing(ListItemSpacing::ExtraDense)
-                                .child(Label::new("Extra dense spacing"))
+                                .child(Label::localized("Extra dense spacing"))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Sparse",
                             ListItem::new("sparse")
                                 .spacing(ListItemSpacing::Sparse)
-                                .child(Label::new("Sparse spacing"))
+                                .child(Label::localized("Sparse spacing"))
                                 .into_any_element(),
                         ),
                     ],
@@ -545,7 +545,7 @@ impl Component for ListItem {
                         single_example(
                             "End Slot",
                             ListItem::new("end_slot")
-                                .child(Label::new("Item with end slot"))
+                                .child(Label::localized("Item with end slot"))
                                 .end_slot(Icon::new(IconName::ChevronRight))
                                 .into_any_element(),
                         ),
@@ -553,7 +553,7 @@ impl Component for ListItem {
                             "With Toggle",
                             ListItem::new("with_toggle")
                                 .toggle(Some(true))
-                                .child(Label::new("Expandable item"))
+                                .child(Label::localized("Expandable item"))
                                 .into_any_element(),
                         ),
                     ],
@@ -565,14 +565,14 @@ impl Component for ListItem {
                             "Disabled",
                             ListItem::new("disabled")
                                 .disabled(true)
-                                .child(Label::new("Disabled item"))
+                                .child(Label::localized("Disabled item"))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Non-selectable",
                             ListItem::new("non_selectable")
                                 .selectable(false)
-                                .child(Label::new("Non-selectable item"))
+                                .child(Label::localized("Non-selectable item"))
                                 .into_any_element(),
                         ),
                     ],

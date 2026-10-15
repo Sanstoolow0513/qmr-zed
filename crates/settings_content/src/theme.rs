@@ -205,17 +205,9 @@ pub struct ThemeSettingsContent {
     /// The OpenType features to enable for rendering in text buffers.
     #[schemars(default = "default_font_features")]
     pub buffer_font_features: Option<FontFeaturesContent>,
-    /// The name of a font to use for agent responses in the agent panel. Falls back to the UI font if unset.
-    pub agent_ui_font_family: Option<FontFamilyName>,
-    /// The font size for agent responses in the agent panel. Falls back to the UI font size if unset.
-    pub agent_ui_font_size: Option<FontSize>,
-    /// The name of a font to use for user messages in the agent panel. Falls back to the buffer font if unset.
-    pub agent_buffer_font_family: Option<FontFamilyName>,
-    /// The font size for user messages in the agent panel.
-    pub agent_buffer_font_size: Option<FontSize>,
+
     pub git_commit_buffer_font_size: Option<FontSize>,
-    /// The name of a font to use for rendering Mermaid diagrams in the agent
-    /// panel and markdown preview. Falls back to the UI font if unset.
+    /// The font for Mermaid diagrams in markdown preview. Falls back to the UI font if unset.
     pub mermaid_font_family: Option<FontFamilyName>,
     /// The name of the Zed theme to use.
     pub theme: Option<ThemeSelection>,
@@ -341,8 +333,8 @@ pub enum ThemeSelection {
     },
 }
 
-pub const DEFAULT_LIGHT_THEME: &'static str = "One Light";
-pub const DEFAULT_DARK_THEME: &'static str = "One Dark";
+pub const DEFAULT_LIGHT_THEME: &'static str = "Claude Light";
+pub const DEFAULT_DARK_THEME: &'static str = "Claude Dark";
 
 impl Default for ThemeSelection {
     fn default() -> Self {

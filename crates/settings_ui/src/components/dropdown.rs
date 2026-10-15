@@ -13,6 +13,7 @@ pub struct EnumVariantDropdown {
     selected_index: usize,
     labels: &'static [&'static str],
     should_do_title_case: bool,
+    verbatim_labels: &'static [&'static str],
     tab_index: Option<isize>,
     disabled: bool,
     aria_label: Option<SharedString>,
@@ -51,12 +52,18 @@ impl EnumVariantDropdown {
             selected_index,
             labels,
             should_do_title_case: true,
+            verbatim_labels: &[],
             tab_index: None,
             disabled: false,
             aria_label: None,
             aria_description: None,
             on_change: Rc::new(on_change),
         }
+    }
+
+    pub fn preserve_labels(mut self, labels: &'static [&'static str]) -> Self {
+        self.verbatim_labels = labels;
+        self
     }
 
     pub fn title_case(mut self, title_case: bool) -> Self {
@@ -92,16 +99,23 @@ impl EnumVariantDropdown {
 impl RenderOnce for EnumVariantDropdown {
     fn render(self, window: &mut ui::Window, cx: &mut ui::App) -> impl gpui::IntoElement {
         let current_value_label = self.labels[self.selected_index];
+        let localize = move |label: String, cx: &App| {
+            if !self.verbatim_labels.contains(&label.as_str()) {
+                i18n::text(label, cx).to_string()
+            } else {
+                label
+            }
+        };
 
         let context_menu = window.use_keyed_state(current_value_label, cx, |window, cx| {
-            ContextMenu::new(window, cx, move |mut menu, _, _| {
+            ContextMenu::new(window, cx, move |mut menu, _, cx| {
                 for (index, &label) in self.labels.iter().enumerate() {
                     let on_change = self.on_change.clone();
                     menu = menu.toggleable_entry(
                         if self.should_do_title_case {
-                            label.to_title_case()
+                            localize(label.to_title_case(), cx)
                         } else {
-                            label.to_string()
+                            localize(label.to_string(), cx)
                         },
                         index == self.selected_index,
                         IconPosition::End,
@@ -118,9 +132,9 @@ impl RenderOnce for EnumVariantDropdown {
         DropdownMenu::new(
             self.id,
             if self.should_do_title_case {
-                current_value_label.to_title_case()
+                localize(current_value_label.to_title_case(), cx)
             } else {
-                current_value_label.to_string()
+                localize(current_value_label.to_string(), cx)
             },
             context_menu,
         )

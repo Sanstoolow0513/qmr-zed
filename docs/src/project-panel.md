@@ -7,8 +7,31 @@ description: Navigate workspace files and directories with Zed's project panel. 
 
 The project panel shows a tree view of your workspace's files and directories.
 Toggle it with {#action project_panel::ToggleFocus} ({#kb
-project_panel::ToggleFocus}), or click the **Project Panel** button in the
-status bar.
+project_panel::ToggleFocus}), or click the file button in the tools navigation
+above the right-hand panel. When the panel is hidden, use the title bar's tools
+menu.
+
+QMR Zed uses compact rows, 12-pixel indentation, and colored **Claude Icons** by
+default. When one folder is open, its root row is hidden so the panel starts with
+its contents. With multiple folders, root rows remain visible to distinguish them.
+An individually opened file remains visible.
+
+In the Settings Editor, search for `project_panel` to adjust row spacing,
+indentation, or root visibility. Or add this to your settings.json:
+
+```json [settings]
+{
+  "project_panel": {
+    "hide_root": true,
+    "entry_spacing": "standard",
+    "indent_size": 12,
+    "folder_indicator": "icon"
+  }
+}
+```
+
+Set `hide_root` to `false` to show the root row, or `entry_spacing` to
+`"comfortable"` for taller rows.
 
 ![Project Panel](https://images.zed.dev/docs/project-panel/panel.png)
 

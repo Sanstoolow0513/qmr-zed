@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Rules (Replaced by Skills)
 description: Rules have been replaced by Skills and Instructions in Zed.

@@ -209,6 +209,16 @@ impl Application {
         self
     }
 
+    /// Configures application fonts after assigning its asset source and before rendering.
+    pub fn with_font_defaults(self, defaults: crate::FontDefaults) -> Self {
+        let mut app = self.0.borrow_mut();
+        app.text_system.set_font_defaults(defaults.clone());
+        app.svg_renderer =
+            SvgRenderer::with_font_defaults(app.asset_source.clone(), Some(defaults));
+        drop(app);
+        self
+    }
+
     /// Configures arguments to pass when restarting the application.
     pub fn with_restart_arguments(self, arguments: Vec<OsString>) -> Self {
         self.0.borrow_mut().restart_arguments = arguments;

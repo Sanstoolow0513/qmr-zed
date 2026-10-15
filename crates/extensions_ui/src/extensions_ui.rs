@@ -126,9 +126,6 @@ pub fn init(cx: &mut App) {
                         ExtensionCategoryFilter::LanguageServers => {
                             ExtensionProvides::LanguageServers
                         }
-                        ExtensionCategoryFilter::ContextServers => {
-                            ExtensionProvides::ContextServers
-                        }
                         ExtensionCategoryFilter::Snippets => ExtensionProvides::Snippets,
                         ExtensionCategoryFilter::DebugAdapters => ExtensionProvides::DebugAdapters,
                     });
@@ -295,9 +292,6 @@ enum ExtensionFilter {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 enum Feature {
-    AgentClaude,
-    AgentCodex,
-    AgentGemini,
     ExtensionBasedpyright,
     ExtensionRuff,
     ExtensionTailwind,
@@ -319,12 +313,6 @@ fn keywords_by_feature() -> &'static BTreeMap<Feature, Vec<&'static str>> {
     static KEYWORDS_BY_FEATURE: OnceLock<BTreeMap<Feature, Vec<&'static str>>> = OnceLock::new();
     KEYWORDS_BY_FEATURE.get_or_init(|| {
         BTreeMap::from_iter([
-            (
-                Feature::AgentClaude,
-                vec!["claude", "claude code", "claude agent"],
-            ),
-            (Feature::AgentCodex, vec!["codex", "codex cli"]),
-            (Feature::AgentGemini, vec!["gemini", "gemini cli"]),
             (
                 Feature::ExtensionBasedpyright,
                 vec!["basedpyright", "pyright"],
@@ -443,7 +431,11 @@ impl ExtensionsPage {
 
             let query_editor = cx.new(|cx| {
                 let mut input = Editor::single_line(window, cx);
-                input.set_placeholder_text("Search extensions...", window, cx);
+                input.set_placeholder_text(
+                    i18n::static_text("Search extensions...", cx),
+                    window,
+                    cx,
+                );
                 if let Some(id) = focus_extension_id {
                     input.set_text(format!("id:{id}"), window, cx);
                 }
@@ -810,15 +802,18 @@ impl ExtensionsPage {
                         }
                     }),
                 )
+                .localize_last()
                 .entry("Copy Extension ID", None, {
                     let extension_id = extension_id.clone();
                     move |_, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(extension_id.to_string()));
                     }
                 })
+                .localize_last()
                 .entry("Copy Author Info", None, move |_, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(authors.to_string()));
                 })
+                .localize_last()
         })
     }
 
@@ -897,7 +892,7 @@ impl ExtensionsPage {
     }
 
     fn retry_button(&self, cx: &mut Context<Self>) -> Button {
-        Button::new("retry-fetch-extensions", "Retry")
+        Button::localized("retry-fetch-extensions", "Retry")
             .style(ButtonStyle::Outlined)
             .on_click(cx.listener(|this, _, _, cx| {
                 this.fetch_extensions(FetchDebounce::Immediate, None, cx);
@@ -1123,7 +1118,7 @@ impl ExtensionsPage {
         vim: bool,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        let docs_url_button = Button::new("open_docs", "View Documentation")
+        let docs_url_button = Button::localized("open_docs", "View Documentation")
             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::Small))
             .on_click({
                 move |_event, _window, cx| {
@@ -1154,7 +1149,7 @@ impl ExtensionsPage {
                                         h_flex()
                                             .pl_1()
                                             .gap_1()
-                                            .child(Label::new("Enable Vim mode"))
+                                            .child(Label::localized("Enable Vim mode"))
                                             .child(
                                                 Switch::new(
                                                     "enable-vim",
@@ -1192,24 +1187,6 @@ impl ExtensionsPage {
 
     fn render_feature_upsells(&self, cx: &Context<Self>) -> impl IntoElement {
         v_flex().children(self.upsells.iter().map(|feature| match feature {
-            Feature::AgentClaude => self.render_feature_upsell_banner(
-                "Claude Agent support is built-in to Zed!",
-                "https://zed.dev/docs/ai/external-agents#claude-agent",
-                false,
-                cx,
-            ),
-            Feature::AgentCodex => self.render_feature_upsell_banner(
-                "Codex CLI support is built-in to Zed!",
-                "https://zed.dev/docs/ai/external-agents#codex-cli",
-                false,
-                cx,
-            ),
-            Feature::AgentGemini => self.render_feature_upsell_banner(
-                "Gemini CLI support is built-in to Zed!",
-                "https://zed.dev/docs/ai/external-agents#gemini-cli",
-                false,
-                cx,
-            ),
             Feature::ExtensionBasedpyright => self.render_feature_upsell_banner(
                 "Basedpyright (Python language server) support is built-in to Zed!",
                 "https://zed.dev/docs/languages/python#basedpyright",
@@ -1429,8 +1406,8 @@ impl PickerDelegate for DevExtensionRebuildPickerDelegate {
 
     fn dismissed(&mut self, _window: &mut Window, _cx: &mut Context<Picker<Self>>) {}
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        Arc::from("Rebuild dev extension…")
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        Arc::from(i18n::static_text("Rebuild dev extension…", cx))
     }
 
     fn render_match(
@@ -1485,9 +1462,9 @@ impl Render for ExtensionsPage {
                             .w_full()
                             .gap_1p5()
                             .justify_between()
-                            .child(Headline::new("Extensions").size(HeadlineSize::Large))
+                            .child(Headline::localized("Extensions").size(HeadlineSize::Large))
                             .child(
-                                Button::new("install-dev-extension", "Install Dev Extension")
+                                Button::localized("install-dev-extension", "Install Dev Extension")
                                     .style(ButtonStyle::Outlined)
                                     .size(ButtonSize::Medium)
                                     .on_click(|_event, window, cx| {
@@ -1556,7 +1533,7 @@ impl Render for ExtensionsPage {
                     .border_color(cx.theme().colors().border_variant)
                     .overflow_x_scroll()
                     .child(
-                        Button::new("filter-all-categories", "All")
+                        Button::localized("filter-all-categories", "All")
                             .when(self.provides_filter.is_none(), |button| {
                                 button.style(ButtonStyle::Filled)
                             })
@@ -1572,6 +1549,7 @@ impl Render for ExtensionsPage {
                         ExtensionProvides::iter()
                             .filter(|provides| match provides {
                                 ExtensionProvides::AgentServers
+                                | ExtensionProvides::ContextServers
                                 | ExtensionProvides::Grammars // grammars do not add anything of value to users currently
                                 | ExtensionProvides::IndexedDocsProviders
                                 | ExtensionProvides::SlashCommands => false,
@@ -1614,7 +1592,7 @@ impl Render for ExtensionsPage {
                                     Banner::new()
                                         .severity(Severity::Warning)
                                         .child(
-                                            Label::new(
+                                            Label::localized(
                                                 "Failed to load extensions. Showing installed extensions only.",
                                             )
                                             .mt_0p5(),
@@ -1648,8 +1626,8 @@ impl Focusable for ExtensionsPage {
 impl Item for ExtensionsPage {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Extensions".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Extensions", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

@@ -1,13 +1,65 @@
-# Zed
+> [!IMPORTANT]
+> Remove this line to confirm you've reviewed this PR before submitting.
+# QMR Zed
+
+This qmr-zed fork focuses on software development without built-in AI. Projects
+and terminal sessions use the independent [workspace sidebar](docs/src/workspace-terminals.md).
+Editing, language servers, Git, debugging, collaboration and remote development
+remain available.
+
+QMR Zed defaults to Simplified Chinese. Switch between **简体中文** and **English**
+in **Settings → General → Display Language** (设置 → 通用 → 显示语言), then restart
+to apply the change. The JSON setting is `"display_language": "zh-CN"` or `"en"`.
+Changing it in `settings.json` also shows a restart notification.
+
+All 16 faces from `MapleMono-NF-CN-unhinted.zip` are bundled as **Maple Mono NF CN**.
+The interface and editor use this family by default, and terminals inherit the
+editor font unless overridden. Custom font settings remain supported. The
+original [font license](assets/fonts/maple-mono-nf-cn/LICENSE.txt) is included.
+
+### QMR Zed Windows distribution
+
+Build the independent Windows x64 release with PowerShell 7, the MSVC Rust
+toolchain, and Visual Studio C++ and CMake tools:
+
+```powershell
+pwsh -File script/bundle-qmr-windows.ps1
+```
+
+The script builds optimized Release binaries and writes an extract-and-run ZIP,
+the corresponding source ZIP, and SHA-256 checksums to `target/qmr-dist`. Run
+`QMRZed.exe`, or use `bin/qmrzed.exe` from a terminal. The package is unsigned.
+Settings live in `%APPDATA%\QMRZed`, and data/logs in `%LOCALAPPDATA%\QMRZed`,
+separate from official Zed. Updates are manual from this fork's
+[releases](https://github.com/Sanstoolow0513/qmr-zed/releases); official Zed
+automatic updates are disabled. The build manifest records the base commit and
+any uncommitted source changes. macOS and Linux packaging still uses upstream
+templates and has not been adapted for this distribution.
+
+SSH, WSL and dev-container connections download matching remote servers from
+this fork's GitHub Release. Release tags use `v` followed by the version in
+`crates/zed/Cargo.toml` (for example, `v2026.10.13`). The **QMR Zed release**
+workflow builds the Windows client and remote servers for Linux, macOS and
+Windows on x86_64 and aarch64 from the same commit. It publishes only after all
+six server archives and the client/source archives pass validation. Linux
+servers are static musl binaries. A release version and its tag must never be
+reused for different source code.
+
+To release, commit the reviewed changes, create the matching tag on this fork,
+and push that tag to `origin`. The workflow also supports a manual run against
+an existing tag. It requires no upstream credentials or private runners.
+Locally produced ZIPs require the matching fork Release to be available before
+first-time remote connections can download their server. The client reports a
+missing release instead of falling back to an unrelated official server.
 
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+QMR Zed is based on Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
 
 ---
 
-### Installation
+### Upstream Zed installation
 
 On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
 

@@ -715,15 +715,13 @@ impl PickerDelegate for OpenPathDelegate {
                         };
                     if user_input.exists {
                         self.should_dismiss = false;
-                        let answer = window.prompt(
-                            gpui::PromptLevel::Critical,
-                            &format!("{prompted_path:?} already exists. Do you want to replace it?"),
-                            Some(
+                        let answer = window.prompt(gpui::PromptLevel::Critical,
+&i18n::format("{prompted_path} already exists. Do you want to replace it?", &[("prompted_path", &format!("{:?}", prompted_path))], cx),
+Some(
                                 "A file or folder with the same name already exists. Replacing it will overwrite its current contents.",
                             ),
-                            &["Replace", "Cancel"],
-                            cx
-                        );
+&[i18n::static_text("Replace", cx), i18n::static_text("Cancel", cx)],
+cx);
                         self.replace_prompt = cx.spawn_in(window, async move |picker, cx| {
                             let answer = answer.await.ok();
                             picker

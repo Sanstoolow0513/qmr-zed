@@ -40,7 +40,7 @@ use crate::{
     actions::{DisableBreakpoint, EditLogBreakpoint, EnableBreakpoint, ToggleBreakpoint},
     display_map::Companion,
 };
-use zed_actions::{OpenSettingsAt, assistant::InlineAssist};
+use zed_actions::OpenSettingsAt;
 
 pub(crate) fn patches_for_lhs_range(
     rhs_snapshot: &MultiBufferSnapshot,
@@ -463,7 +463,7 @@ impl RenderOnce for DiffStyleControls {
                 IconButton::new("diff-style-unified", IconName::DiffUnified)
                     .icon_size(IconSize::Small)
                     .toggle_state(diff_view_style == DiffViewStyle::Unified)
-                    .tooltip(Tooltip::text("Unified"))
+                    .tooltip(Tooltip::localized_text("Unified"))
                     .on_click({
                         let splittable_editor = self.splittable_editor.clone();
                         move |_, window, cx| {
@@ -501,7 +501,7 @@ impl RenderOnce for DiffStyleControls {
                                         Some(TextSize::Small.rems(cx).into()),
                                         false,
                                     ))
-                                    .child("click to change min width"),
+                                    .child(i18n::Message::new("click to change min width")),
                             )
                             .into_any_element()
                     }))
@@ -1099,19 +1099,6 @@ impl SplittableEditor {
             } else {
                 cx.propagate();
             }
-        } else {
-            cx.propagate();
-        }
-    }
-
-    fn intercept_inline_assist(
-        &mut self,
-        _: &InlineAssist,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.lhs.is_some() {
-            cx.stop_propagation();
         } else {
             cx.propagate();
         }
@@ -2299,7 +2286,6 @@ impl Render for SplittableEditor {
             .on_action(cx.listener(Self::intercept_enable_breakpoint))
             .on_action(cx.listener(Self::intercept_disable_breakpoint))
             .on_action(cx.listener(Self::intercept_edit_log_breakpoint))
-            .on_action(cx.listener(Self::intercept_inline_assist))
             .capture_action(cx.listener(Self::toggle_soft_wrap))
             .size_full()
             .child(inner)

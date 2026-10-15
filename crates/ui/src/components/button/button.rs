@@ -90,6 +90,7 @@ pub struct Button {
     alpha: Option<f32>,
     truncate: bool,
     loading: bool,
+    localized: bool,
 }
 
 impl Button {
@@ -114,6 +115,15 @@ impl Button {
             alpha: None,
             truncate: false,
             loading: false,
+            localized: false,
+        }
+    }
+
+    /// Creates a button with an application-owned, translatable label.
+    pub fn localized(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        Self {
+            localized: true,
+            ..Self::new(id, label)
         }
     }
 
@@ -426,6 +436,11 @@ impl RenderOnce for Button {
             .selected_label
             .filter(|_| is_selected)
             .unwrap_or(self.label);
+        let label = if self.localized {
+            i18n::text(label, cx)
+        } else {
+            label
+        };
 
         if self.base.aria_label.is_none() {
             self.base.aria_label = Some(label.clone());
@@ -536,29 +551,29 @@ impl Component for Button {
                     vec![
                         single_example(
                             "Default",
-                            Button::new("default", "Default").into_any_element(),
+                            Button::localized("default", "Default").into_any_element(),
                         ),
                         single_example(
                             "Filled",
-                            Button::new("filled", "Filled")
+                            Button::localized("filled", "Filled")
                                 .style(ButtonStyle::Filled)
                                 .into_any_element(),
                         ),
                         single_example(
                             "Subtle",
-                            Button::new("outline", "Subtle")
+                            Button::localized("outline", "Subtle")
                                 .style(ButtonStyle::Subtle)
                                 .into_any_element(),
                         ),
                         single_example(
                             "Tinted",
-                            Button::new("tinted_accent_style", "Accent")
+                            Button::localized("tinted_accent_style", "Accent")
                                 .style(ButtonStyle::Tinted(TintColor::Accent))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Transparent",
-                            Button::new("transparent", "Transparent")
+                            Button::localized("transparent", "Transparent")
                                 .style(ButtonStyle::Transparent)
                                 .into_any_element(),
                         ),
@@ -569,25 +584,25 @@ impl Component for Button {
                     vec![
                         single_example(
                             "Accent",
-                            Button::new("tinted_accent", "Accent")
+                            Button::localized("tinted_accent", "Accent")
                                 .style(ButtonStyle::Tinted(TintColor::Accent))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Error",
-                            Button::new("tinted_negative", "Error")
+                            Button::localized("tinted_negative", "Error")
                                 .style(ButtonStyle::Tinted(TintColor::Error))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Warning",
-                            Button::new("tinted_warning", "Warning")
+                            Button::localized("tinted_warning", "Warning")
                                 .style(ButtonStyle::Tinted(TintColor::Warning))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Success",
-                            Button::new("tinted_positive", "Success")
+                            Button::localized("tinted_positive", "Success")
                                 .style(ButtonStyle::Tinted(TintColor::Success))
                                 .into_any_element(),
                         ),
@@ -598,17 +613,17 @@ impl Component for Button {
                     vec![
                         single_example(
                             "Default",
-                            Button::new("default_state", "Default").into_any_element(),
+                            Button::localized("default_state", "Default").into_any_element(),
                         ),
                         single_example(
                             "Disabled",
-                            Button::new("disabled", "Disabled")
+                            Button::localized("disabled", "Disabled")
                                 .disabled(true)
                                 .into_any_element(),
                         ),
                         single_example(
                             "Selected",
-                            Button::new("selected", "Selected")
+                            Button::localized("selected", "Selected")
                                 .toggle_state(true)
                                 .into_any_element(),
                         ),
@@ -619,26 +634,26 @@ impl Component for Button {
                     vec![
                         single_example(
                             "Start Icon",
-                            Button::new("icon_start", "Start Icon")
+                            Button::localized("icon_start", "Start Icon")
                                 .start_icon(Icon::new(IconName::Check))
                                 .into_any_element(),
                         ),
                         single_example(
                             "End Icon",
-                            Button::new("icon_end", "End Icon")
+                            Button::localized("icon_end", "End Icon")
                                 .end_icon(Icon::new(IconName::Check))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Both Icons",
-                            Button::new("both_icons", "Both Icons")
+                            Button::localized("both_icons", "Both Icons")
                                 .start_icon(Icon::new(IconName::Check))
                                 .end_icon(Icon::new(IconName::ChevronDown))
                                 .into_any_element(),
                         ),
                         single_example(
                             "Icon Color",
-                            Button::new("icon_color", "Icon Color")
+                            Button::localized("icon_color", "Icon Color")
                                 .start_icon(Icon::new(IconName::Check).color(Color::Accent))
                                 .into_any_element(),
                         ),

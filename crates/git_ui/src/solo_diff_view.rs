@@ -814,7 +814,7 @@ impl Render for SoloDiffGitToolbar {
                 h_group_sm()
                     .when(button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "Toggle Staged")
+                            Button::localized("stage", "Toggle Staged")
                                 .disabled(!button_states.stage && !button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
                                     "Toggle Staged",
@@ -828,7 +828,7 @@ impl Render for SoloDiffGitToolbar {
                     })
                     .when(!button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "Stage")
+                            Button::localized("stage", "Stage")
                                 .disabled(!button_states.stage)
                                 .tooltip(Tooltip::for_action_title_in(
                                     "Stage and Go to Next Hunk",
@@ -840,7 +840,7 @@ impl Render for SoloDiffGitToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "Unstage")
+                            Button::localized("unstage", "Unstage")
                                 .disabled(!button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
                                     "Unstage and Go to Next Hunk",
@@ -853,7 +853,7 @@ impl Render for SoloDiffGitToolbar {
                         )
                     })
                     .child(
-                        Button::new("restore", "Restore")
+                        Button::localized("restore", "Restore")
                             .tooltip(Tooltip::for_action_title_in(
                                 "Restore selected hunk",
                                 &Restore,
@@ -867,7 +867,7 @@ impl Render for SoloDiffGitToolbar {
             )
             .child(Divider::vertical())
             .child(h_group_sm().child(if button_states.stage_file {
-                Button::new("stage-file", "Stage All")
+                Button::localized("stage-file", "Stage All")
                     .width(rems_from_px(80_f32))
                     .disabled(!button_states.stage_file)
                     .tooltip(Tooltip::for_action_title_in(
@@ -877,7 +877,7 @@ impl Render for SoloDiffGitToolbar {
                     ))
                     .on_click(cx.listener(|this, _, window, cx| this.stage_file(window, cx)))
             } else {
-                Button::new("unstage-file", "Unstage All")
+                Button::localized("unstage-file", "Unstage All")
                     .width(rems_from_px(80_f32))
                     .disabled(!button_states.unstage_file)
                     .tooltip(Tooltip::for_action_title_in(
@@ -889,7 +889,7 @@ impl Render for SoloDiffGitToolbar {
             }))
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
+                Button::localized("commit", "Commit")
                     .tooltip(Tooltip::for_action_title_in(
                         "Commit",
                         &Commit,

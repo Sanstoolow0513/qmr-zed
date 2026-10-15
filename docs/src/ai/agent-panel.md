@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: AI Coding Agent - Zed Agent Panel
 description: Use Zed's AI coding agent to generate, refactor, and debug code with tool calling, checkpoints, and multi-model support.
@@ -8,7 +10,7 @@ description: Use Zed's AI coding agent to generate, refactor, and debug code wit
 The Agent Panel is where you interact with AI agents that can read, write, and run code in your project.
 It's the core of Zed's AI code editing experience — use it for code generation, refactoring, debugging, documentation, and general questions.
 
-Open it with {#action agent::NewThread} from [the Command Palette](../command-palette.md) or click the ✨ icon in the status bar.
+Open it with `agent::NewThread` from [the Command Palette](../command-palette.md) or click the ✨ icon in the status bar.
 
 ## Getting Started {#getting-started}
 
@@ -21,7 +23,7 @@ If you're using the Agent Panel for the first time, configure either a model for
 ## Overview {#overview}
 
 With an LLM provider or External Agent configured, type in the message editor and press `enter` to submit.
-Expand the editor with {#kb agent::ExpandMessageEditor} if you need more room.
+Expand the editor with `agent::ExpandMessageEditor` if you need more room.
 
 Responses stream in with indicators showing [which tools](./tools.md) the model is using.
 The sections below cover what you can do from here.
@@ -33,7 +35,7 @@ The sections below cover what you can do from here.
 
 By default, the Agent Panel uses Zed's first-party agent.
 
-Start a new thread with {#kb agent::NewThread}, or open the "New Thread…" menu using the agent selector button on the left (in the empty state) or the `+` icon in the top-right of the panel toolbar. You can also open that menu with {#kb agent::ToggleNewThreadMenu}.
+Start a new thread with `agent::NewThread`, or open the "New Thread…" menu using the agent selector button on the left (in the empty state) or the `+` icon in the top-right of the panel toolbar. You can also open that menu with `agent::ToggleNewThreadMenu`.
 
 From the "New Thread…" menu you can:
 
@@ -41,15 +43,15 @@ From the "New Thread…" menu you can:
 - Choose **New From Summary** to start a fresh Zed Agent thread seeded with a summary of the current conversation — useful for compacting long threads as you approach the context window limit.
 - Choose **Terminal** to open a terminal thread directly in the Agent Panel — see [Terminal Threads](#terminal-threads) for details.
 
-{#action agent::NewExternalAgentThread} creates a new thread with the specified External Agent id.
+`agent::NewExternalAgentThread` creates a new thread with the specified External Agent id.
 
 You can also start a new thread from the [Threads Sidebar](./parallel-agents.md#threads-sidebar), scoped to a specific project — see [Running Multiple Threads](./parallel-agents.md#running-multiple-threads).
 
 ### Managing Multiple Threads {#multiple-threads}
 
-You can run multiple agent threads at once, each working independently with its own agent, context window, and conversation history. Open the Threads Sidebar with {#kb multi_workspace::ToggleWorkspaceSidebar} to see all your threads grouped by project. Click any thread to switch to it, or use the thread switcher ({#kb agents_sidebar::ToggleThreadSwitcher}) to cycle between recent threads without opening the sidebar.
+You can run multiple agent threads at once, each working independently with its own agent, context window, and conversation history. Open the Threads Sidebar with `multi_workspace::ToggleWorkspaceSidebar` to see all your threads grouped by project. Click any thread to switch to it, or use the thread switcher (`agents_sidebar::ToggleThreadSwitcher`) to cycle between recent threads without opening the sidebar.
 
-Threads you're no longer working on can be archived by hovering over them in the sidebar and clicking the archive icon, or selecting them and pressing {#kb agent::ArchiveSelectedThread}. The Thread History holds all your threads across all projects, sorted chronologically, and you can restore them at any time.
+Threads you're no longer working on can be archived by hovering over them in the sidebar and clicking the archive icon, or selecting them and pressing `agent::ArchiveSelectedThread`. The Thread History holds all your threads across all projects, sorted chronologically, and you can restore them at any time.
 
 If two threads might edit the same files, you can isolate one in a new Git worktree. Use the worktree picker in the title bar to pick which worktree the agent runs in, or create a new one. See [Worktree Isolation](./parallel-agents.md#worktree-isolation) for details.
 
@@ -89,7 +91,7 @@ Right-click on any agent response in the thread view to access a context menu wi
 
 In long conversations, use the scroll arrow buttons at the bottom of the panel to jump to your most recent prompt or to the very beginning of the thread. You can also scroll the thread using arrow keys, Page Up/Down, Home/End, and Shift+Page Up/Down to jump between messages, when the thread pane is focused.
 
-When focus is in the message editor, you can also use {#kb agent::ScrollOutputPageUp}, {#kb agent::ScrollOutputPageDown}, {#kb agent::ScrollOutputToTop}, {#kb agent::ScrollOutputToBottom}, {#kb agent::ScrollOutputLineUp}, and {#kb agent::ScrollOutputLineDown} to navigate the thread, or {#kb agent::ScrollOutputToPreviousMessage} and {#kb agent::ScrollOutputToNextMessage} to jump between your prompts.
+When focus is in the message editor, you can also use `agent::ScrollOutputPageUp`, `agent::ScrollOutputPageDown`, `agent::ScrollOutputToTop`, `agent::ScrollOutputToBottom`, `agent::ScrollOutputLineUp`, and `agent::ScrollOutputLineDown` to navigate the thread, or `agent::ScrollOutputToPreviousMessage` and `agent::ScrollOutputToNextMessage` to jump between your prompts.
 
 ### Thread titles {#thread-titles}
 
@@ -124,7 +126,7 @@ These notifications can be used together or individually, and you can use the `a
 
 Once the agent has made changes to your project, the panel will surface which files, how many of them, and how many lines have been edited.
 
-To see which files specifically have been edited, expand the accordion bar that shows up right above the message editor or click the `Review Changes` button ({#kb agent::OpenAgentDiff}), which opens a special multi-buffer tab with all changes.
+To see which files specifically have been edited, expand the accordion bar that shows up right above the message editor or click the `Review Changes` button (`agent::OpenAgentDiff`), which opens a special multi-buffer tab with all changes.
 
 You can accept or reject each individual change hunk, or the whole set of changes made by the agent.
 
@@ -143,11 +145,11 @@ Add context by typing `@` in the message editor.
 You can mention files, directories, symbols, previous threads, [skills](./skills.md), diagnostics, branch diffs, and URLs to fetch.
 
 When you paste multi-line code selections copied from a buffer, Zed automatically formats them as @-mentions with the file context.
-To paste content without this automatic formatting, use {#kb agent::PasteRaw} to paste raw text directly.
+To paste content without this automatic formatting, use `agent::PasteRaw` to paste raw text directly.
 
 ### Selection as Context
 
-Additionally, you can also select text in a buffer or terminal and add it as context by using the {#kb agent::AddSelectionToThread} keybinding, running the {#action agent::AddSelectionToThread} action, or choosing the "Selection" item in the `+` menu in the message editor.
+Additionally, you can also select text in a buffer or terminal and add it as context by using the `agent::AddSelectionToThread` keybinding, running the `agent::AddSelectionToThread` action, or choosing the "Selection" item in the `+` menu in the message editor.
 
 ### Images as Context
 
@@ -169,7 +171,7 @@ Configure automatic compaction with `agent.auto_compact`. See [Agent Settings](.
 
 ## Changing Models {#changing-models}
 
-After you've configured your LLM providers—either via [API access](./use-api-access.md) or through [Zed-hosted models](../account/zed-hosted-models.md)—you can switch between their models by clicking on the model selector on the message editor or by using the {#kb agent::ToggleModelSelector} keybinding.
+After you've configured your LLM providers—either via [API access](./use-api-access.md) or through [Zed-hosted models](../account/zed-hosted-models.md)—you can switch between their models by clicking on the model selector on the message editor or by using the `agent::ToggleModelSelector` keybinding.
 
 > The same model can be offered via multiple providers - for example, Claude Sonnet 4.5 is available via Zed Pro, OpenRouter, Anthropic directly, and more.
 > Make sure you've selected the correct model **_provider_** for the model you'd like to use, delineated by the logo to the left of the model in the model selector.
@@ -178,7 +180,7 @@ After you've configured your LLM providers—either via [API access](./use-api-a
 
 You can mark specific models as favorites either through the model selector, by clicking on the star icon button that appears as you hover the model, or through your settings via the `agent.favorite_models` settings key.
 
-Cycle through your favorites with {#kb agent::CycleFavoriteModels} without opening the model selector.
+Cycle through your favorites with `agent::CycleFavoriteModels` without opening the model selector.
 
 ## Using Tools and Profiles {#using-tools}
 
@@ -203,7 +205,7 @@ Zed's UI will inform you about this via a warning icon that appears close to the
 
 ## Errors and Debugging {#errors-and-debugging}
 
-If you hit an error or unusual LLM behavior, open the thread as Markdown with {#action agent::OpenActiveThreadAsMarkdown} and attach it to your GitHub issue.
+If you hit an error or unusual LLM behavior, open the thread as Markdown with `agent::OpenActiveThreadAsMarkdown` and attach it to your GitHub issue.
 
 You can also open threads as Markdown by clicking on the file icon button, to the right of the thumbs down button, when focused on the panel's editor.
 

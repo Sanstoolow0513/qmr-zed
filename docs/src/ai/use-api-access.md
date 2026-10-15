@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Use API Access - Zed
 description: Configure provider API access, API keys, API credits, usage billing, and OpenAI-compatible endpoints for Zed AI features.
@@ -41,7 +43,7 @@ agent paths and model access paths.
 
 ## API Keys and Environment Variables {#api-keys}
 
-Most API-access providers can be configured on the **Settings → AI → LLM Providers** page with {#action agent::OpenSettings}. Keys saved through Zed are stored in the system keychain, not in `settings.json`.
+Most API-access providers can be configured on the **Settings → AI → LLM Providers** page with `agent::OpenSettings`. Keys saved through Zed are stored in the system keychain, not in `settings.json`.
 
 Zed also reads provider-specific environment variables. Non-empty [environment variables](../environment.md) take precedence over keychain values. If a key comes from an environment variable, unset the variable and restart Zed to stop using it.
 
@@ -98,7 +100,7 @@ Use Anthropic API access when you have an Anthropic API key or API credits. Clau
 
 1. Sign up for Anthropic and [create an API key](https://console.anthropic.com/settings/keys).
 2. Make sure your Anthropic account has API credits.
-3. Open Agent Settings with {#action agent::OpenSettings} and go to the Anthropic section.
+3. Open Agent Settings with `agent::OpenSettings` and go to the Anthropic section.
 4. Enter your Anthropic API key.
 
 Zed also reads `ANTHROPIC_API_KEY` from the local Zed process environment.
@@ -154,7 +156,7 @@ Use OpenAI API access when you have an OpenAI API key or API billing. ChatGPT Pl
 
 1. Visit the OpenAI platform and [create an API key](https://platform.openai.com/account/api-keys).
 2. Make sure your OpenAI account has credits or billing enabled.
-3. Open Agent Settings with {#action agent::OpenSettings} and go to the OpenAI section.
+3. Open Agent Settings with `agent::OpenSettings` and go to the OpenAI section.
 4. Enter your OpenAI API key.
 
 Zed also reads `OPENAI_API_KEY` from the local Zed process environment.
@@ -188,7 +190,7 @@ You must provide the model's context window in `max_tokens`. For reasoning-focus
 Use Google AI API access when you have a Gemini API key.
 
 1. Go to Google AI Studio and [create an API key](https://aistudio.google.com/app/apikey).
-2. Open [Agent Settings](./agent-settings.md) with {#action agent::OpenSettings} and go to the Google AI section.
+2. Open [Agent Settings](./agent-settings.md) with `agent::OpenSettings` and go to the Google AI section.
 3. Enter your Google AI API key.
 
 Zed reads `GEMINI_API_KEY`, falling back to `GOOGLE_AI_API_KEY`, from the local Zed process environment.
@@ -232,7 +234,7 @@ including experimental models, or a thinking-mode configuration.
 Use Mistral API access when you have a Mistral API key.
 
 1. Visit the Mistral platform and [create an API key](https://console.mistral.ai/api-keys/).
-2. Open Agent Settings with {#action agent::OpenSettings} and go to the Mistral section.
+2. Open Agent Settings with `agent::OpenSettings` and go to the Mistral section.
 3. Enter your Mistral API key.
 
 Zed also reads `MISTRAL_API_KEY` from the local Zed process environment.
@@ -268,7 +270,7 @@ support, image support, or a custom endpoint.
 Use DeepSeek API access when you have paid API usage, top-ups, or an API key. In Zed, DeepSeek is API access, not subscription sign-in.
 
 1. Visit the DeepSeek platform and [create an API key](https://platform.deepseek.com/api_keys).
-2. Open Agent Settings with {#action agent::OpenSettings} and go to the DeepSeek section.
+2. Open Agent Settings with `agent::OpenSettings` and go to the DeepSeek section.
 3. Enter your DeepSeek API key.
 
 Zed also reads `DEEPSEEK_API_KEY` from the local Zed process environment.
@@ -307,7 +309,7 @@ limits, or a custom endpoint.
 Use xAI API access when you have an xAI API key.
 
 1. [Create an API key in the xAI Console](https://console.x.ai/team/default/api-keys).
-2. Open Agent Settings with {#action agent::OpenSettings} and go to the xAI section.
+2. Open Agent Settings with `agent::OpenSettings` and go to the xAI section.
 3. Enter your xAI API key.
 
 Zed also reads `XAI_API_KEY` from the local Zed process environment.
@@ -354,7 +356,7 @@ Zed does not sign in to OpenCode with OAuth or detect your OpenCode subscription
    provider in Zed's Agent. You can use them in Zed by running OpenCode as an
    [external agent through ACP](https://zed.dev/acp/agent/opencode).
 3. Generate an API key from the API Keys section in the OpenCode Console.
-4. Open Agent Settings with {#action agent::OpenSettings} and go to the OpenCode section.
+4. Open Agent Settings with `agent::OpenSettings` and go to the OpenCode section.
 5. Enter your OpenCode API key.
 
 Zed also reads `OPENCODE_API_KEY` from the local Zed process environment.
@@ -420,7 +422,7 @@ Custom OpenCode models are listed in the model dropdown in the Agent Panel.
 
 Use an Anthropic-compatible endpoint when a service implements Anthropic's [Messages API](https://docs.anthropic.com/en/api/messages) (`/v1/messages`) and gives you a custom base URL, model ID, and API key.
 
-You can add a custom Anthropic-compatible provider from Agent Settings with {#action agent::OpenSettings}. Look for `Add Provider` in the [LLM Providers](./llm-providers.md) section, choose `Anthropic`, and fill in the provider name, API URL, model ID, and context window.
+You can add a custom Anthropic-compatible provider from Agent Settings with `agent::OpenSettings`. Look for `Add Provider` in the [LLM Providers](./llm-providers.md) section, choose `Anthropic`, and fill in the provider name, API URL, model ID, and context window.
 
 You can also configure the provider in your settings file:
 
@@ -470,7 +472,7 @@ Enter the API key in the provider settings UI or set the generated environment v
 
 Use an OpenAI-compatible endpoint when you have a custom base URL, model ID, and API key.
 
-You can add a custom OpenAI-compatible provider from Agent Settings with {#action agent::OpenSettings}. Look for `Add Provider` in the LLM Providers section and fill in the provider name, API URL, model ID, and context window.
+You can add a custom OpenAI-compatible provider from Agent Settings with `agent::OpenSettings`. Look for `Add Provider` in the LLM Providers section and fill in the provider name, API URL, model ID, and context window.
 
 You can also configure the provider in your settings file:
 

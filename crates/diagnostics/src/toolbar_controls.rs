@@ -1,12 +1,11 @@
 use crate::{BufferDiagnosticsEditor, ProjectDiagnosticsEditor, ToggleDiagnosticsRefresh};
-use agent_settings::AgentSettings;
+
 use gpui::{Context, EventEmitter, ParentElement, Render, Window};
 use language::DiagnosticEntry;
-use settings::Settings;
 use text::{Anchor, BufferId};
 use ui::{Tooltip, prelude::*};
 use workspace::{ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, item::ItemHandle};
-use zed_actions::assistant::InlineAssist;
+
 use zed_actions::buffer_search;
 
 pub struct ToolbarControls {
@@ -48,8 +47,6 @@ impl Render for ToolbarControls {
             None => {}
         }
 
-        let is_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
-
         let (warning_tooltip, warning_color) = if include_warnings {
             ("Exclude Warnings", Color::Warning)
         } else {
@@ -61,7 +58,7 @@ impl Render for ToolbarControls {
             .child({
                 IconButton::new("toggle_search", IconName::MagnifyingGlass)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::for_action_title(
+                    .tooltip(Tooltip::localized_for_action_title(
                         "Buffer Search",
                         &buffer_search::Deploy::find(),
                     ))
@@ -69,26 +66,13 @@ impl Render for ToolbarControls {
                         window.dispatch_action(Box::new(buffer_search::Deploy::find()), cx);
                     })
             })
-            .when(is_agent_enabled, |this| {
-                this.child(
-                    IconButton::new("inline_assist", IconName::ZedAssistant)
-                        .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::for_action_title(
-                            "Inline Assist",
-                            &InlineAssist::default(),
-                        ))
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(InlineAssist::default()), cx);
-                        }),
-                )
-            })
             .map(|div| {
                 if is_updating {
                     div.child(
                         IconButton::new("stop-updating", IconName::Stop)
                             .icon_color(Color::Error)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::for_action_title(
+                            .tooltip(Tooltip::localized_for_action_title(
                                 "Stop Diagnostics Update",
                                 &ToggleDiagnosticsRefresh,
                             ))
@@ -103,7 +87,7 @@ impl Render for ToolbarControls {
                     div.child(
                         IconButton::new("refresh-diagnostics", IconName::ArrowCircle)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::for_action_title(
+                            .tooltip(Tooltip::localized_for_action_title(
                                 "Refresh Diagnostics",
                                 &ToggleDiagnosticsRefresh,
                             ))

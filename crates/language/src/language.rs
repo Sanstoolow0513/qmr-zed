@@ -13,6 +13,7 @@ mod diagnostic_set;
 mod language_registry;
 
 pub mod language_settings;
+pub use language_settings::{AutoIndentMode, IndentGuideSettings};
 mod manifest;
 pub mod modeline;
 mod outline;
@@ -28,10 +29,6 @@ pub mod buffer_tests;
 #[cfg(test)]
 mod proto_diagnostics_tests;
 
-pub use crate::language_settings::{
-    AutoIndentMode, EditPredictionPromptFormat, EditPredictionsMode, IndentGuideSettings,
-    ZetaVersion,
-};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use collections::{HashMap, HashSet};

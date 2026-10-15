@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: AI by Company - Zed
 description: Find the right Zed setup path for OpenAI, ChatGPT, Codex, Claude, Gemini, Copilot, Cursor, OpenCode, Pi, Poolside, OpenRouter, Bedrock, local models, and other AI tools.

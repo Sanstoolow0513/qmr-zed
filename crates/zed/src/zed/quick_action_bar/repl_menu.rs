@@ -97,13 +97,26 @@ impl QuickActionBar {
                     menu.map(|menu| {
                         if status.is_connected() {
                             let status = status.clone();
-                            menu.custom_row(move |_window, _cx| {
+                            menu.custom_row(move |_window, cx| {
                                 h_flex()
                                     .child(
-                                        Label::new(format!(
-                                            "kernel: {} ({})",
-                                            menu_state.kernel_name, menu_state.kernel_language
-                                        ))
+                                        Label::new(
+                                            i18n::format(
+                                                "kernel: {argument0} ({argument1})",
+                                                &[
+                                                    (
+                                                        "argument0",
+                                                        &format!("{}", menu_state.kernel_name),
+                                                    ),
+                                                    (
+                                                        "argument1",
+                                                        &format!("{}", menu_state.kernel_language),
+                                                    ),
+                                                ],
+                                                cx,
+                                            )
+                                            .to_string(),
+                                        )
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                     )
@@ -112,7 +125,7 @@ impl QuickActionBar {
                             .custom_row(move |_window, _cx| {
                                 h_flex()
                                     .child(
-                                        Label::new(status.clone().to_string())
+                                        Label::localized(status.clone().to_string())
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     )
@@ -134,7 +147,7 @@ impl QuickActionBar {
                     .separator()
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new(if has_nonempty_selection {
+                            Label::localized(if has_nonempty_selection {
                                 "Run Selection"
                             } else {
                                 "Run Line"
@@ -150,7 +163,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Interrupt")
+                            Label::localized("Interrupt")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -164,7 +177,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Clear Outputs")
+                            Label::localized("Clear Outputs")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted)
                                 .into_any_element()
@@ -179,7 +192,7 @@ impl QuickActionBar {
                     .separator()
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Shut Down Kernel")
+                            Label::localized("Shut Down Kernel")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -193,7 +206,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Restart Kernel")
+                            Label::localized("Restart Kernel")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -206,6 +219,7 @@ impl QuickActionBar {
                     )
                     .separator()
                     .action("View Sessions", Box::new(repl::Sessions))
+                    .localize_last()
                     // TODO: Add shut down all kernels action
                     // .action("Shut Down all Kernels", Box::new(gpui::NoAction))
                 })
@@ -215,29 +229,34 @@ impl QuickActionBar {
                 ButtonLike::new_rounded_right(element_id("dropdown"))
                     .child(
                         Icon::new(IconName::ChevronDown)
-                            .size(IconSize::XSmall)
+                            .size(IconSize::Medium)
                             .color(Color::Muted),
                     )
-                    .width(rems(1.))
+                    .size(ButtonSize::Medium)
+                    .width(rems_from_px(28_f32))
                     .disabled(menu_state.popover_disabled),
-                Tooltip::text("REPL Menu"),
+                Tooltip::localized_text("REPL Menu"),
             );
 
         let button = ButtonLike::new_rounded_left("toggle_repl_icon")
             .child(if menu_state.icon_is_animating {
                 Icon::new(menu_state.icon)
+                    .size(IconSize::Medium)
                     .color(menu_state.icon_color)
                     .with_rotate_animation(5)
                     .into_any_element()
             } else {
                 IconWithIndicator::new(
-                    Icon::new(IconName::ReplNeutral).color(menu_state.icon_color),
+                    Icon::new(IconName::ReplNeutral)
+                        .size(IconSize::Medium)
+                        .color(menu_state.icon_color),
                     menu_state.indicator,
                 )
                 .indicator_border_color(Some(cx.theme().colors().toolbar_background))
                 .into_any_element()
             })
-            .size(ButtonSize::Compact)
+            .size(ButtonSize::Medium)
+            .width(rems_from_px(28_f32))
             .style(ButtonStyle::Subtle)
             .tooltip(Tooltip::text(menu_state.tooltip))
             .on_click(|_, window, cx| window.dispatch_action(Box::new(repl::Run {}), cx))
@@ -264,7 +283,9 @@ impl QuickActionBar {
                 .child(self.render_kernel_selector(cx))
                 .child(
                     IconButton::new("toggle_repl_icon", IconName::ReplNeutral)
-                        .size(ButtonSize::Compact)
+                        .icon_size(IconSize::Medium)
+                        .size(ButtonSize::Medium)
+                        .width(rems_from_px(28_f32))
                         .icon_color(Color::Muted)
                         .style(ButtonStyle::Subtle)
                         .tooltip(Tooltip::text(tooltip))
@@ -336,7 +357,7 @@ impl QuickActionBar {
             worktree_id,
             ButtonLike::new("kernel-selector")
                 .style(ButtonStyle::Subtle)
-                .size(ButtonSize::Compact)
+                .size(ButtonSize::Medium)
                 .child(
                     h_flex()
                         .w_full()
@@ -367,7 +388,7 @@ impl QuickActionBar {
                                 .size(IconSize::XSmall),
                         ),
                 ),
-            Tooltip::text("Select Kernel"),
+            Tooltip::localized_text("Select Kernel"),
         )
         .with_handle(menu_handle)
         .into_any_element()
@@ -382,8 +403,9 @@ impl QuickActionBar {
                 .child(
                     IconButton::new("toggle_repl_icon", IconName::ReplNeutral)
                         .style(ButtonStyle::Subtle)
-                        .shape(ui::IconButtonShape::Square)
-                        .icon_size(ui::IconSize::Small)
+                        .icon_size(IconSize::Medium)
+                        .size(ButtonSize::Medium)
+                        .width(rems_from_px(28_f32))
                         .icon_color(Color::Muted)
                         .tooltip(Tooltip::text(tooltip))
                         .on_click(|_, _window, cx| {

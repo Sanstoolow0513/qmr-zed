@@ -847,7 +847,7 @@ pub mod simple_message_notification {
                     )
                     .icon_size(IconSize::XSmall)
                     .icon_color(Color::Muted),
-                    Tooltip::text("More Options"),
+                    Tooltip::localized_text("More Options"),
                 )
                 .menu(move |window, cx| {
                     let entries = entries.clone();
@@ -1074,7 +1074,7 @@ pub mod simple_message_notification {
                                         cx,
                                     )
                                 } else {
-                                    Tooltip::for_action("Close", &menu::Cancel, cx)
+                                    Tooltip::localized_for_action("Close", &menu::Cancel, cx)
                                 }
                             })
                             .on_click(cx.listener(move |_, _, _, cx| {
@@ -1743,7 +1743,13 @@ where
                         display.push('.');
                     }
                     let detail = f(err, window, cx).unwrap_or(display);
-                    window.prompt(PromptLevel::Critical, &msg, Some(&detail), &["OK"], cx)
+                    window.prompt(
+                        PromptLevel::Critical,
+                        &msg,
+                        Some(&detail),
+                        &[i18n::static_text("OK", cx)],
+                        cx,
+                    )
                 }) {
                     prompt.await.ok();
                 }

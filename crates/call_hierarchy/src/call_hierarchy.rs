@@ -711,7 +711,7 @@ impl PickerDelegate for CallHierarchyDelegate {
                 .border_color(cx.theme().colors().border_variant)
                 .when(!self.root_stack.is_empty(), |this| {
                     this.child(
-                        Button::new("collapse-call", "Back")
+                        Button::localized("collapse-call", "Back")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::SelectParent, &focus_handle, cx)
                                     .map(|key_binding| key_binding.size(rems_from_px(12_f32))),
@@ -734,7 +734,7 @@ impl PickerDelegate for CallHierarchyDelegate {
                     )
                 })
                 .child(
-                    Button::new("toggle-direction", "Switch Direction")
+                    Button::localized("toggle-direction", "Switch Direction")
                         .key_binding(
                             KeyBinding::for_action_in(&ToggleDirection, &focus_handle, cx)
                                 .map(|key_binding| key_binding.size(rems_from_px(12_f32))),

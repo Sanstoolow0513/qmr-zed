@@ -125,7 +125,8 @@ impl ComponentPreview {
         let sorted_components = component_registry.sorted_components();
         let selected_index = selected_index.into().unwrap_or(0);
         let active_page = active_page.unwrap_or(PreviewPage::AllComponents);
-        let filter_editor = cx.new(|cx| InputField::new(window, cx, "Find components or usages…"));
+        let filter_editor =
+            cx.new(|cx| InputField::localized(window, cx, "Find components or usages…"));
 
         let component_list = ListState::new(
             sorted_components.len(),
@@ -403,7 +404,7 @@ impl ComponentPreview {
                 let selected = self.active_page == PreviewPage::AllComponents;
 
                 ListItem::new(ix)
-                    .child(Label::new("All Components"))
+                    .child(Label::localized("All Components"))
                     .selectable(true)
                     .toggle_state(selected)
                     .inset(true)
@@ -546,7 +547,7 @@ impl ComponentPreview {
                 .size_full()
                 .items_center()
                 .justify_center()
-                .child("Component not found")
+                .child(i18n::Message::new("Component not found"))
                 .into_any_element()
         }
     }
@@ -644,7 +645,7 @@ impl Render for ComponentPreview {
                             .border_t_1()
                             .border_color(cx.theme().colors().border)
                             .child(
-                                Button::new("toast-test", "Launch Toast")
+                                Button::localized("toast-test", "Launch Toast")
                                     .full_width()
                                     .on_click(cx.listener({
                                         move |this, _, _window, cx| {
@@ -709,8 +710,8 @@ impl From<ComponentId> for ActivePageId {
 impl Item for ComponentPreview {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Component Preview".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Component Preview", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

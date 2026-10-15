@@ -391,11 +391,7 @@ pub struct ToolbarContent {
     ///
     /// Default: true
     pub selections_menu: Option<bool>,
-    /// Whether to display Agent review buttons in the editor toolbar.
-    /// Only applicable while reviewing a file edited by the Agent.
-    ///
-    /// Default: true
-    pub agent_review: Option<bool>,
+
     /// Whether to display code action buttons in the editor toolbar.
     ///
     /// Default: false
@@ -1006,7 +1002,7 @@ pub enum DiffViewStyle {
 #[with_fallible_options]
 #[derive(Clone, Default, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq, Eq)]
 pub struct SearchSettingsContent {
-    /// Whether to show the project search button in the status bar.
+    /// Whether to show the project search button in the tools navigation.
     pub button: Option<bool>,
     /// Whether to only match on whole words.
     pub whole_word: Option<bool>,

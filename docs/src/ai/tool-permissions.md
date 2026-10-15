@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 # Tool Permissions
 
 Configure which [Agent Panel](./agent-panel.md) tools run automatically and which require your approval.
@@ -175,7 +177,7 @@ These patterns catch any flag combination (e.g., `-fr`, `-rfv`, `-r -f`, `--recu
 They are checked against both the raw command and each parsed sub-command in chained commands (e.g., `ls && rm -rf /`).
 
 There are no other built-in rules.
-The default settings file ({#action zed::OpenDefaultSettings}) includes commented-out examples for protecting `.env` files, secrets directories, and private keys — you can uncomment or adapt these to suit your needs.
+The default settings file (`zed::OpenDefaultSettings`) includes commented-out examples for protecting `.env` files, secrets directories, and private keys — you can uncomment or adapt these to suit your needs.
 
 ## Permission Request in the UI
 

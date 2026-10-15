@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Use an Existing Subscription - Zed
 description: Use ChatGPT, Claude, Copilot, OpenCode, Cursor, and other existing AI subscriptions in Zed.

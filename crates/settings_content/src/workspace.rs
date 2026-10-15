@@ -37,7 +37,7 @@ pub struct WorkspaceSettingsContent {
     ///
     /// Default: false
     pub confirm_quit: Option<bool>,
-    /// Whether or not to show the call status icon in the status bar.
+    /// Legacy setting retained for compatibility. No call status indicator is displayed.
     ///
     /// Default: true
     pub show_call_status_icon: Option<bool>,
@@ -556,28 +556,28 @@ pub struct TabBarSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq, Eq)]
 pub struct StatusBarSettingsContent {
-    /// Whether to show the status bar.
+    /// Legacy setting retained for compatibility. The window no longer has a status bar.
     ///
-    /// Default: true
+    /// Default: false
     #[serde(rename = "experimental.show")]
     pub show: Option<bool>,
-    /// Whether to show the name of the active file in the status bar.
+    /// Legacy setting retained for compatibility. The file name is shown in the editor toolbar.
     ///
     /// Default: false
     pub show_active_file: Option<bool>,
-    /// Whether to display the active language button in the status bar.
+    /// Whether to display the active language button in the editor toolbar.
     ///
     /// Default: true
     pub active_language_button: Option<bool>,
-    /// Whether to show the cursor position button in the status bar.
+    /// Whether to show the cursor position button in the editor toolbar.
     ///
     /// Default: true
     pub cursor_position_button: Option<bool>,
-    /// Whether to show active line endings button in the status bar.
+    /// Legacy setting retained for compatibility. Line endings are available in the editor settings menu.
     ///
     /// Default: false
     pub line_endings_button: Option<bool>,
-    /// Whether to show the active encoding button in the status bar.
+    /// Legacy setting retained for compatibility. Encoding is available in the editor settings menu.
     ///
     /// Default: non_utf8
     pub active_encoding_button: Option<EncodingDisplayOptions>,
@@ -812,7 +812,7 @@ pub struct ProjectPanelAutoOpenSettings {
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct ProjectPanelSettingsContent {
-    /// Whether to show the project panel button in the status bar.
+    /// Whether to show the project panel button in the tools navigation.
     ///
     /// Default: true
     pub button: Option<bool>,
@@ -1208,4 +1208,117 @@ impl DocumentSymbols {
 pub struct FocusFollowsMouse {
     pub enabled: Option<bool>,
     pub debounce_ms: Option<u64>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct WorkspaceSidebarSettingsContent {
+    /// Automatically show the workspace sidebar when opening another project in this window.
+    pub auto_open: Option<bool>,
+    /// Which side of the window contains the workspace sidebar.
+    pub position: Option<crate::SidebarDockPosition>,
+    /// Default sidebar width, clamped to 200–800 pixels.
+    pub default_width: Option<crate::PixelSetting>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct WorkspaceTerminalSettingsContent {
+    /// Show the workspace terminal entry in the tools menu.
+    pub button: Option<bool>,
+    /// Dock the workspace terminal panel on the left or right.
+    pub dock: Option<DockPosition>,
+    /// Use proportional panel sizing.
+    pub flexible: Option<bool>,
+    /// Default fixed panel width in pixels.
+    pub default_width: Option<crate::PixelSetting>,
+    /// Command to run after a workspace terminal shell starts. Empty disables it.
+    pub init_command: Option<String>,
+    /// When to display notifications for a terminal bell.
+    pub notify_on_bell: Option<crate::TerminalNotificationDisplay>,
+    /// When to play the terminal notification sound.
+    pub play_sound_on_bell: Option<crate::TerminalNotificationSound>,
+}
+
+/// Where to position the threads sidebar.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SidebarDockPosition {
+    /// Always show the sidebar on the left side.
+    #[default]
+    Left,
+    /// Always show the sidebar on the right side.
+    Right,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum SidebarSide {
+    #[default]
+    Left,
+    Right,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalNotificationDisplay {
+    #[default]
+    PrimaryScreen,
+    AllScreens,
+    Never,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalNotificationSound {
+    #[default]
+    Never,
+    WhenHidden,
+    Always,
+}
+
+impl TerminalNotificationSound {
+    pub fn should_play(&self, visible: bool) -> bool {
+        match self {
+            TerminalNotificationSound::Never => false,
+            TerminalNotificationSound::WhenHidden => !visible,
+            TerminalNotificationSound::Always => true,
+        }
+    }
 }

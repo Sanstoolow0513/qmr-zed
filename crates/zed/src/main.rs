@@ -15,11 +15,10 @@ const _: () = assert!(
      Forks: update APP_NAME in crates/paths/src/paths.rs when renaming the binary.",
 );
 
-use agent_ui::AgentPanel;
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use cli::FORCE_CLI_MODE_ENV_VAR_NAME;
-use client::{Client, ProxySettings, RefreshLlmTokenListener, UserStore, parse_zed_link};
+use client::{Client, ProxySettings, UserStore, parse_zed_link};
 use collab_ui::channel_view::ChannelView;
 use collections::HashMap;
 use crashes::InitCrashHandler;
@@ -39,7 +38,7 @@ use gpui_tokio::Tokio;
 use language::LanguageRegistry;
 use onboarding::{FIRST_OPEN, show_onboarding_view};
 use project_panel::ProjectPanel;
-use prompt_store::PromptBuilder;
+
 use remote::RemoteConnectionOptions;
 use reqwest_client::ReqwestClient;
 
@@ -74,8 +73,8 @@ use workspace::{
 };
 use zed::{
     OpenListener, OpenRequest, RawOpenRequest, app_menus, build_window_options,
-    derive_paths_with_position, edit_prediction_registry, handle_cli_connection,
-    handle_keymap_file_changes, initialize_workspace, open_paths_with_positions,
+    derive_paths_with_position, handle_cli_connection, handle_keymap_file_changes,
+    initialize_workspace, open_paths_with_positions,
 };
 
 use crate::zed::{CrashHandler, OpenRequestKind, eager_load_active_theme_and_icon_theme};
@@ -133,7 +132,7 @@ fn files_not_created_on_launch(errors: HashMap<io::ErrorKind, Vec<&Path>>) {
                             gpui::PromptLevel::Critical,
                             message,
                             Some(&error_details),
-                            &["Exit"],
+                            &[i18n::static_text("Exit", cx)],
                             cx,
                         );
 
@@ -205,7 +204,6 @@ fn main() {
     // without returning. Must run before argument parsing: the wrapped command's
     // args are appended verbatim and would otherwise be misinterpreted as Zed's
     // own arguments.
-    sandbox::run_sandbox_launcher_if_invoked();
 
     #[cfg(unix)]
     util::prevent_root_execution();
@@ -341,6 +339,11 @@ fn main() {
 
     let app = build_application()
         .with_assets(Assets)
+        .with_font_defaults(gpui::FontDefaults {
+            proportional: "Maple Mono NF CN".into(),
+            monospace: "Maple Mono NF CN".into(),
+            asset_directory: "fonts/maple-mono-nf-cn/".into(),
+        })
         .with_restart_arguments(restart_arguments);
 
     let app_db = db::AppDatabase::new();
@@ -497,6 +500,8 @@ fn main() {
         settings::init(cx);
         zlog_settings::init(cx);
         zed::watch_settings_files(fs.clone(), cx);
+        cx.set_global(settings::DisplayLanguageSettings::get_global(cx).locale());
+        zed::observe_display_language(cx);
         handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
 
         let user_agent = format!(
@@ -623,7 +628,7 @@ fn main() {
         })
         .detach();
 
-        let is_new_install = matches!(&installation_id, Some(IdType::New(_)));
+        let _is_new_install = matches!(&installation_id, Some(IdType::New(_)));
 
         // We should rename these in the future to `first app open`, `first app open for release channel`, and `app open`
         if let (Some(system_id), Some(installation_id)) = (&system_id, &installation_id) {
@@ -675,50 +680,10 @@ fn main() {
             cx.background_executor().clone(),
         );
         command_palette::init(cx);
-        let copilot_chat_configuration = copilot_chat::CopilotChatConfiguration {
-            enterprise_uri: settings::CopilotSettings::get_global(cx)
-                .enterprise_uri
-                .clone(),
-        };
-        let credentials_provider = zed_credentials_provider::global(cx);
-        copilot_chat::init(
-            app_state.client.http_client(),
-            credentials_provider,
-            copilot_chat_configuration,
-            cx,
-        );
-
-        copilot_ui::init(&app_state, cx);
-        language_model::init(cx);
-        RefreshLlmTokenListener::register(
-            app_state.client.clone(),
-            app_state.user_store.clone(),
-            cx,
-        );
-        language_models::init(app_state.user_store.clone(), app_state.client.clone(), cx);
-        acp_tools::init(cx);
         zed::telemetry_log::init(cx);
         zed::remote_debug::init(cx);
-        edit_prediction_ui::init(cx);
-        web_search::init(cx);
-        web_search_providers::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         snippet_provider::init(cx);
-        edit_prediction_registry::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        let prompt_builder = PromptBuilder::load(app_state.fs.clone(), stdout_is_a_pty(), cx);
-        project::AgentRegistryStore::init_global(
-            cx,
-            app_state.fs.clone(),
-            app_state.client.http_client(),
-        );
-        agent_ui::init(
-            app_state.fs.clone(),
-            prompt_builder,
-            app_state.languages.clone(),
-            is_new_install,
-            false,
-            cx,
-        );
-        zed::watch_user_agents_md(app_state.fs.clone(), cx);
+        terminal_view::workspace_terminal_panel::init(cx);
 
         repl::init(app_state.fs.clone(), cx);
         recent_projects::init(cx);
@@ -782,7 +747,7 @@ fn main() {
         settings_ui::init(cx);
         keymap_editor::init(cx);
         extensions_ui::init(cx);
-        edit_prediction::init(cx);
+
         inspector_ui::init(app_state.clone(), cx);
         json_schema_store::init(cx);
         miniprofiler_ui::init(*STARTUP_TIME.get().unwrap(), cx);
@@ -1035,58 +1000,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
                 })
                 .detach_and_log_err(cx);
             }
-            OpenRequestKind::AgentPanel {
-                external_source_prompt,
-            } => {
-                cx.spawn(async move |cx| {
-                    let multi_workspace =
-                        workspace::get_any_active_multi_workspace(app_state, cx.clone()).await?;
 
-                    let panels_task = multi_workspace.update(cx, |multi_workspace, _, cx| {
-                        multi_workspace
-                            .workspace()
-                            .update(cx, |workspace, _| workspace.take_panels_task())
-                    })?;
-                    if let Some(task) = panels_task {
-                        task.await.log_err();
-                    }
-
-                    multi_workspace.update(cx, |multi_workspace, window, cx| {
-                        multi_workspace.workspace().update(cx, |workspace, cx| {
-                            if let Some(panel) = workspace.focus_panel::<AgentPanel>(window, cx) {
-                                panel.update(cx, |panel, cx| {
-                                    panel.new_agent_thread_with_external_source_prompt(
-                                        external_source_prompt,
-                                        window,
-                                        cx,
-                                    );
-                                });
-                            } else {
-                                log::warn!(
-                                    "zed://agent received but the AgentPanel is not registered \
-                                     (is `disable_ai` enabled?)"
-                                );
-                            }
-                        });
-                    })
-                })
-                .detach_and_log_err(cx);
-            }
-            OpenRequestKind::InstallSkill { content } => {
-                cx.spawn(async move |cx| {
-                    let multi_workspace =
-                        workspace::get_any_active_multi_workspace(app_state, cx.clone()).await?;
-
-                    multi_workspace.update(cx, |_multi_workspace, _window, cx| {
-                        settings_ui::open_skill_creator(
-                            settings_ui::pages::SkillCreatorOpenMode::Install { content },
-                            Some(multi_workspace),
-                            cx,
-                        );
-                    })
-                })
-                .detach_and_log_err(cx);
-            }
             OpenRequestKind::DockMenuAction { index } => {
                 cx.perform_dock_menu_action(index);
             }
@@ -1368,17 +1282,8 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
     }
 }
 
-async fn authenticate(client: Arc<Client>, cx: &AsyncApp) -> Result<()> {
-    if stdout_is_a_pty() {
-        if client::IMPERSONATE_LOGIN.is_some() {
-            client.sign_in_with_optional_connect(false, cx).await?;
-        } else if client.has_credentials(cx).await {
-            client.sign_in_with_optional_connect(true, cx).await?;
-        }
-    } else if client.has_credentials(cx).await {
-        client.sign_in_with_optional_connect(true, cx).await?;
-    }
-
+async fn authenticate(_client: Arc<Client>, _cx: &AsyncApp) -> Result<()> {
+    // Account sign-in is removed from this fork. Stored credentials are ignored.
     Ok(())
 }
 
@@ -1688,7 +1593,7 @@ fn stdout_is_a_pty() -> bool {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "zed", disable_version_flag = true, max_term_width = 100)]
+#[command(name = "qmrzed", disable_version_flag = true, max_term_width = 100)]
 struct Args {
     /// A sequence of space-separated paths or urls that you want to open.
     ///
@@ -1706,9 +1611,9 @@ struct Args {
     /// Sets a custom directory for all user data (e.g., database, extensions, logs).
     ///
     /// This overrides the default platform-specific data directory location.
-    /// On macOS, the default is `~/Library/Application Support/Zed`.
-    /// On Linux/FreeBSD, the default is `$XDG_DATA_HOME/zed`.
-    /// On Windows, the default is `%LOCALAPPDATA%\Zed`.
+    /// On macOS, the default is `~/Library/Application Support/QMRZed`.
+    /// On Linux/FreeBSD, the default is `$XDG_DATA_HOME/qmrzed`.
+    /// On Windows, the default is `%LOCALAPPDATA%\QMRZed`.
     #[arg(long, value_name = "DIR", verbatim_doc_comment)]
     user_data_dir: Option<String>,
 
@@ -1825,7 +1730,7 @@ fn parse_url_arg(arg: &str, cx: &App) -> String {
 
 fn load_embedded_fonts(cx: &App) {
     let asset_source = cx.asset_source();
-    let font_paths = asset_source.list("fonts").unwrap();
+    let font_paths = asset_source.list("fonts/maple-mono-nf-cn/").unwrap();
     let embedded_fonts = Mutex::new(Vec::new());
     let executor = cx.background_executor();
 

@@ -127,7 +127,7 @@ impl Render for StatusBar {
             // steps through them, and arrow keys move between them once focus is
             // inside.
             .role(Role::Toolbar)
-            .aria_label("Status bar")
+            .aria_label(i18n::text("Status bar", cx))
             .tab_group()
             .on_key_down(
                 cx.listener(|status_bar, event: &gpui::KeyDownEvent, window, cx| {
@@ -249,7 +249,7 @@ impl StatusBar {
             } else {
                 Anchor::TopLeft
             })
-            .trigger(move |_is_active, _window, _cx| {
+            .trigger(move |_is_active, _window, cx| {
                 IconButton::new(
                     "toggle-workspace-sidebar",
                     if on_right {
@@ -260,13 +260,17 @@ impl StatusBar {
                 )
                 .icon_size(IconSize::Small)
                 .tab_index(0isize)
-                .aria_label("Open threads sidebar")
+                .aria_label(i18n::text("Open threads sidebar", cx))
                 .when(has_notifications, |this| {
                     this.indicator(Indicator::dot().color(Color::Accent))
                         .indicator_border_color(Some(indicator_border))
                 })
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action("Open Threads Sidebar", &ToggleWorkspaceSidebar, cx)
+                    Tooltip::localized_for_action(
+                        "Open Threads Sidebar",
+                        &ToggleWorkspaceSidebar,
+                        cx,
+                    )
                 })
                 .on_click(move |_, window, cx| {
                     if let Some(multi_workspace) = window.root::<MultiWorkspace>().flatten() {
@@ -321,6 +325,7 @@ pub fn add_hide_button_entry(menu: ContextMenu, hide: HideStatusItem) -> Context
         None,
         move |_window, cx| hide.apply(cx),
     )
+    .localize_last()
 }
 
 impl StatusBar {

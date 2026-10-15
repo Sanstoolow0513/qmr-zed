@@ -726,8 +726,8 @@ impl PickerDelegate for Delegate {
         "text finder"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Search all files…".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Search all files…", cx).into()
     }
 
     fn searchbar_trailer(

@@ -14,6 +14,26 @@ pub struct ModeIndicator {
 }
 
 impl ModeIndicator {
+    pub fn editor_status(editor: &editor::Editor, cx: &App) -> Option<String> {
+        let vim = editor.addon::<crate::VimAddon>()?.entity.read(cx);
+        let mode = if vim.temp_mode {
+            format!("(insert) {}", vim.mode)
+        } else {
+            vim.mode.to_string()
+        };
+        let recording = cx
+            .global::<VimGlobals>()
+            .recording_register
+            .map(|register| format!(" · recording @{register}"))
+            .unwrap_or_default();
+        let status = vim
+            .status_label
+            .as_ref()
+            .map(|label| format!(" · {label}"))
+            .unwrap_or_default();
+        Some(format!("{mode}{recording}{status}"))
+    }
+
     /// Construct a new mode indicator in this window.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe_pending_input(window, |this: &mut Self, window, cx| {

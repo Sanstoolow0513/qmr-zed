@@ -8,11 +8,10 @@ use crate::{
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{Context, DismissEvent, Entity, Focusable as _, Pixels, Point, Subscription, Window};
-use project::DisableAiSettings;
 use std::ops::Range;
 use text::PointUtf16;
 use workspace::OpenInTerminal;
-use zed_actions::agent::AddSelectionToThread;
+
 use zed_actions::preview::{
     markdown::OpenPreview as OpenMarkdownPreview, svg::OpenPreview as OpenSvgPreview,
 };
@@ -220,10 +219,6 @@ pub fn deploy_context_menu(
         let evaluate_selection = window.is_action_available(&EvaluateSelectedText, cx);
         let run_to_cursor = window.is_action_available(&RunToCursor, cx);
         let format_selections = window.is_action_available(&FormatSelections, cx);
-        let disable_ai = DisableAiSettings::is_ai_disabled_for_buffer(
-            editor.buffer.read(cx).as_singleton().as_ref(),
-            cx,
-        );
 
         let is_markdown = editor
             .buffer()
@@ -247,42 +242,56 @@ pub fn deploy_context_menu(
             let builder = menu
                 .on_blur_subscription(Subscription::new(|| {}))
                 .when(run_to_cursor, |builder| {
-                    builder.action("Run to Cursor", Box::new(RunToCursor))
+                    builder
+                        .action("Run to Cursor", Box::new(RunToCursor))
+                        .localize_last()
                 })
                 .when(evaluate_selection && has_selections, |builder| {
-                    builder.action("Evaluate Selection", Box::new(EvaluateSelectedText))
+                    builder
+                        .action("Evaluate Selection", Box::new(EvaluateSelectedText))
+                        .localize_last()
                 })
                 .when(
                     run_to_cursor || (evaluate_selection && has_selections),
                     |builder| builder.separator(),
                 )
                 .action("Go to Definition", Box::new(GoToDefinition::default()))
+                .localize_last()
                 .action("Go to Declaration", Box::new(GoToDeclaration::default()))
+                .localize_last()
                 .action(
                     "Go to Type Definition",
                     Box::new(GoToTypeDefinition::default()),
                 )
+                .localize_last()
                 .action(
                     "Go to Implementation",
                     Box::new(GoToImplementation::default()),
                 )
+                .localize_last()
                 .action(
                     "Find All References",
                     Box::new(FindAllReferences::default()),
                 )
+                .localize_last()
                 .action(
                     "Show Incoming Calls",
                     Box::new(zed_actions::ShowIncomingCalls),
                 )
+                .localize_last()
                 .action(
                     "Show Outgoing Calls",
                     Box::new(zed_actions::ShowOutgoingCalls),
                 )
+                .localize_last()
                 .separator()
                 .action("Rename Symbol", Box::new(Rename))
+                .localize_last()
                 .action("Format Buffer", Box::new(Format))
+                .localize_last()
                 .when(format_selections, |cx| {
                     cx.action("Format Selections", Box::new(FormatSelections))
+                        .localize_last()
                 })
                 .action(
                     "Show Code Actions",
@@ -291,14 +300,16 @@ pub fn deploy_context_menu(
                         quick_launch: false,
                     }),
                 )
-                .when(!disable_ai && has_selections, |this| {
-                    this.action("Add to Agent Thread", Box::new(AddSelectionToThread))
-                })
+                .localize_last()
                 .separator()
                 .action("Cut", Box::new(Cut))
+                .localize_last()
                 .action("Copy", Box::new(Copy))
+                .localize_last()
                 .action("Copy and Trim", Box::new(CopyAndTrim))
+                .localize_last()
                 .action("Paste", Box::new(Paste))
+                .localize_last()
                 .separator()
                 .action_disabled_when(
                     !has_reveal_target,
@@ -306,10 +317,14 @@ pub fn deploy_context_menu(
                     Box::new(RevealInFileManager),
                 )
                 .when(is_markdown, |builder| {
-                    builder.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                    builder
+                        .action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                        .localize_last()
                 })
                 .when(is_svg, |builder| {
-                    builder.action("Open SVG Preview", Box::new(OpenSvgPreview))
+                    builder
+                        .action("Open SVG Preview", Box::new(OpenSvgPreview))
+                        .localize_last()
                 })
                 .action_disabled_when(
                     !has_reveal_target,

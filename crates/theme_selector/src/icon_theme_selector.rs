@@ -166,8 +166,8 @@ impl PickerDelegate for IconThemeSelectorDelegate {
         "icon theme selector"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select Icon Theme...".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Select Icon Theme...", cx).into()
     }
 
     fn match_count(&self) -> usize {
@@ -332,7 +332,7 @@ impl PickerDelegate for IconThemeSelectorDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("docs", "View Icon Theme Docs")
+                    Button::localized("docs", "View Icon Theme Docs")
                         .end_icon(
                             Icon::new(IconName::ArrowUpRight)
                                 .size(IconSize::Small)
@@ -343,7 +343,7 @@ impl PickerDelegate for IconThemeSelectorDelegate {
                         }),
                 )
                 .child(
-                    Button::new("more-icon-themes", "Install Icon Themes").on_click(
+                    Button::localized("more-icon-themes", "Install Icon Themes").on_click(
                         move |_event, window, cx| {
                             window.dispatch_action(
                                 Box::new(Extensions {
@@ -393,6 +393,7 @@ mod tests {
                 directory_icons: DirectoryIcons {
                     collapsed: None,
                     expanded: None,
+                    colors: None,
                 },
                 named_directory_icons: HashMap::default(),
                 chevron_icons: ChevronIcons {

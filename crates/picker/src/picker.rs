@@ -219,9 +219,9 @@ pub trait PickerDelegate: Sized + 'static {
     ) -> Option<Box<dyn Fn(&mut Window, &mut App) + 'static>> {
         None
     }
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str>;
-    fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("No matches".into())
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str>;
+    fn no_matches_text(&self, _window: &mut Window, cx: &mut App) -> Option<SharedString> {
+        Some(i18n::static_text("No matches", cx).into())
     }
     fn update_matches(
         &mut self,
@@ -1401,14 +1401,14 @@ impl<D: PickerDelegate> Picker<D> {
                                     &focus_handle,
                                     cx,
                                 ))
-                                .child(Label::new("Select")),
+                                .child(Label::localized("Select")),
                         )
                         .child(Divider::vertical())
                         .child(
                             h_flex()
                                 .gap_1()
                                 .child(KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx))
-                                .child(Label::new("Open")),
+                                .child(Label::localized("Open")),
                         )
                         .into_any_element()
                 }))
@@ -1794,7 +1794,9 @@ mod tests {
                 ui::ListItem::new(ix)
                     .inset(true)
                     .toggle_state(selected)
-                    .child(ui::Label::new(format!("Item {ix}"))),
+                    .child(ui::Label::new(
+                        i18n::format("Item {ix}", &[("ix", &format!("{}", ix))], cx).to_string(),
+                    )),
             )
         }
     }

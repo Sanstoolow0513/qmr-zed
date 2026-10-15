@@ -28,15 +28,13 @@ pub use crate::schema::{
 };
 use crate::settings::adjust_buffer_font_size;
 pub use crate::settings::{
-    AgentBufferFontSize, AgentUiFontSize, BufferLineHeight, FontFamilyName,
-    GitCommitBufferFontSize, IconThemeName, IconThemeSelection, MarkdownPreviewFontSize,
-    ThemeAppearanceMode, ThemeName, ThemeSelection, ThemeSettings, adjust_agent_buffer_font_size,
-    adjust_agent_ui_font_size, adjust_git_commit_buffer_font_size,
-    adjust_markdown_preview_font_size, adjust_ui_font_size, adjusted_font_size, appearance_to_mode,
-    buffer_line_height_from_settings, clamp_font_size, default_theme,
-    observe_buffer_font_size_adjustment, reset_agent_buffer_font_size, reset_agent_ui_font_size,
-    reset_buffer_font_size, reset_git_commit_buffer_font_size, reset_markdown_preview_font_size,
-    reset_ui_font_size, set_icon_theme, set_mode, set_theme, setup_ui_font,
+    BufferLineHeight, FontFamilyName, GitCommitBufferFontSize, IconThemeName, IconThemeSelection,
+    MarkdownPreviewFontSize, ThemeAppearanceMode, ThemeName, ThemeSelection, ThemeSettings,
+    adjust_git_commit_buffer_font_size, adjust_markdown_preview_font_size, adjust_ui_font_size,
+    adjusted_font_size, appearance_to_mode, buffer_line_height_from_settings, clamp_font_size,
+    default_theme, observe_buffer_font_size_adjustment, reset_buffer_font_size,
+    reset_git_commit_buffer_font_size, reset_markdown_preview_font_size, reset_ui_font_size,
+    set_icon_theme, set_mode, set_theme, setup_ui_font,
 };
 pub use theme::UiDensity;
 
@@ -88,8 +86,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
     let mut prev_buffer_font_size_settings = settings.buffer_font_size_settings();
     let mut prev_ui_font_size_settings = settings.ui_font_size_settings();
-    let mut prev_agent_ui_font_size_settings = settings.agent_ui_font_size_settings();
-    let mut prev_agent_buffer_font_size_settings = settings.agent_buffer_font_size_settings();
+
     let mut prev_git_commit_buffer_font_size_settings =
         settings.git_commit_buffer_font_size_settings();
     let mut prev_markdown_preview_font_size_settings =
@@ -106,8 +103,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
         let buffer_font_size_settings = settings.buffer_font_size_settings();
         let ui_font_size_settings = settings.ui_font_size_settings();
-        let agent_ui_font_size_settings = settings.agent_ui_font_size_settings();
-        let agent_buffer_font_size_settings = settings.agent_buffer_font_size_settings();
+
         let git_commit_buffer_font_size_settings = settings.git_commit_buffer_font_size_settings();
         let markdown_preview_font_size_settings = settings.markdown_preview_font_size_settings();
         let theme_name = settings.theme.name(SystemAppearance::global(cx).0);
@@ -125,16 +121,6 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
         if ui_font_size_settings != prev_ui_font_size_settings {
             prev_ui_font_size_settings = ui_font_size_settings;
             reset_ui_font_size(cx);
-        }
-
-        if agent_ui_font_size_settings != prev_agent_ui_font_size_settings {
-            prev_agent_ui_font_size_settings = agent_ui_font_size_settings;
-            reset_agent_ui_font_size(cx);
-        }
-
-        if agent_buffer_font_size_settings != prev_agent_buffer_font_size_settings {
-            prev_agent_buffer_font_size_settings = agent_buffer_font_size_settings;
-            reset_agent_buffer_font_size(cx);
         }
 
         if git_commit_buffer_font_size_settings != prev_git_commit_buffer_font_size_settings {
@@ -444,4 +430,92 @@ pub fn increase_buffer_font_size(cx: &mut App) {
 /// This will be effective until the app is restarted.
 pub fn decrease_buffer_font_size(cx: &mut App) {
     adjust_buffer_font_size(cx, |size| size - px(1.0));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AssetSource, Hsla, Rgba, SharedString};
+    use std::borrow::Cow;
+
+    struct ClaudeAssets;
+
+    impl AssetSource for ClaudeAssets {
+        fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+            const JSON: &[u8] = include_bytes!("../../../assets/themes/claude/claude.json");
+            Ok((path == "themes/claude/claude.json").then_some(Cow::Borrowed(JSON)))
+        }
+
+        fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+            Ok(if "themes/claude/claude.json".starts_with(path) {
+                vec!["themes/claude/claude.json".into()]
+            } else {
+                Vec::new()
+            })
+        }
+    }
+
+    fn contrast_ratio(first: Hsla, second: Hsla) -> f32 {
+        let luminance = |color: Hsla| {
+            let color = Rgba::from(color);
+            let linear = |component: f32| {
+                if component <= 0.04045 {
+                    component / 12.92
+                } else {
+                    ((component + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+        };
+        let first = luminance(first);
+        let second = luminance(second);
+        (first.max(second) + 0.05) / (first.min(second) + 0.05)
+    }
+
+    #[test]
+    fn bundled_claude_themes_load_with_readable_text_and_icons() {
+        let registry = ThemeRegistry::new(Box::new(ClaudeAssets));
+        load_bundled_themes(&registry);
+        let icons = registry
+            .get_icon_theme(theme::CLAUDE_ICON_THEME_NAME)
+            .unwrap();
+
+        for (name, appearance) in [
+            (::settings::DEFAULT_LIGHT_THEME, Appearance::Light),
+            (::settings::DEFAULT_DARK_THEME, Appearance::Dark),
+        ] {
+            let theme = registry.get(name).unwrap();
+            assert_eq!(theme.appearance(), appearance);
+            let colors = theme.colors();
+            for (foreground, background) in [
+                (colors.text, colors.panel_background),
+                (colors.text_muted, colors.panel_background),
+                (colors.editor_foreground, colors.editor_background),
+            ] {
+                assert!(
+                    contrast_ratio(foreground, background) >= 4.5,
+                    "insufficient text contrast in {name}"
+                );
+            }
+            for (kind, icon) in &icons.file_icons {
+                let tint = icon.colors.unwrap().for_appearance(appearance);
+                assert!(
+                    contrast_ratio(tint, colors.panel_background) >= 3.0,
+                    "insufficient {kind} icon contrast in {name}"
+                );
+            }
+            let folder = icons
+                .directory_icons
+                .colors
+                .unwrap()
+                .for_appearance(appearance);
+            assert!(contrast_ratio(folder, colors.panel_background) >= 3.0);
+        }
+
+        assert_eq!(
+            registry.default_icon_theme().unwrap().name,
+            theme::DEFAULT_ICON_THEME_NAME
+        );
+        assert!(registry.get(theme::DEFAULT_DARK_THEME).is_ok());
+    }
 }

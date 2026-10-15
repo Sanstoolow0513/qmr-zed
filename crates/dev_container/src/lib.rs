@@ -429,7 +429,7 @@ impl PickerDelegate for TemplatePickerDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("run-action", "Continue")
+                    Button::localized("run-action", "Continue")
                         .key_binding(
                             KeyBinding::for_action(&menu::Confirm, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -626,7 +626,7 @@ impl PickerDelegate for FeaturePickerDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("run-action", "Select Feature")
+                    Button::localized("run-action", "Select Feature")
                         .key_binding(
                             KeyBinding::for_action(&menu::Confirm, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -636,7 +636,7 @@ impl PickerDelegate for FeaturePickerDelegate {
                         }),
                 )
                 .child(
-                    Button::new("run-action-secondary", "Confirm Selections")
+                    Button::localized("run-action-secondary", "Confirm Selections")
                         .key_binding(
                             KeyBinding::for_action(&menu::SecondaryConfirm, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -667,13 +667,11 @@ impl DevContainerModal {
         let mut view = Navigable::new(
             div()
                 .p_1()
-                .child(
-                    div().track_focus(&self.focus_handle).child(
-                        ModalHeader::new().child(
-                            Headline::new("Create Dev Container").size(HeadlineSize::XSmall),
-                        ),
+                .child(div().track_focus(&self.focus_handle).child(
+                    ModalHeader::new().child(
+                        Headline::localized("Create Dev Container").size(HeadlineSize::XSmall),
                     ),
-                )
+                ))
                 .child(ListSeparator)
                 .child(
                     div()
@@ -699,7 +697,7 @@ impl DevContainerModal {
                                     );
                                     cx.notify();
                                 }))
-                                .child(Label::new("Search for Dev Container Templates")),
+                                .child(Label::localized("Search for Dev Container Templates")),
                         ),
                 )
                 .into_any_element(),
@@ -765,7 +763,8 @@ impl DevContainerModal {
                         .child(
                             ModalHeader::new()
                                 .child(
-                                    Headline::new("Template Option: ").size(HeadlineSize::XSmall),
+                                    Headline::localized("Template Option: ")
+                                        .size(HeadlineSize::XSmall),
                                 )
                                 .child(
                                     Headline::new(&next_option_entries.option_name)
@@ -845,7 +844,7 @@ impl DevContainerModal {
                                     this.accept_message(DevContainerMessage::GoBack, window, cx);
                                     cx.notify();
                                 }))
-                                .child(Label::new("Go Back")),
+                                .child(Label::localized("Go Back")),
                         ),
                 )
                 .into_any_element(),
@@ -887,7 +886,7 @@ impl DevContainerModal {
                         ModalHeader::new()
                             .icon(Icon::new(IconName::Warning).color(Color::Warning))
                             .child(
-                                Headline::new("Overwrite Existing Configuration?")
+                                Headline::localized("Overwrite Existing Configuration?")
                                     .size(HeadlineSize::XSmall),
                             ),
                     ),
@@ -923,7 +922,7 @@ impl DevContainerModal {
                                     );
                                     cx.notify();
                                 }))
-                                .child(Label::new("Overwrite")),
+                                .child(Label::localized("Overwrite")),
                         ),
                 )
                 .child(
@@ -944,7 +943,7 @@ impl DevContainerModal {
                                     this.dismiss(&menu::Cancel, window, cx);
                                     cx.notify();
                                 }))
-                                .child(Label::new("Cancel")),
+                                .child(Label::localized("Cancel")),
                         ),
                 )
                 .into_any_element(),
@@ -958,13 +957,11 @@ impl DevContainerModal {
     fn render_querying_templates(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         Navigable::new(
             div()
-                .child(
-                    div().track_focus(&self.focus_handle).child(
-                        ModalHeader::new().child(
-                            Headline::new("Create Dev Container").size(HeadlineSize::XSmall),
-                        ),
+                .child(div().track_focus(&self.focus_handle).child(
+                    ModalHeader::new().child(
+                        Headline::localized("Create Dev Container").size(HeadlineSize::XSmall),
                     ),
-                )
+                ))
                 .child(ListSeparator)
                 .child(
                     div().child(
@@ -976,7 +973,7 @@ impl DevContainerModal {
                                     .color(Color::Muted)
                                     .with_rotate_animation(2),
                             )
-                            .child(Label::new("Querying template registry...")),
+                            .child(Label::localized("Querying template registry...")),
                     ),
                 )
                 .child(ListSeparator)
@@ -998,7 +995,7 @@ impl DevContainerModal {
                                     this.accept_message(DevContainerMessage::GoBack, window, cx);
                                     cx.notify();
                                 }))
-                                .child(Label::new("Go Back")),
+                                .child(Label::localized("Go Back")),
                         ),
                 )
                 .into_any_element(),
@@ -1010,13 +1007,11 @@ impl DevContainerModal {
     fn render_querying_features(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         Navigable::new(
             div()
-                .child(
-                    div().track_focus(&self.focus_handle).child(
-                        ModalHeader::new().child(
-                            Headline::new("Create Dev Container").size(HeadlineSize::XSmall),
-                        ),
+                .child(div().track_focus(&self.focus_handle).child(
+                    ModalHeader::new().child(
+                        Headline::localized("Create Dev Container").size(HeadlineSize::XSmall),
                     ),
-                )
+                ))
                 .child(ListSeparator)
                 .child(
                     div().child(
@@ -1028,7 +1023,7 @@ impl DevContainerModal {
                                     .color(Color::Muted)
                                     .with_rotate_animation(2),
                             )
-                            .child(Label::new("Querying features...")),
+                            .child(Label::localized("Querying features...")),
                     ),
                 )
                 .child(ListSeparator)
@@ -1050,7 +1045,7 @@ impl DevContainerModal {
                                     this.accept_message(DevContainerMessage::GoBack, window, cx);
                                     cx.notify();
                                 }))
-                                .child(Label::new("Go Back")),
+                                .child(Label::localized("Go Back")),
                         ),
                 )
                 .into_any_element(),

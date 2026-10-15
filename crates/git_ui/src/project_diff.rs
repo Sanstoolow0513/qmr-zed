@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use buffer_diff::DiffHunkSecondaryStatus;
 use editor::{
     DefaultDiffHunkRenderer, Editor, EditorEvent, SplittableEditor,
-    actions::{GoToHunk, GoToPreviousHunk, SendReviewToAgent},
+    actions::{GoToHunk, GoToPreviousHunk},
 };
 use git::{Commit, StageAll, StageAndNext, ToggleStaged, UnstageAll, UnstageAndNext};
 use gpui::{
@@ -53,7 +53,6 @@ actions!(
         /// Adds files to the git staging area.
         Add,
         /// Opens a new agent thread with the branch diff for review.
-        ReviewDiff,
         LeaderAndFollower,
         /// Compare with a specific branch
         CompareWithBranch,
@@ -446,8 +445,8 @@ impl Item for ProjectDiff {
         Some(self.tab_content_text(0, cx))
     }
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Uncommitted Changes".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Uncommitted Changes", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -816,7 +815,7 @@ impl Render for ProjectDiffToolbar {
         };
         let focus_handle = project_diff.focus_handle(cx);
         let button_states = project_diff.read(cx).button_states(cx);
-        let review_count = project_diff.read(cx).total_review_comment_count(cx);
+        let _review_count = project_diff.read(cx).total_review_comment_count(cx);
 
         let (additions, deletions) = project_diff.read(cx).calculate_changed_lines(cx);
         let is_multibuffer_empty = project_diff.read(cx).multibuffer(cx).read(cx).is_empty();
@@ -845,7 +844,7 @@ impl Render for ProjectDiffToolbar {
                         IconButton::new("up", IconName::ArrowUp)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Previous Hunk",
                                 &GoToPreviousHunk,
                                 &focus_handle,
@@ -858,7 +857,7 @@ impl Render for ProjectDiffToolbar {
                         IconButton::new("down", IconName::ArrowDown)
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Go to Next Hunk",
                                 &GoToHunk,
                                 &focus_handle,
@@ -873,8 +872,8 @@ impl Render for ProjectDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Toggle Staged")
-                                .tooltip(Tooltip::for_action_title_in(
+                            Button::localized("stage", "Toggle Staged")
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Toggle Staged",
                                     &ToggleStaged,
                                     &focus_handle,
@@ -887,9 +886,9 @@ impl Render for ProjectDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Stage")
+                            Button::localized("stage", "Stage")
                                 .disabled(!button_states.stage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Stage and Go to Next Hunk",
                                     &StageAndNext,
                                     &focus_handle,
@@ -899,9 +898,9 @@ impl Render for ProjectDiffToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "Unstage")
+                            Button::localized("unstage", "Unstage")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(Tooltip::localized_for_action_title_in(
                                     "Unstage and Go to Next Hunk",
                                     &UnstageAndNext,
                                     &focus_handle,
@@ -917,9 +916,9 @@ impl Render for ProjectDiffToolbar {
                 button_states.unstage_all && !button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("unstage-all", "Unstage All")
+                        Button::localized("unstage-all", "Unstage All")
                             .width(stage_all_button_width)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Unstage All Changes",
                                 &UnstageAll,
                                 &focus_handle,
@@ -934,10 +933,10 @@ impl Render for ProjectDiffToolbar {
                 !button_states.unstage_all || button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("stage-all", "Stage All")
+                        Button::localized("stage-all", "Stage All")
                             .width(stage_all_button_width)
                             .disabled(!button_states.stage_all)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(Tooltip::localized_for_action_title_in(
                                 "Stage All Changes",
                                 &StageAll,
                                 &focus_handle,
@@ -950,8 +949,8 @@ impl Render for ProjectDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
-                    .tooltip(Tooltip::for_action_title_in(
+                Button::localized("commit", "Commit")
+                    .tooltip(Tooltip::localized_for_action_title_in(
                         "Commit",
                         &Commit,
                         &focus_handle,
@@ -960,36 +959,7 @@ impl Render for ProjectDiffToolbar {
                         this.dispatch_action(&Commit, window, cx);
                     })),
             )
-            .when(review_count > 0, |el| {
-                el.child(Divider::vertical()).child(
-                    render_send_review_to_agent_button(review_count, &focus_handle).on_click(
-                        cx.listener(|this, _, window, cx| {
-                            this.dispatch_action(&SendReviewToAgent, window, cx)
-                        }),
-                    ),
-                )
-            })
     }
-}
-
-pub(crate) fn render_send_review_to_agent_button(
-    review_count: usize,
-    focus_handle: &FocusHandle,
-) -> Button {
-    Button::new(
-        "send-review",
-        format!("Send Review to Agent ({})", review_count),
-    )
-    .start_icon(
-        Icon::new(IconName::ZedAssistant)
-            .size(IconSize::Small)
-            .color(Color::Muted),
-    )
-    .tooltip(Tooltip::for_action_title_in(
-        "Send all review comments to the Agent panel",
-        &SendReviewToAgent,
-        focus_handle,
-    ))
 }
 
 #[cfg(test)]

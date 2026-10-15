@@ -206,8 +206,8 @@ impl Focusable for ReplSessionsPage {
 impl Item for ReplSessionsPage {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "REPL Sessions".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("REPL Sessions", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -252,7 +252,7 @@ impl Render for ReplSessionsPage {
                             .style(ButtonStyle::Filled)
                             .size(ButtonSize::Large)
                             .layer(ElevationIndex::ModalSurface)
-                            .child(Label::new("Install Kernels"))
+                            .child(Label::localized("Install Kernels"))
                             .on_click(move |_, _, cx| {
                                 cx.open_url(
                                     "https://zed.dev/docs/repl#language-specific-instructions",

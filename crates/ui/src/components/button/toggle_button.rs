@@ -649,11 +649,12 @@ impl<T: ButtonBuilder, const COLS: usize, const ROWS: usize> Component
                     "with_tooltips",
                     [
                         ToggleButtonSimple::new("First", |_, _, _| {})
-                            .tooltip(Tooltip::text("This is a tooltip. Hello!")),
+                            .tooltip(Tooltip::localized_text("This is a tooltip. Hello!")),
                         ToggleButtonSimple::new("Second", |_, _, _| {})
-                            .tooltip(Tooltip::text("This is a tooltip. Hey?")),
-                        ToggleButtonSimple::new("Third", |_, _, _| {})
-                            .tooltip(Tooltip::text("This is a tooltip. Get out of here now!")),
+                            .tooltip(Tooltip::localized_text("This is a tooltip. Hey?")),
+                        ToggleButtonSimple::new("Third", |_, _, _| {}).tooltip(
+                            Tooltip::localized_text("This is a tooltip. Get out of here now!"),
+                        ),
                     ],
                 )
                 .selected_index(1)

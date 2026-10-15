@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Inline AI Code Editing - Zed
 description: Transform code inline with AI in Zed. Send selections to any LLM for refactoring, generation, or editing with multi-cursor support.
@@ -7,7 +9,7 @@ description: Transform code inline with AI in Zed. Send selections to any LLM fo
 
 ## Usage Overview
 
-Use {#kb assistant::InlineAssist} to open the Inline Assistant in editors, channel notes, and the terminal panel.
+Use `assistant::InlineAssist` to open the Inline Assistant in editors, channel notes, and the terminal panel.
 
 The Inline Assistant sends your current selection (or line) to a language model and replaces it with the response.
 
@@ -38,7 +40,7 @@ The Inline Assistant can generate multiple changes at once:
 
 ### Multiple Cursors
 
-With multiple cursors, pressing {#kb assistant::InlineAssist} sends the same prompt to each cursor position, generating changes at all locations simultaneously.
+With multiple cursors, pressing `assistant::InlineAssist` sends the same prompt to each cursor position, generating changes at all locations simultaneously.
 
 This works well with excerpts in [multibuffers](../multibuffers.md).
 

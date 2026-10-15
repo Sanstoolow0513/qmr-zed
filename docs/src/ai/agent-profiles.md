@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Agent Profiles - Zed
 description: Configure Zed Agent profiles for model selection, built-in tool availability, and MCP tool availability.
@@ -21,7 +23,7 @@ Zed includes three built-in profiles:
 
 Open the profile selector in the [Agent Panel](./agent-panel.md), then click `Configure`.
 
-You can also run {#action agent::ManageProfiles} from the command palette.
+You can also run `agent::ManageProfiles` from the command palette.
 
 From the profile modal, you can:
 

@@ -27,7 +27,7 @@ impl OpenUrlModal {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("zed://...", window, cx);
+            editor.set_placeholder_text(i18n::static_text("zed://...", cx), window, cx);
             editor
         });
 
@@ -106,7 +106,7 @@ impl Render for OpenUrlModal {
                     })
                     .when(self.last_error.is_none(), |this| {
                         this.child(
-                            Label::new("Paste a URL to open.")
+                            Label::localized("Paste a URL to open.")
                                 .color(Color::Muted)
                                 .size(LabelSize::Small),
                         )

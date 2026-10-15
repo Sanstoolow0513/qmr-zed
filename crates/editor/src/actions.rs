@@ -425,14 +425,10 @@ actions!(
 actions!(
     editor,
     [
-        /// Accepts the full edit prediction.
-        AcceptEditPrediction,
         /// Amends the editor text with hint's edit (if sent).
         AcceptInlayHint,
-        /// Accepts a partial edit prediction.
         #[action(deprecated_aliases = ["editor::AcceptPartialCopilotSuggestion"])]
-        AcceptNextWordEditPrediction,
-        AcceptNextLineEditPrediction,
+
         /// Applies all diff hunks in the editor.
         ApplyAllDiffHunks,
         /// Applies the diff hunk at the current position.
@@ -711,8 +707,6 @@ actions!(
         NewlineAbove,
         /// Inserts a new line below the current line.
         NewlineBelow,
-        /// Navigates to the next edit prediction.
-        NextEditPrediction,
         /// Scrolls to the next screen.
         NextScreen,
         /// Goes to the next snippet tabstop if one exists.
@@ -750,8 +744,6 @@ actions!(
         PageUp,
         /// Pastes from clipboard.
         Paste,
-        /// Navigates to the previous edit prediction.
-        PreviousEditPrediction,
         /// Goes to the previous snippet tabstop if one exists.
         PreviousSnippetTabstop,
         /// Redoes the last undone edit.
@@ -842,8 +834,6 @@ actions!(
         ShowCompletions,
         /// Shows the system character palette.
         ShowCharacterPalette,
-        /// Shows edit prediction at cursor.
-        ShowEditPrediction,
         /// Shows signature help for the current function.
         ShowSignatureHelp,
         /// Shows word completions.
@@ -908,8 +898,6 @@ actions!(
         ToggleInlineValues,
         /// Toggles inline diagnostics display.
         ToggleInlineDiagnostics,
-        /// Toggles edit prediction feature.
-        ToggleEditPrediction,
         /// Toggles line numbers display.
         ToggleLineNumbers,
         /// Toggles the minimap display.
@@ -927,8 +915,6 @@ actions!(
         SubmitDiffReviewComment,
         /// Toggles the expanded state of the comments section in the overlay.
         ToggleReviewCommentsExpanded,
-        /// Sends all stored review comments to the Agent panel.
-        SendReviewToAgent,
         /// Toggles the selection menu.
         ToggleSelectionMenu,
         /// Toggles soft wrap mode.

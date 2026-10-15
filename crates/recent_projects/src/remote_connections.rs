@@ -325,7 +325,10 @@ pub async fn open_remote_project(
                                 }
                             },
                             Some(&format!("{e:#}")),
-                            &["Retry", "Cancel"],
+                            &[
+                                i18n::static_text("Retry", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?
@@ -386,7 +389,10 @@ pub async fn open_remote_project(
                                 }
                             },
                             Some(&format!("{e:#}")),
-                            &["Retry", "Cancel"],
+                            &[
+                                i18n::static_text("Retry", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?

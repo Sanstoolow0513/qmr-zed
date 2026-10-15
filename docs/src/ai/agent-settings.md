@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Agent Settings - Zed
 description: Map the AI settings pages to Zed AI setup for LLM providers, External Agents, MCP servers, and related settings.
@@ -6,15 +8,15 @@ description: Map the AI settings pages to Zed AI setup for LLM providers, Extern
 # Agent Settings
 
 Agent Settings live in the **AI** section of the Settings Editor, which configures model providers, External Agents, and MCP servers.
-Open it with {#action agent::OpenSettings} (also available from the top-right menu in the [Agent Panel](./agent-panel.md)), which takes you straight to the AI page.
-You can also reach the same page with {#action zed::OpenSettings} and selecting **AI** in the sidebar.
+Open it with `agent::OpenSettings` (also available from the top-right menu in the [Agent Panel](./agent-panel.md)), which takes you straight to the AI page.
+You can also reach the same page with `zed::OpenSettings` and selecting **AI** in the sidebar.
 
 Within the AI page, LLM Providers, External Agents, and MCP Servers each open as their own sub-page under the **General** section.
 
 | Surface         | Opens with                      | Use it for                                                                  |
 | --------------- | ------------------------------- | --------------------------------------------------------------------------- |
-| Settings Editor | {#action agent::OpenSettings}   | AI settings: LLM providers, External Agents, MCP servers, and related pages |
-| Settings file   | {#action zed::OpenSettingsFile} | Direct JSON edits and settings not exposed in UI                            |
+| Settings Editor | `agent::OpenSettings`   | AI settings: LLM providers, External Agents, MCP servers, and related pages |
+| Settings file   | `zed::OpenSettingsFile` | Direct JSON edits and settings not exposed in UI                            |
 
 For general settings mechanics, see [Configuring Zed](../configuring-zed.md).
 

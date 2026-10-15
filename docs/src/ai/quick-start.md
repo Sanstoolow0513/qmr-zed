@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: AI Quick Start - Zed
 description: Choose the right Zed AI setup path for agents, models, subscriptions, local models, edit prediction, and privacy.
@@ -54,9 +56,9 @@ Provider keys saved through Zed are stored in the system keychain, not in `setti
 
 | If you want to...                                                           | Go to                                                                    |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Configure LLM providers, External Agents, or MCP servers                    | [Agent Settings](./agent-settings.md) with {#action agent::OpenSettings} |
-| Disable AI, configure tool permissions, or set up edit prediction providers | Settings Editor with {#action zed::OpenSettings}                         |
-| Edit advanced JSON-only settings                                            | Settings file with {#action zed::OpenSettingsFile}                       |
+| Configure LLM providers, External Agents, or MCP servers                    | [Agent Settings](./agent-settings.md) with `agent::OpenSettings` |
+| Disable AI, configure tool permissions, or set up edit prediction providers | Settings Editor with `zed::OpenSettings`                         |
+| Edit advanced JSON-only settings                                            | Settings file with `zed::OpenSettingsFile`                       |
 
 For general settings mechanics, see [Configuring Zed](../configuring-zed.md).
 
@@ -79,7 +81,7 @@ For general settings mechanics, see [Configuring Zed](../configuring-zed.md).
 
 ## Turn AI Off {#turn-ai-off}
 
-Open the Settings Editor with {#action zed::OpenSettings}, search for `Disable AI`, and enable it.
+Open the Settings Editor with `zed::OpenSettings`, search for `Disable AI`, and enable it.
 
 You can also add this to your settings file:
 

@@ -238,3 +238,72 @@ impl Settings for StatusBarSettings {
         }
     }
 }
+
+#[derive(Clone, Debug, settings::RegisterSetting)]
+pub struct WorkspaceSidebarSettings {
+    pub auto_open: bool,
+    pub position: settings::SidebarDockPosition,
+    pub default_width: gpui::Pixels,
+}
+
+impl WorkspaceSidebarSettings {
+    pub fn side(&self) -> settings::SidebarSide {
+        match self.position {
+            settings::SidebarDockPosition::Left => settings::SidebarSide::Left,
+            settings::SidebarDockPosition::Right => settings::SidebarSide::Right,
+        }
+    }
+}
+
+impl Settings for WorkspaceSidebarSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let settings = content.workspace_sidebar.clone().unwrap_or_default();
+        Self {
+            auto_open: settings.auto_open.unwrap_or(true),
+            position: settings.position.unwrap_or_default(),
+            default_width: gpui::px(
+                settings
+                    .default_width
+                    .map_or(300.0, |width| width.0)
+                    .clamp(200.0, 800.0),
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug, settings::RegisterSetting)]
+pub struct WorkspaceTerminalSettings {
+    pub button: bool,
+    pub dock: settings::DockPosition,
+    pub flexible: bool,
+    pub default_width: gpui::Pixels,
+    pub init_command: Option<String>,
+    pub notify_on_bell: settings::TerminalNotificationDisplay,
+    pub play_sound_on_bell: settings::TerminalNotificationSound,
+}
+
+impl Settings for WorkspaceTerminalSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let settings = content.workspace_terminal.clone().unwrap_or_default();
+        Self {
+            button: settings.button.unwrap_or(true),
+            dock: settings.dock.unwrap_or(settings::DockPosition::Left),
+            flexible: settings.flexible.unwrap_or(true),
+            default_width: gpui::px(
+                settings
+                    .default_width
+                    .map_or(640.0, |width| width.0)
+                    .max(300.0),
+            ),
+            init_command: settings
+                .init_command
+                .filter(|command| !command.trim().is_empty()),
+            notify_on_bell: settings
+                .notify_on_bell
+                .unwrap_or(settings::TerminalNotificationDisplay::PrimaryScreen),
+            play_sound_on_bell: settings
+                .play_sound_on_bell
+                .unwrap_or(settings::TerminalNotificationSound::Never),
+        }
+    }
+}

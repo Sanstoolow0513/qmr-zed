@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -241,7 +243,14 @@ impl TitleBar {
                                 .occlude()
                                 .tooltip({
                                     let login = collaborator.user.username.clone();
-                                    Tooltip::text(format!("Follow {login}"))
+                                    Tooltip::text(
+                                        i18n::format(
+                                            "Follow {login}",
+                                            &[("login", &format!("{}", login))],
+                                            cx,
+                                        )
+                                        .to_string(),
+                                    )
                                 }),
                         )
                     }))
@@ -296,7 +305,14 @@ impl TitleBar {
                                         AvatarAudioStatusIndicator::new(ui::AudioStatus::Muted)
                                             .tooltip({
                                                 let username = user.username.clone();
-                                                Tooltip::text(format!("{} is muted", username))
+                                                Tooltip::text(
+                                                    i18n::format(
+                                                        "{argument0} is muted",
+                                                        &[("argument0", &format!("{}", username))],
+                                                        cx,
+                                                    )
+                                                    .to_string(),
+                                                )
                                             }),
                                     )
                                 }),
@@ -396,7 +412,7 @@ impl TitleBar {
                     .gap_1()
                     .child(
                         IconButton::new("leave-call", IconName::Exit)
-                            .tooltip(Tooltip::text("Leave Call"))
+                            .tooltip(Tooltip::localized_text("Leave Call"))
                             .icon_size(IconSize::Small)
                             .on_click(move |_, _window, cx| {
                                 ActiveCall::global(cx)
@@ -437,7 +453,14 @@ impl TitleBar {
                                 h_flex()
                                     .gap_4()
                                     .justify_between()
-                                    .child(Label::new(format!("Connection: {quality_label}")))
+                                    .child(Label::new(
+                                        i18n::format(
+                                            "Connection: {quality_label}",
+                                            &[("quality_label", &format!("{}", quality_label))],
+                                            cx,
+                                        )
+                                        .to_string(),
+                                    ))
                                     .when(has_key_binding, |this| this.child(key_binding)),
                             )
                             .child(
@@ -474,10 +497,10 @@ impl TitleBar {
                                     cx,
                                 )
                             } else {
-                                Tooltip::simple("Unmute Microphone", cx)
+                                Tooltip::localized_simple("Unmute Microphone", cx)
                             }
                         } else {
-                            Tooltip::simple("Mute Microphone", cx)
+                            Tooltip::localized_simple("Mute Microphone", cx)
                         }
                     })
                     .icon_size(IconSize::Small)
@@ -590,7 +613,7 @@ impl TitleBar {
                                         },
                                     ))
                                 } else if is_sharing_disabled {
-                                    this.disabled(true).tooltip(Tooltip::text(
+                                    this.disabled(true).tooltip(Tooltip::localized_text(
                                         "This project may not be shared in a public channel.",
                                     ))
                                 } else {

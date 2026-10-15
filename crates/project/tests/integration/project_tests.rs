@@ -1,9 +1,7 @@
 #![allow(clippy::format_collect)]
 
-mod agent_registry_store;
 mod bookmark_store;
 mod color_extractor;
-mod context_server_store;
 mod debugger;
 mod dynamic_registration;
 mod git_store;

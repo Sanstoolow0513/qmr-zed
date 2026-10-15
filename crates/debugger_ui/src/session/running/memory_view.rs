@@ -402,14 +402,22 @@ impl MemoryView {
         if !self.is_writing_memory {
             self.query_editor.update(cx, |this, cx| {
                 this.clear(window, cx);
-                this.set_placeholder_text("Write to Selected Memory Range", window, cx);
+                this.set_placeholder_text(
+                    i18n::static_text("Write to Selected Memory Range", cx),
+                    window,
+                    cx,
+                );
             });
             self.is_writing_memory = true;
             self.query_editor.focus_handle(cx).focus(window, cx);
         } else {
             self.query_editor.update(cx, |this, cx| {
                 this.clear(window, cx);
-                this.set_placeholder_text("Go to Memory Address / Expression", window, cx);
+                this.set_placeholder_text(
+                    i18n::static_text("Go to Memory Address / Expression", cx),
+                    window,
+                    cx,
+                );
             });
             self.is_writing_memory = false;
         }

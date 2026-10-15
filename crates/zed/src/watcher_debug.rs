@@ -156,7 +156,7 @@ fn create_editor(
         editor.set_use_modal_editing(false);
         editor.set_show_gutter(false, cx);
         editor.hide_minimap_by_default(window, cx);
-        editor.set_show_edit_predictions(Some(false), window, cx);
+
         editor.set_soft_wrap_mode(SoftWrap::None, cx);
         editor.set_placeholder_text(tab.empty_message(), window, cx);
         editor
@@ -505,7 +505,7 @@ impl Render for WatcherDebug {
                     .bg(cx.theme().colors().elevated_surface_background)
                     .p(DynamicSpacing::Base04.rems(cx))
                     .child(
-                        Button::new("save-watcher-json", "Export as JSON")
+                        Button::localized("save-watcher-json", "Export as JSON")
                             .disabled(self.saving || self.recording.is_none())
                             .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
                     ),

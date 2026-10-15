@@ -7,8 +7,7 @@ use gpui::{
     Task, TaskExt, Window, actions,
 };
 use http_client::{HttpClient, HttpClientWithUrl};
-use paths::remote_servers_dir;
-use release_channel::{AppCommitSha, ReleaseChannel};
+use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use settings::{RegisterSetting, Settings, SettingsStore};
@@ -314,9 +313,9 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Zed was installed via a package manager.",
+            i18n::static_text("Updates are managed outside this application.", cx),
             Some(&message),
-            &["OK"],
+            &[i18n::static_text("OK", cx)],
             cx,
         ));
         return;
@@ -334,9 +333,12 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     } else {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Could not check for updates",
-            Some("Auto-updates disabled for non-bundled app."),
-            &["OK"],
+            i18n::static_text("Could not check for updates", cx),
+            Some(i18n::static_text(
+                "Auto-updates disabled for non-bundled app.",
+                cx,
+            )),
+            &[i18n::static_text("OK", cx)],
             cx,
         ));
     }
@@ -593,9 +595,6 @@ impl AutoUpdater {
         true
     }
 
-    // If you are packaging Zed and need to override the place it downloads SSH remotes from,
-    // you can override this function. You should also update get_remote_server_release_url to return
-    // Ok(None).
     pub async fn download_remote_server_release(
         release_channel: ReleaseChannel,
         version: Option<Version>,
@@ -612,33 +611,20 @@ impl AutoUpdater {
         })?;
 
         set_status("Fetching remote server release", cx);
-        let release = Self::get_release_asset(
-            &this,
-            release_channel,
-            version,
-            "zed-remote-server",
-            os,
-            arch,
-            cx,
-        )
-        .await?;
+        let version = version.unwrap_or_else(|| cx.update(|cx| AppVersion::global(cx)));
+        let release = remote_server_release_asset(version, os, arch)?;
 
         let servers_dir = paths::remote_servers_dir();
         let channel_dir = servers_dir.join(release_channel.dev_name());
         let platform_dir = channel_dir.join(format!("{}-{}", os, arch));
-        let version_path = platform_dir.join(format!("{}.gz", release.version));
-        smol::fs::create_dir_all(&platform_dir).await.ok();
+        let extension = remote_server_archive_extension(os);
+        let version_path = platform_dir.join(format!("{}.{extension}", release.version));
+        smol::fs::create_dir_all(&platform_dir).await?;
 
         let client = this.read_with(cx, |this, _| this.client.http_client());
 
-        if smol::fs::metadata(&version_path).await.is_err() {
-            log::info!(
-                "downloading zed-remote-server {os} {arch} version {}",
-                release.version
-            );
-            set_status("Downloading remote server", cx);
-            download_remote_server_binary(&version_path, release, client).await?;
-        }
+        set_status("Downloading remote server", cx);
+        download_remote_server_binary(&version_path, release, client).await?;
 
         if let Err(error) =
             cleanup_remote_server_cache(&platform_dir, &version_path, REMOTE_SERVER_CACHE_LIMIT)
@@ -654,23 +640,14 @@ impl AutoUpdater {
     }
 
     pub async fn get_remote_server_release_url(
-        channel: ReleaseChannel,
+        _channel: ReleaseChannel,
         version: Option<Version>,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
     ) -> Result<Option<String>> {
-        let this = cx.update(|cx| {
-            cx.default_global::<GlobalAutoUpdate>()
-                .0
-                .clone()
-                .context("auto-update not initialized")
-        })?;
-
-        let release =
-            Self::get_release_asset(&this, channel, version, "zed-remote-server", os, arch, cx)
-                .await?;
-
+        let version = version.unwrap_or_else(|| cx.update(|cx| AppVersion::global(cx)));
+        let release = remote_server_release_asset(version, os, arch)?;
         Ok(Some(release.url))
     }
 
@@ -996,22 +973,69 @@ impl AutoUpdater {
     }
 }
 
+fn remote_server_archive_extension(os: &str) -> &'static str {
+    if os == "windows" { "zip" } else { "gz" }
+}
+
+fn remote_server_release_asset(mut version: Version, os: &str, arch: &str) -> Result<ReleaseAsset> {
+    anyhow::ensure!(
+        matches!(os, "linux" | "macos" | "windows") && matches!(arch, "x86_64" | "aarch64"),
+        "QMR Zed remote servers are not available for {os}-{arch}"
+    );
+    version.build = semver::BuildMetadata::EMPTY;
+    let extension = remote_server_archive_extension(os);
+    Ok(ReleaseAsset {
+        url: format!(
+            "https://github.com/Sanstoolow0513/qmr-zed/releases/download/v{version}/zed-remote-server-{os}-{arch}.{extension}"
+        ),
+        version: version.to_string(),
+    })
+}
+
 async fn download_remote_server_binary(
-    target_path: &PathBuf,
+    target_path: &Path,
     release: ReleaseAsset,
     client: Arc<HttpClientWithUrl>,
 ) -> Result<()> {
-    let temp = tempfile::Builder::new().tempfile_in(remote_servers_dir())?;
+    match fs::metadata(target_path).await {
+        Ok(metadata) => {
+            anyhow::ensure!(metadata.is_file(), "remote server cache path is not a file");
+            return Ok(());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+
+    let cache_dir = target_path
+        .parent()
+        .context("remote server cache has no parent")?;
+    let temp = tempfile::Builder::new().tempfile_in(cache_dir)?;
     let mut temp_file = File::create(&temp).await?;
 
+    log::info!("downloading QMR Zed remote server from {}", release.url);
     let mut response = client.get(&release.url, Default::default(), true).await?;
     anyhow::ensure!(
         response.status().is_success(),
-        "failed to download remote server release: {:?}",
+        "failed to download QMR Zed remote server release {} from {}: {:?}",
+        release.version,
+        release.url,
         response.status()
     );
-    smol::io::copy(response.body_mut(), &mut temp_file).await?;
-    smol::fs::rename(&temp, &target_path).await?;
+    let content_length = response
+        .headers()
+        .get(http_client::http::header::CONTENT_LENGTH)
+        .and_then(|length| length.to_str().ok())
+        .and_then(|length| length.parse::<u64>().ok());
+    let downloaded_length = smol::io::copy(response.body_mut(), &mut temp_file).await?;
+    if let Some(content_length) = content_length {
+        anyhow::ensure!(
+            downloaded_length == content_length,
+            "incomplete remote server download: expected {content_length} bytes, received {downloaded_length}"
+        );
+    }
+    temp_file.flush().await?;
+    drop(temp_file);
+    smol::fs::rename(temp.path(), target_path).await?;
 
     Ok(())
 }
@@ -1032,7 +1056,7 @@ async fn cleanup_remote_server_cache(
     while let Some(entry) = entries.next().await {
         let entry = entry?;
         let path = entry.path();
-        if path.extension() != Some(OsStr::new("gz")) {
+        if !matches!(path.extension().and_then(OsStr::to_str), Some("gz" | "zip")) {
             continue;
         }
 
@@ -1382,6 +1406,167 @@ mod tests {
 
     pub(super) struct InstallOverride(pub Rc<dyn Fn(&Path, &AsyncApp) -> Result<Option<PathBuf>>>);
     impl Global for InstallOverride {}
+
+    #[test]
+    fn test_remote_server_release_assets() {
+        for os in ["linux", "macos", "windows"] {
+            for arch in ["x86_64", "aarch64"] {
+                for version in ["2026.10.13", "2026.10.13-qmr.2"] {
+                    let release = remote_server_release_asset(
+                        format!("{version}+stable.123.abcdef").parse().unwrap(),
+                        os,
+                        arch,
+                    )
+                    .unwrap();
+                    let extension = if os == "windows" { "zip" } else { "gz" };
+                    assert_eq!(release.version, version);
+                    assert_eq!(
+                        release.url,
+                        format!(
+                            "https://github.com/Sanstoolow0513/qmr-zed/releases/download/v{version}/zed-remote-server-{os}-{arch}.{extension}"
+                        )
+                    );
+                }
+            }
+        }
+        for (os, arch) in [("freebsd", "x86_64"), ("linux", "armv7")] {
+            assert!(remote_server_release_asset(Version::new(2026, 10, 13), os, arch).is_err());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_remote_server_release_url_uses_current_version(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            release_channel::init_test(
+                "2026.10.13-qmr.2+nightly.123.abcdef".parse().unwrap(),
+                ReleaseChannel::Nightly,
+                cx,
+            );
+        });
+        let url = AutoUpdater::get_remote_server_release_url(
+            ReleaseChannel::Nightly,
+            None,
+            "linux",
+            "x86_64",
+            &mut cx.to_async(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            url.as_deref(),
+            Some(
+                "https://github.com/Sanstoolow0513/qmr-zed/releases/download/v2026.10.13-qmr.2/zed-remote-server-linux-x86_64.gz"
+            )
+        );
+    }
+
+    #[gpui::test]
+    async fn test_remote_server_download_reuses_complete_cache(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        for os in ["linux", "windows"] {
+            let release =
+                remote_server_release_asset(Version::new(2026, 10, 13), os, "x86_64").unwrap();
+            let requested_url = release.url.clone();
+            let requested = Arc::new(AtomicBool::new(false));
+            let client = FakeHttpClient::create({
+                let requested = requested.clone();
+                move |request| {
+                    assert_eq!(request.uri().to_string(), requested_url);
+                    assert!(!requested.swap(true, atomic::Ordering::SeqCst));
+                    async move {
+                        Ok(Response::builder()
+                            .status(200)
+                            .header(http_client::http::header::CONTENT_LENGTH, "14")
+                            .body("<fake-server>!".into())
+                            .unwrap())
+                    }
+                }
+            });
+            let temp_dir = tempdir().unwrap();
+            let target_path = temp_dir.path().join(format!(
+                "{}.{}",
+                release.version,
+                remote_server_archive_extension(os)
+            ));
+            download_remote_server_binary(&target_path, release.clone(), client.clone())
+                .await
+                .unwrap();
+            download_remote_server_binary(&target_path, release, client)
+                .await
+                .unwrap();
+            assert!(requested.load(atomic::Ordering::SeqCst));
+            assert_eq!(
+                fs::read_to_string(&target_path).await.unwrap(),
+                "<fake-server>!"
+            );
+            assert_eq!(std::fs::read_dir(temp_dir.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[gpui::test]
+    async fn test_remote_server_download_failure_does_not_populate_cache(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        for status in [404, 200] {
+            let client = FakeHttpClient::create(move |_request| async move {
+                Ok(Response::builder()
+                    .status(status)
+                    .header(http_client::http::header::CONTENT_LENGTH, "100")
+                    .body("incomplete".into())
+                    .unwrap())
+            });
+            let temp_dir = tempdir().unwrap();
+            let target_path = temp_dir.path().join("2026.10.13.gz");
+            let release =
+                remote_server_release_asset(Version::new(2026, 10, 13), "linux", "x86_64").unwrap();
+            let error = download_remote_server_binary(&target_path, release, client)
+                .await
+                .unwrap_err();
+            if status == 404 {
+                assert!(error.to_string().contains("404"));
+                assert!(error.to_string().contains("Sanstoolow0513/qmr-zed"));
+            } else {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("incomplete remote server download")
+                );
+            }
+            assert!(!target_path.exists());
+            assert_eq!(std::fs::read_dir(temp_dir.path()).unwrap().count(), 0);
+        }
+    }
+
+    #[gpui::test]
+    async fn test_remote_server_cache_cleanup_handles_zip(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let temp_dir = tempdir().unwrap();
+        for (index, name) in ["old.gz", "keep.zip", "older.zip", "newest.zip"]
+            .into_iter()
+            .enumerate()
+        {
+            let file = std::fs::File::create(temp_dir.path().join(name)).unwrap();
+            file.set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(index as u64)),
+            )
+            .unwrap();
+        }
+        fs::write(temp_dir.path().join("notes.txt"), "keep")
+            .await
+            .unwrap();
+        cleanup_remote_server_cache(temp_dir.path(), &temp_dir.path().join("keep.zip"), 2)
+            .await
+            .unwrap();
+        let mut remaining = std::fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        remaining.sort();
+        assert_eq!(
+            remaining,
+            ["keep.zip", "newest.zip", "notes.txt"].map(OsString::from)
+        );
+    }
 
     #[gpui::test]
     fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {

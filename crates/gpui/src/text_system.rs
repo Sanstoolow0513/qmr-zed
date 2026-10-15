@@ -226,6 +226,27 @@ impl Drop for MissingGlyphReceiver {
     }
 }
 
+/// Application-specific default fonts. Unconfigured applications retain GPUI defaults.
+#[derive(Clone, Debug)]
+pub struct FontDefaults {
+    /// Family used for proportional interface text and legacy sans-serif aliases.
+    pub proportional: SharedString,
+    /// Family used for code and legacy monospace aliases.
+    pub monospace: SharedString,
+    /// Asset directory containing the application's bundled TrueType fonts.
+    pub asset_directory: SharedString,
+}
+
+impl FontDefaults {
+    fn resolve_family(&self, family: &SharedString) -> SharedString {
+        match family.as_str() {
+            ".ZedMono" | "Zed Plex Mono" => self.monospace.clone(),
+            ".ZedSans" | "Zed Plex Sans" => self.proportional.clone(),
+            _ => family.clone(),
+        }
+    }
+}
+
 /// The GPUI text rendering sub system.
 pub struct TextSystem {
     platform_text_system: Arc<dyn PlatformTextSystem>,
@@ -235,6 +256,7 @@ pub struct TextSystem {
     wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<LineWrapper>>>,
     font_runs_pool: Mutex<Vec<Vec<FontRun>>>,
     fallback_font_stack: SmallVec<[Font; 2]>,
+    font_defaults: RwLock<Option<FontDefaults>>,
     font_generation: Arc<AtomicUsize>,
     missing_glyph_reporter: Arc<MissingGlyphReporter>,
     missing_glyph_receiver: Mutex<Option<MissingGlyphReceiver>>,
@@ -252,6 +274,7 @@ impl TextSystem {
             font_ids_by_font: RwLock::default(),
             wrapper_pool: Mutex::default(),
             font_runs_pool: Mutex::default(),
+            font_defaults: RwLock::new(None),
             fallback_font_stack: smallvec![
                 // TODO: Remove this when Linux have implemented setting fallbacks.
                 font(".ZedMono"),
@@ -325,6 +348,11 @@ impl TextSystem {
         self.missing_glyph_reporter.report(missing_glyphs);
     }
 
+    pub(crate) fn set_font_defaults(&self, defaults: FontDefaults) {
+        *self.font_defaults.write() = Some(defaults);
+        self.font_ids_by_font.write().clear();
+    }
+
     /// Get the FontId for the configure font family and style.
     fn font_id(&self, font: &Font) -> Result<FontId> {
         fn clone_font_id_result(font_id: &Result<FontId>) -> Result<FontId> {
@@ -342,7 +370,11 @@ impl TextSystem {
         if let Some(font_id) = font_id {
             font_id
         } else {
-            let font_id = self.platform_text_system.font_id(font);
+            let mut resolved = font.clone();
+            if let Some(defaults) = self.font_defaults.read().as_ref() {
+                resolved.family = defaults.resolve_family(&resolved.family);
+            }
+            let font_id = self.platform_text_system.font_id(&resolved);
             self.font_ids_by_font
                 .write()
                 .insert(font.clone(), clone_font_id_result(&font_id));
@@ -371,7 +403,19 @@ impl TextSystem {
         if let Ok(font_id) = self.font_id(font) {
             return font_id;
         }
-        for fallback in &self.fallback_font_stack {
+        let defaults = self.font_defaults.read().clone();
+        if let Some(defaults) = defaults.as_ref() {
+            for family in [&defaults.monospace, &defaults.proportional] {
+                if let Ok(font_id) = self.font_id(&crate::font(family.clone())) {
+                    return font_id;
+                }
+            }
+        }
+        for fallback in self
+            .fallback_font_stack
+            .iter()
+            .skip(if defaults.is_some() { 2 } else { 0 })
+        {
             if let Ok(font_id) = self.font_id(fallback) {
                 return font_id;
             }
@@ -1501,5 +1545,59 @@ mod missing_glyph_tests {
 
     fn missing_glyph(grapheme: &'static str) -> MissingGlyph {
         MissingGlyph::new(grapheme.into(), FallbackFontClass::Proportional)
+    }
+}
+
+#[cfg(test)]
+mod application_font_tests {
+    use super::*;
+
+    #[test]
+    fn application_font_defaults_preserve_custom_families() {
+        let defaults = FontDefaults {
+            proportional: "Maple Mono NF CN".into(),
+            monospace: "Maple Mono NF CN".into(),
+            asset_directory: "fonts/maple-mono-nf-cn/".into(),
+        };
+        for alias in [".ZedMono", ".ZedSans", "Zed Plex Mono", "Zed Plex Sans"] {
+            assert_eq!(
+                defaults.resolve_family(&alias.into()).as_ref(),
+                "Maple Mono NF CN"
+            );
+        }
+        for family in ["Cascadia Code", "Lilex", ".SystemUIFont"] {
+            assert_eq!(defaults.resolve_family(&family.into()).as_ref(), family);
+        }
+    }
+
+    #[test]
+    fn bundled_maple_fonts_have_chinese_and_nerd_glyphs() -> anyhow::Result<()> {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/fonts/maple-mono-nf-cn");
+        let mut count = 0;
+        for entry in std::fs::read_dir(directory)? {
+            let path = entry?.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("ttf") {
+                continue;
+            }
+            let bytes = std::fs::read(&path)?;
+            let face =
+                ttf_parser::Face::parse(&bytes, 0).map_err(|error| anyhow::anyhow!("{error:?}"))?;
+            for character in ['A', '中', '文', '\u{f120}'] {
+                assert!(
+                    face.glyph_index(character).is_some(),
+                    "{} missing {character}",
+                    path.display()
+                );
+            }
+            let filename = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            assert_eq!(face.is_italic(), filename.contains("Italic"));
+            count += 1;
+        }
+        assert_eq!(count, 16);
+        Ok(())
     }
 }

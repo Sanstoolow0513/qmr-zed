@@ -219,13 +219,13 @@ impl Render for AudioTestWindow {
             .child(
                 v_flex()
                     .gap_1()
-                    .child(Label::new("Output Device"))
+                    .child(Label::localized("Output Device"))
                     .child(output_dropdown),
             )
             .child(
                 v_flex()
                     .gap_1()
-                    .child(Label::new("Input Device"))
+                    .child(Label::localized("Input Device"))
                     .child(input_dropdown),
             )
             .child(
@@ -286,7 +286,7 @@ pub fn open_audio_test_window(_window: &mut Window, cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(gpui::TitlebarOptions {
-                title: Some("Audio Test".into()),
+                title: Some(i18n::text("Audio Test", cx)),
                 appears_transparent: true,
                 traffic_light_position: Some(gpui::point(px(12.0), px(12.0))),
             }),

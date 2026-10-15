@@ -567,12 +567,14 @@ fn deploy_blame_entry_context_menu(
             .entry("Copy Commit SHA", None, move |_, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(sha.clone()));
             })
+            .localize_last()
             .when_some(
                 details.and_then(|details| details.permalink.clone()),
                 |this, url| {
                     this.entry("Open Commit Permalink", None, move |_, cx| {
                         cx.open_url(url.as_str())
                     })
+                    .localize_last()
                 },
             )
             .when(has_blame_targets, |this| this.separator())
@@ -589,6 +591,7 @@ fn deploy_blame_entry_context_menu(
                         cx,
                     );
                 })
+                .localize_last()
             })
             .when_some(blame_previous_revision, |this, (revision, path)| {
                 let repository = repository.clone();
@@ -603,6 +606,7 @@ fn deploy_blame_entry_context_menu(
                         cx,
                     );
                 })
+                .localize_last()
             })
     });
 

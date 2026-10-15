@@ -139,8 +139,8 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
         "sidebar recent projects"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Search projects…".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Search projects…", cx).into()
     }
 
     fn match_count(&self) -> usize {
@@ -399,7 +399,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                                 .w_full()
                                 .gap_1()
                                 .justify_between()
-                                .child(Label::new("Open Local Folders"))
+                                .child(Label::localized("Open Local Folders"))
                                 .child(KeyBinding::for_action_in(&open_action, &focus_handle, cx)),
                         )
                         .on_click(cx.listener(move |_, _, window, cx| {
@@ -414,7 +414,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                                 .w_full()
                                 .gap_1()
                                 .justify_between()
-                                .child(Label::new("Open Remote Folder"))
+                                .child(Label::localized("Open Remote Folder"))
                                 .child(KeyBinding::for_action(
                                     &OpenRemote {
                                         from_existing_connection: false,

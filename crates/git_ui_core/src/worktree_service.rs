@@ -252,14 +252,23 @@ impl Render for WorktreeFetchFailedToast {
                     .size(IconSize::Small)
                     .color(Color::Error),
             )
-            .child(Label::new(format!(
-                "git fetch failed for {}",
-                self.remote_branch_name
-            )))
+            .child(Label::new(
+                i18n::format(
+                    "git fetch failed for {argument0}",
+                    &[("argument0", &self.remote_branch_name)],
+                    cx,
+                )
+                .to_string(),
+            ))
             .child(
                 Button::new(
                     "use-local-worktree-base",
-                    format!("Use local {}", self.remote_branch_name),
+                    i18n::format(
+                        "Use local {argument0}",
+                        &[("argument0", &self.remote_branch_name)],
+                        cx,
+                    )
+                    .to_string(),
                 )
                 .color(Color::Muted)
                 .on_click(cx.listener(move |_, _event, window, cx| {
@@ -285,7 +294,7 @@ impl Render for WorktreeFetchFailedToast {
                 })),
             )
             .child(
-                Button::new("view-worktree-fetch-log", "Show Error Logs")
+                Button::localized("view-worktree-fetch-log", "Show Error Logs")
                     .color(Color::Muted)
                     .on_click(cx.listener(move |_, _event, window, cx| {
                         cx.emit(DismissEvent);

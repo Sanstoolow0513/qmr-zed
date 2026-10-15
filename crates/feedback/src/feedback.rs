@@ -75,9 +75,9 @@ pub fn init(cx: &mut App) {
                 cx.write_to_clipboard(ClipboardItem::new_string(clipboard_text.clone()));
                 drop(window.prompt(
                     PromptLevel::Info,
-                    "Copied into clipboard",
+                    i18n::static_text("Copied into clipboard", cx),
                     Some(&clipboard_text),
-                    &["OK"],
+                    &[i18n::static_text("OK", cx)],
                     cx,
                 ));
             })

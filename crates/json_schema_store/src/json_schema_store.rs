@@ -231,7 +231,7 @@ async fn resolve_dynamic_schema(
     let (schema_name, rest) = path.split_once('/').unzip();
     let schema_name = schema_name.unwrap_or(path);
 
-    let schema = match schema_name {
+    let mut schema = match schema_name {
         "settings" if rest.is_some_and(|r| r.starts_with("lsp/")) => {
             let lsp_path = rest
                 .and_then(|r| {
@@ -402,6 +402,10 @@ async fn resolve_dynamic_schema(
             anyhow::bail!("Unrecognized schema: {schema_name}");
         }
     };
+    if !(schema_name == "settings" && rest.is_some_and(|path| path.starts_with("lsp/"))) {
+        let locale = cx.update(|cx| i18n::locale(cx));
+        i18n::localize_schema(&mut schema, locale);
+    }
     Ok(schema)
 }
 

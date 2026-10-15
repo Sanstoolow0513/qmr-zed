@@ -44,10 +44,10 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
 #[cfg(target_os = "windows")]
 pub fn app_identifier() -> &'static str {
     match *RELEASE_CHANNEL {
-        ReleaseChannel::Dev => "Zed-Editor-Dev",
-        ReleaseChannel::Nightly => "Zed-Editor-Nightly",
-        ReleaseChannel::Preview => "Zed-Editor-Preview",
-        ReleaseChannel::Stable => "Zed-Editor-Stable",
+        ReleaseChannel::Dev => "QMRZed-Editor-Dev",
+        ReleaseChannel::Nightly => "QMRZed-Editor-Nightly",
+        ReleaseChannel::Preview => "QMRZed-Editor-Preview",
+        ReleaseChannel::Stable => "QMRZed-Editor-Stable",
     }
 }
 
@@ -199,16 +199,17 @@ impl ReleaseChannel {
 
     /// Returns whether we want to poll for updates for this [`ReleaseChannel`]
     pub fn poll_for_updates(&self) -> bool {
-        !matches!(self, ReleaseChannel::Dev)
+        // Upstream updates would replace this fork with the official Zed binary.
+        false
     }
 
     /// Returns the display name for this [`ReleaseChannel`].
     pub fn display_name(&self) -> &'static str {
         match self {
-            ReleaseChannel::Dev => "Zed Dev",
-            ReleaseChannel::Nightly => "Zed Nightly",
-            ReleaseChannel::Preview => "Zed Preview",
-            ReleaseChannel::Stable => "Zed",
+            ReleaseChannel::Dev => "QMR Zed Dev",
+            ReleaseChannel::Nightly => "QMR Zed Nightly",
+            ReleaseChannel::Preview => "QMR Zed Preview",
+            ReleaseChannel::Stable => "QMR Zed",
         }
     }
 
@@ -227,10 +228,10 @@ impl ReleaseChannel {
     /// This also has to match the bundle identifier for Zed on macOS.
     pub fn app_id(&self) -> &'static str {
         match self {
-            ReleaseChannel::Dev => "dev.zed.Zed-Dev",
-            ReleaseChannel::Nightly => "dev.zed.Zed-Nightly",
-            ReleaseChannel::Preview => "dev.zed.Zed-Preview",
-            ReleaseChannel::Stable => "dev.zed.Zed",
+            ReleaseChannel::Dev => "io.github.Sanstoolow0513.QMRZed-Dev",
+            ReleaseChannel::Nightly => "io.github.Sanstoolow0513.QMRZed-Nightly",
+            ReleaseChannel::Preview => "io.github.Sanstoolow0513.QMRZed-Preview",
+            ReleaseChannel::Stable => "io.github.Sanstoolow0513.QMRZed",
         }
     }
 
@@ -283,6 +284,21 @@ impl FromStr for ReleaseChannel {
 #[cfg(test)]
 mod tests {
     use super::ReleaseChannel;
+
+    #[test]
+    fn fork_releases_do_not_use_upstream_updates_or_application_ids() {
+        for channel in ReleaseChannel::ALL {
+            assert!(!channel.poll_for_updates());
+            assert!(channel.display_name().starts_with("QMR Zed"));
+            assert!(
+                channel
+                    .app_id()
+                    .starts_with("io.github.Sanstoolow0513.QMRZed")
+            );
+        }
+        #[cfg(target_os = "windows")]
+        assert!(super::app_identifier().starts_with("QMRZed-"));
+    }
 
     #[test]
     fn test_docs_url_for_release_channel() {

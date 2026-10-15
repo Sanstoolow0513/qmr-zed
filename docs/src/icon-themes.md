@@ -5,7 +5,10 @@ description: "Zed comes with a built-in icon theme, with more icon themes availa
 
 # Icon Themes
 
-Zed comes with a built-in icon theme, with more icon themes available as extensions.
+QMR Zed defaults to **Claude Icons**, with colored file and folder icons in the
+Project Panel. Icon colors adapt to the current interface theme, including when
+you manually select a light or dark theme. **Zed (Default)** remains available,
+along with icon themes from extensions.
 
 ## Selecting an Icon Theme
 

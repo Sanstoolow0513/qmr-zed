@@ -1,14 +1,19 @@
 use editor::{Editor, EditorEvent, MBTextSummary, MultiBufferSnapshot};
-use gpui::{App, Entity, FocusHandle, Focusable, Styled, Subscription, Task, WeakEntity};
+use gpui::{
+    App, Entity, EventEmitter, FocusHandle, Focusable, Styled, Subscription, Task, WeakEntity,
+};
 use settings::{RegisterSetting, Settings};
 use std::{fmt::Write, num::NonZeroU32, time::Duration};
 use text::{Point, Selection};
 use ui::{
-    Button, ButtonCommon, Clickable, Context, FluentBuilder, IntoElement, LabelSize, ParentElement,
-    Render, Tooltip, Window, div,
+    Button, ButtonCommon, ButtonSize, Clickable, Context, FluentBuilder, IntoElement, LabelSize,
+    ParentElement, Render, Tooltip, Window, div,
 };
 use util::paths::FILE_ROW_COLUMN_DELIMITER;
-use workspace::{HideStatusItem, StatusBarSettings, StatusItemView, Workspace, item::ItemHandle};
+use workspace::{
+    HideStatusItem, StatusBarSettings, StatusItemView, ToolbarItemEvent, ToolbarItemLocation,
+    ToolbarItemView, Workspace, item::ItemHandle,
+};
 
 #[derive(Copy, Clone, Debug, Default, PartialOrd, PartialEq)]
 pub(crate) struct SelectionStats {
@@ -22,6 +27,7 @@ pub struct CursorPosition {
     selected_count: SelectionStats,
     context: Option<FocusHandle>,
     workspace: WeakEntity<Workspace>,
+    editor: Option<WeakEntity<Editor>>,
     update_position: Task<()>,
     _observe_active_editor: Option<Subscription>,
 }
@@ -73,6 +79,7 @@ impl CursorPosition {
             context: None,
             selected_count: Default::default(),
             workspace: workspace.weak_handle(),
+            editor: None,
             update_position: Task::ready(()),
             _observe_active_editor: None,
         }
@@ -205,6 +212,22 @@ impl CursorPosition {
     pub(crate) fn position(&self) -> Option<UserCaretPosition> {
         self.position
     }
+
+    pub(crate) fn toggle_go_to_line(&self, window: &mut Window, cx: &mut App) {
+        let Some(editor) = self.editor.as_ref().and_then(WeakEntity::upgrade) else {
+            return;
+        };
+        let Some(buffer) = editor.read(cx).active_buffer(cx) else {
+            return;
+        };
+        if let Some(workspace) = self.workspace.upgrade() {
+            workspace.update(cx, |workspace, cx| {
+                workspace.toggle_modal(window, cx, |window, cx| {
+                    crate::GoToLine::new(editor, buffer, window, cx)
+                });
+            });
+        }
+    }
 }
 
 impl Render for CursorPosition {
@@ -214,46 +237,36 @@ impl Render for CursorPosition {
         }
 
         div().when_some(self.position, |el, position| {
-            let mut text = format!(
+            let text = format!(
                 "{}{FILE_ROW_COLUMN_DELIMITER}{}",
                 position.line, position.character,
             );
-            self.write_position(&mut text, cx);
+            let mut tooltip = "Go to Line/Column".to_string();
+            self.write_position(&mut tooltip, cx);
 
             let context = self.context.clone();
 
             el.child(
                 Button::new("go-to-line-column", text)
                     .label_size(LabelSize::Small)
+                    .size(ButtonSize::Medium)
                     .tab_index(0isize)
                     .aria_label(format!(
                         "Line {}, column {}",
                         position.line, position.character
                     ))
                     .on_click(cx.listener(|this, _, window, cx| {
-                        if let Some(workspace) = this.workspace.upgrade() {
-                            workspace.update(cx, |workspace, cx| {
-                                if let Some(editor) = workspace
-                                    .active_item(cx)
-                                    .and_then(|item| item.act_as::<Editor>(cx))
-                                    && let Some(buffer) = editor.read(cx).active_buffer(cx)
-                                {
-                                    workspace.toggle_modal(window, cx, |window, cx| {
-                                        crate::GoToLine::new(editor, buffer, window, cx)
-                                    })
-                                }
-                            });
-                        }
+                        this.toggle_go_to_line(window, cx);
                     }))
                     .tooltip(move |_window, cx| match context.as_ref() {
                         Some(context) => Tooltip::for_action_in(
-                            "Go to Line/Column",
+                            tooltip.clone(),
                             &editor::actions::ToggleGoToLine,
                             context,
                             cx,
                         ),
                         None => Tooltip::for_action(
-                            "Go to Line/Column",
+                            tooltip.clone(),
                             &editor::actions::ToggleGoToLine,
                             cx,
                         ),
@@ -273,6 +286,7 @@ impl StatusItemView for CursorPosition {
         cx: &mut Context<Self>,
     ) {
         if let Some(editor) = active_pane_item.and_then(|item| item.act_as::<Editor>(cx)) {
+            self.editor = Some(editor.downgrade());
             self._observe_active_editor = Some(cx.subscribe_in(
                 &editor,
                 window,
@@ -290,6 +304,9 @@ impl StatusItemView for CursorPosition {
             self.update_position(&editor, None, window, cx);
         } else {
             self.position = None;
+            self.editor = None;
+            self.context = None;
+            self.update_position = Task::ready(());
             self._observe_active_editor = None;
         }
 
@@ -303,6 +320,24 @@ impl StatusItemView for CursorPosition {
                 .get_or_insert_default()
                 .cursor_position_button = Some(false);
         }))
+    }
+}
+
+impl EventEmitter<ToolbarItemEvent> for CursorPosition {}
+
+impl ToolbarItemView for CursorPosition {
+    fn set_active_pane_item(
+        &mut self,
+        active_pane_item: Option<&dyn ItemHandle>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> ToolbarItemLocation {
+        StatusItemView::set_active_pane_item(self, active_pane_item, window, cx);
+        if self.editor.is_some() {
+            ToolbarItemLocation::PrimaryRight
+        } else {
+            ToolbarItemLocation::Hidden
+        }
     }
 }
 

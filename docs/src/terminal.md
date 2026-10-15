@@ -319,7 +319,7 @@ Options: `"bottom"` (default), `"left"`, `"right"`
 
 ### Terminal Button
 
-Hide the terminal button in the status bar:
+Hide the terminal entry in the tools menu:
 
 ```json [settings]
 {
@@ -352,14 +352,9 @@ The terminal integrates with Zed's [task system](./tasks.md). When you run a tas
 - macOS: `Cmd+Alt+R`
 - Linux/Windows: `Ctrl+Shift+R` or `Alt+T`
 
-## AI Assistance
+## Workspace Terminals
 
-Get help with terminal commands using the [Inline Assistant](./ai/inline-assistant.md):
-
-- macOS: `Ctrl+Enter`
-- Linux/Windows: `Ctrl+Enter` or `Ctrl+I`
-
-This opens the Inline Assistant to help explain errors, suggest commands, or troubleshoot issues. AI agents in the [Agent Panel](./ai/agent-panel.md) can also run terminal commands as part of their workflow.
+qmr-zed provides an independent [workspace terminal panel](./workspace-terminals.md) for terminal sessions grouped by project. The upstream inline assistant and Agent Panel are not included.
 
 ## Sending Text and Keystrokes
 

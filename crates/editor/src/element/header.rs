@@ -935,7 +935,7 @@ pub(crate) fn render_buffer_header(
                                 })
                                 .when(show_open_file_button, |this| {
                                     this.child(
-                                        Button::new("open-file-button", "Open File")
+                                        Button::localized("open-file-button", "Open File")
                                             .style(ButtonStyle::OutlinedCustom(
                                                 cx.theme().colors().border.opacity(0.6),
                                             ))
@@ -1035,6 +1035,7 @@ pub(crate) fn render_buffer_header(
                                     ));
                                 }),
                             )
+                            .localize_last()
                         })
                         .when_some(relative_path, |menu, relative_path| {
                             menu.entry(
@@ -1046,6 +1047,7 @@ pub(crate) fn render_buffer_header(
                                     ));
                                 }),
                             )
+                            .localize_last()
                         })
                         .when(
                             reveal_in_project_panel.is_some() || parent_abs_path.is_some(),
@@ -1063,6 +1065,7 @@ pub(crate) fn render_buffer_header(
                                     }
                                 }),
                             )
+                            .localize_last()
                         })
                         .when_some(parent_abs_path, |menu, parent_abs_path| {
                             menu.entry(
@@ -1079,6 +1082,7 @@ pub(crate) fn render_buffer_header(
                                     );
                                 }),
                             )
+                            .localize_last()
                         });
                 }
 

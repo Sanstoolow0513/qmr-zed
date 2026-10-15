@@ -7,6 +7,7 @@ use workspace::{HideStatusItem, ItemHandle, StatusItemView, Workspace};
 
 use crate::{ImageFileSizeUnit, ImageView, ImageViewerSettings};
 
+#[derive(Default)]
 pub struct ImageInfo {
     metadata: Option<ImageMetadata>,
     _observe_active_image: Option<Subscription>,
@@ -15,18 +16,14 @@ pub struct ImageInfo {
 
 impl ImageInfo {
     pub fn new(_workspace: &Workspace) -> Self {
-        Self {
-            metadata: None,
-            _observe_active_image: None,
-            observe_image_item: None,
-        }
+        Self::default()
     }
 
     fn update_metadata(&mut self, image_view: &Entity<ImageView>, cx: &mut Context<Self>) {
         let image_item = image_view.read(cx).image_item.clone();
         let current_metadata = image_item.read(cx).image_metadata;
+        self.metadata = current_metadata;
         if current_metadata.is_some() {
-            self.metadata = current_metadata;
             cx.notify();
         } else {
             self.observe_image_item = Some(cx.observe(&image_item, |this, item, cx| {

@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Agent Instructions - Zed
 description: Configure always-on personal and project instructions for Zed Agent with AGENTS.md and compatible project instruction files.

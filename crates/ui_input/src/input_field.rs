@@ -53,6 +53,11 @@ impl Focusable for InputField {
 }
 
 impl InputField {
+    pub fn localized(window: &mut Window, cx: &mut App, placeholder: &'static str) -> Self {
+        let placeholder = i18n::static_text(placeholder, cx);
+        Self::new(window, cx, placeholder)
+    }
+
     pub fn new(window: &mut Window, cx: &mut App, placeholder_text: &str) -> Self {
         let editor_factory = crate::ERASED_EDITOR_FACTORY
             .get()

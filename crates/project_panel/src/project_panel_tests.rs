@@ -4240,6 +4240,14 @@ async fn test_collapse_opened_file_scrolls_to_parent(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn test_collapse_selected_entry_does_not_scroll_visible_parent(cx: &mut TestAppContext) {
     init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().entry_spacing =
+                    Some(ProjectPanelEntrySpacing::Comfortable);
+            });
+        });
+    });
     let (panel, mut cx) = open_panel_with_tree(
         json!({
             "docs": {
@@ -10461,6 +10469,296 @@ async fn test_should_highlight_background_for_selection_drag(cx: &mut gpui::Test
 }
 
 #[gpui::test]
+async fn test_project_panel_compact_defaults(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = None;
+                // The shared test settings use 14px instead of the shipped 16px UI font.
+                settings.theme.ui_font_size = Some(16.0.into());
+            });
+        });
+        let settings = ProjectPanelSettings::get_global(cx);
+        assert!(settings.hide_root);
+        assert_eq!(settings.entry_spacing, ProjectPanelEntrySpacing::Standard);
+        assert_eq!(settings.indent_size, 12.);
+        assert_eq!(ThemeSettings::get_global(cx).ui_font_size(cx), px(16.));
+    });
+
+    let (panel, mut cx) = open_panel_with_tree(
+        json!({ "src": {}, "main.rs": "" }),
+        size(px(800.), px(600.)),
+        cx,
+    )
+    .await;
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, &mut cx),
+        &["> src", "  main.rs"]
+    );
+    for scale_factor in [1., 1.25, 1.5] {
+        panel.update_in(&mut cx, |_, window, _| {
+            window.set_scale_factor(scale_factor);
+        });
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, _| {
+            assert_eq!(
+                panel.entry_row_height(),
+                Some(px(24.)),
+                "scale={scale_factor}"
+            );
+        });
+    }
+}
+
+#[gpui::test]
+async fn test_hide_root_preserves_visible_keyboard_selection(cx: &mut TestAppContext) {
+    init_test(cx);
+    let (panel, mut cx) = open_panel_with_tree(
+        json!({ "src": { "main.rs": "" }, "README.md": "" }),
+        size(px(800.), px(600.)),
+        cx,
+    )
+    .await;
+    let cx = &mut cx;
+    select_path(&panel, "root", cx);
+    panel.update(cx, |panel, _| {
+        panel.marked_entries = panel.selection.into_iter().collect();
+    });
+    cx.update(|_, cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(true);
+            });
+        });
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &["> src  <== selected", "  README.md"]
+    );
+    panel.read_with(cx, |panel, _| assert!(panel.marked_entries.is_empty()));
+
+    for path in ["root/src", "root/README.md"] {
+        select_path(&panel, path, cx);
+        let selection = panel.read_with(cx, |panel, _| panel.selection);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.collapse_selected_entry(&CollapseSelectedEntry, window, cx);
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, _| assert_eq!(panel.selection, selection));
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_parent(&SelectParent, window, cx);
+        });
+        panel.read_with(cx, |panel, _| assert_eq!(panel.selection, selection));
+    }
+
+    toggle_expand_dir(&panel, "root/src", cx);
+    select_path(&panel, "root/src/main.rs", cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel.collapse_selected_entry(&CollapseSelectedEntry, window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &["> src  <== selected", "  README.md"]
+    );
+
+    cx.update(|_, cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(false);
+            });
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &["v root", "    > src  <== selected", "      README.md"]
+    );
+}
+
+#[gpui::test]
+async fn test_hide_root_cancel_creation_restores_no_selection(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(true);
+            });
+        });
+    });
+
+    for tree in [json!({}), json!({ "existing.rs": "" })] {
+        let (panel, mut view_cx) = open_panel_with_tree(tree, size(px(800.), px(600.)), cx).await;
+        let cx = &mut view_cx;
+        let original_entries = visible_entries_as_strings(&panel, 0..10, cx);
+        for is_directory in [false, true] {
+            panel.update_in(cx, |panel, window, cx| {
+                panel.add_entry(is_directory, window, cx);
+            });
+            cx.run_until_parked();
+            panel.read_with(cx, |panel, _| {
+                assert_eq!(
+                    panel.selection.map(|entry| entry.entry_id),
+                    Some(NEW_ENTRY_ID)
+                );
+            });
+            panel.update_in(cx, |panel, window, cx| {
+                panel.cancel(&Cancel, window, cx);
+            });
+            cx.run_until_parked();
+            panel.read_with(cx, |panel, _| {
+                assert!(panel.selection.is_none());
+                assert!(panel.state.edit_state.is_none());
+            });
+            assert_eq!(
+                visible_entries_as_strings(&panel, 0..10, cx),
+                original_entries
+            );
+        }
+    }
+}
+
+#[gpui::test]
+async fn test_hide_root_context_menu_dismissal_preserves_action_target(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(true);
+            });
+        });
+    });
+    let (panel, mut cx) = open_panel_with_tree(
+        json!({ "src": {}, "README.md": "" }),
+        size(px(800.), px(600.)),
+        cx,
+    )
+    .await;
+    let cx = &mut cx;
+    select_path(&panel, "root/README.md", cx);
+    let previous_selection = panel.read_with(cx, |panel, _| panel.selection);
+
+    for confirm_new_file in [false, true] {
+        let (context_menu, root_entry_id) = panel.update_in(cx, |panel, window, cx| {
+            let root_entry_id = panel.state.last_worktree_root_id.unwrap();
+            panel.deploy_context_menu(
+                ContextMenuPlacement::AtMouse(point(px(1.), px(1.))),
+                root_entry_id,
+                window,
+                cx,
+            );
+            (
+                panel.context_menu.as_ref().unwrap().menu.clone(),
+                root_entry_id,
+            )
+        });
+        cx.run_until_parked();
+        context_menu.update_in(cx, |menu, window, cx| {
+            if confirm_new_file {
+                menu.select_first(&SelectFirst, window, cx);
+                menu.confirm(&Confirm, window, cx);
+            } else {
+                menu.cancel(&Cancel, window, cx);
+            }
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, _| {
+            assert!(panel.context_menu.is_none());
+            if confirm_new_file {
+                assert_eq!(
+                    panel.state.edit_state.as_ref().unwrap().entry_id,
+                    root_entry_id
+                );
+                assert_eq!(panel.selection.unwrap().entry_id, NEW_ENTRY_ID);
+            } else {
+                assert_eq!(panel.selection, previous_selection);
+            }
+        });
+    }
+    panel.update_in(cx, |panel, window, cx| panel.cancel(&Cancel, window, cx));
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+async fn test_hide_root_background_drag_targets_root(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(true);
+            });
+        });
+    });
+    let (panel, mut cx) = open_panel_with_tree(
+        json!({ "src": { "main.rs": "" } }),
+        size(px(800.), px(600.)),
+        cx,
+    )
+    .await;
+    let cx = &mut cx;
+    toggle_expand_dir(&panel, "root/src", cx);
+    select_path(&panel, "root/src/main.rs", cx);
+    panel.update_in(cx, |panel, window, cx| {
+        let root_entry_id = panel
+            .state
+            .last_worktree_root_id
+            .expect("root remains a drop target");
+        let drag = DraggedSelection {
+            active_selection: panel.selection.expect("nested file is selected"),
+            marked_selections: Arc::from([]),
+        };
+        assert!(panel.should_highlight_background_for_selection_drag(&drag, root_entry_id, cx));
+        panel.drag_onto(&drag, root_entry_id, false, window, cx);
+    });
+    cx.run_until_parked();
+    assert!(find_project_entry(&panel, "root/main.rs", cx).is_some());
+    assert!(find_project_entry(&panel, "root/src/main.rs", cx).is_none());
+    panel.update_in(cx, |panel, window, cx| {
+        panel.for_each_visible_entry(0..10, window, cx, &mut |_, details, _, _| {
+            assert_ne!(details.filename, "root");
+        });
+    });
+}
+
+#[gpui::test]
+async fn test_hide_root_keeps_single_file_worktree_visible(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().hide_root = Some(true);
+            });
+        });
+    });
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/root"), json!({ "main.rs": "" }))
+        .await;
+    let project = Project::test(fs, [path!("/root/main.rs").as_ref()], cx).await;
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+    let workspace = window
+        .read_with(cx, |workspace, _| workspace.workspace().clone())
+        .unwrap();
+    let cx = &mut VisualTestContext::from_window(window.into(), cx);
+    let panel = workspace.update_in(cx, ProjectPanel::new);
+    cx.run_until_parked();
+
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &["  main.rs"]
+    );
+    panel.update_in(cx, |panel, window, cx| {
+        panel.select_first(&SelectFirst, window, cx);
+    });
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &["  main.rs  <== selected"]
+    );
+}
+
+#[gpui::test]
 async fn test_hide_root(cx: &mut gpui::TestAppContext) {
     init_test(cx);
 
@@ -12462,10 +12760,9 @@ pub(crate) fn init_test(cx: &mut TestAppContext) {
 
         cx.update_global::<SettingsStore, _>(|store, cx| {
             store.update_user_settings(cx, |settings| {
-                settings
-                    .project_panel
-                    .get_or_insert_default()
-                    .auto_fold_dirs = Some(false);
+                let project_panel = settings.project_panel.get_or_insert_default();
+                project_panel.auto_fold_dirs = Some(false);
+                project_panel.hide_root = Some(false);
                 settings.project.worktree.file_scan_exclusions =
                     Some(SplicingVec::from(Vec::new()));
                 settings.project.worktree.file_scan_depth = Some(0);
@@ -12484,10 +12781,9 @@ fn init_test_with_editor(cx: &mut TestAppContext) {
 
         cx.update_global::<SettingsStore, _>(|store, cx| {
             store.update_user_settings(cx, |settings| {
-                settings
-                    .project_panel
-                    .get_or_insert_default()
-                    .auto_fold_dirs = Some(false);
+                let project_panel = settings.project_panel.get_or_insert_default();
+                project_panel.auto_fold_dirs = Some(false);
+                project_panel.hide_root = Some(false);
                 settings.project.worktree.file_scan_exclusions =
                     Some(SplicingVec::from(Vec::new()));
                 settings.project.worktree.file_scan_depth = Some(0);
@@ -12507,10 +12803,9 @@ fn init_test_with_git_ui(cx: &mut TestAppContext) {
 
         cx.update_global::<SettingsStore, _>(|store, cx| {
             store.update_user_settings(cx, |settings| {
-                settings
-                    .project_panel
-                    .get_or_insert_default()
-                    .auto_fold_dirs = Some(false);
+                let project_panel = settings.project_panel.get_or_insert_default();
+                project_panel.auto_fold_dirs = Some(false);
+                project_panel.hide_root = Some(false);
                 settings.project.worktree.file_scan_exclusions =
                     Some(SplicingVec::from(Vec::new()));
                 settings.project.worktree.file_scan_depth = Some(0);
@@ -12850,8 +13145,93 @@ async fn test_folder_indicator_selection(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_file_icon_colors_follow_appearance_and_rename(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        theme::GlobalTheme::update_icon_theme(cx, theme::claude_icon_theme());
+    });
+    let (panel, mut cx) =
+        open_panel_with_tree(json!({ "main.rs": "" }), size(px(800.), px(600.)), cx).await;
+    let cx = &mut cx;
+
+    for appearance in [theme::Appearance::Light, theme::Appearance::Dark] {
+        cx.update(|_, cx| {
+            let mut theme = cx.theme().as_ref().clone();
+            theme.appearance = appearance;
+            theme::GlobalTheme::update_theme(cx, Arc::new(theme));
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            let mut inspected_file = false;
+            panel.for_each_visible_entry(0..10, window, cx, &mut |_, details, _, cx| {
+                if details.filename == "main.rs" {
+                    inspected_file = true;
+                    let colors = details
+                        .icon_colors
+                        .expect("Claude Rust icon has type colors");
+                    assert_eq!(
+                        panel.rendered_entry_icon(&details, cx).1,
+                        Color::Custom(colors.for_appearance(appearance))
+                    );
+                    for (is_ignored, is_cut) in [(true, false), (false, true)] {
+                        let mut dimmed = details.clone();
+                        dimmed.is_ignored = is_ignored;
+                        dimmed.is_cut = is_cut;
+                        assert_eq!(
+                            panel.rendered_entry_icon(&dimmed, cx).1,
+                            Color::Custom(colors.for_appearance(appearance).opacity(0.5))
+                        );
+                        dimmed.icon_colors = None;
+                        assert_eq!(panel.rendered_entry_icon(&dimmed, cx).1, Color::Muted);
+                    }
+                }
+            });
+            assert!(inspected_file);
+        });
+    }
+
+    select_path(&panel, "root/main.rs", cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel.rename(&Rename, window, cx);
+    });
+    cx.run_until_parked();
+    for filename in ["renamed.ts", ".c"] {
+        panel.update_in(cx, |panel, window, cx| {
+            panel.filename_editor.update(cx, |editor, cx| {
+                editor.set_text(filename, window, cx);
+            });
+            let expected = FileIcons::get_icon_definition(Path::new(filename), cx)
+                .expect("renamed filename has an icon");
+            let mut inspected_editor = false;
+            panel.for_each_visible_entry(0..10, window, cx, &mut |_, details, _, cx| {
+                if details.is_editing {
+                    inspected_editor = true;
+                    assert_eq!(
+                        panel.rendered_entry_icon(&details, cx),
+                        (
+                            Some(expected.path.clone()),
+                            Color::Custom(
+                                expected
+                                    .colors
+                                    .unwrap()
+                                    .for_appearance(cx.theme().appearance())
+                            )
+                        )
+                    );
+                }
+            });
+            assert!(inspected_editor);
+        });
+    }
+    panel.update_in(cx, |panel, window, cx| panel.cancel(&Cancel, window, cx));
+    cx.run_until_parked();
+}
+
+#[gpui::test]
 async fn test_diagnostic_mark_decorates_the_row_glyph(cx: &mut gpui::TestAppContext) {
     init_test(cx);
+    cx.update(|cx| {
+        theme::GlobalTheme::update_icon_theme(cx, theme::claude_icon_theme());
+    });
 
     let fs = FakeFs::new(cx.executor());
     fs.insert_tree(
@@ -12921,6 +13301,17 @@ async fn test_diagnostic_mark_decorates_the_row_glyph(cx: &mut gpui::TestAppCont
         cx.run_until_parked();
 
         let marks = visible_entry_diagnostic_marks(&panel, 0..50, cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.for_each_visible_entry(0..50, window, cx, &mut |_, details, _, cx| {
+                if details.diagnostic_mark.is_some() && details.icon.is_some() {
+                    let colors = details.icon_colors.expect("type tint survives diagnostics");
+                    assert_eq!(
+                        panel.rendered_entry_icon(&details, cx).1,
+                        Color::Custom(colors.for_appearance(cx.theme().appearance()))
+                    );
+                }
+            });
+        });
         assert_eq!(
             mark_for(&marks, "dir"),
             Some(expected_dir_mark),

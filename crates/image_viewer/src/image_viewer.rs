@@ -833,6 +833,7 @@ impl ProjectItem for ImageView {
 
 pub struct ImageViewToolbarControls {
     image_view: Option<WeakEntity<ImageView>>,
+    image_info: Option<Entity<ImageInfo>>,
     _subscription: Option<gpui::Subscription>,
     zoom_editor: Option<Entity<Editor>>,
     _zoom_subscription: Option<Subscription>,
@@ -842,6 +843,7 @@ impl ImageViewToolbarControls {
     pub fn new() -> Self {
         Self {
             image_view: None,
+            image_info: None,
             _subscription: None,
             zoom_editor: None,
             _zoom_subscription: None,
@@ -941,10 +943,30 @@ impl Render for ImageViewToolbarControls {
 
         h_flex()
             .gap_1()
+            .when_some(self.image_info.clone(), |this, info| {
+                this.child(
+                    ui::PopoverMenu::new("image-information-menu")
+                        .anchor(gpui::Anchor::TopRight)
+                        .menu(move |window, cx| {
+                            let info = info.clone();
+                            Some(ui::ContextMenu::build(window, cx, |menu, _, _| {
+                                menu.custom_row(move |_, _| {
+                                    div().p_2().child(info.clone()).into_any_element()
+                                })
+                            }))
+                        })
+                        .trigger_with_tooltip(
+                            IconButton::new("image-information", IconName::Info)
+                                .icon_size(IconSize::Medium)
+                                .size(ButtonSize::Medium),
+                            Tooltip::localized_text("Image Information"),
+                        ),
+                )
+            })
             .child(
                 IconButton::new("zoom-out", IconName::Dash)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_window, cx| Tooltip::for_action("Zoom Out", &ZoomOut, cx))
+                    .tooltip(|_window, cx| Tooltip::localized_for_action("Zoom Out", &ZoomOut, cx))
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {
@@ -1021,7 +1043,7 @@ impl Render for ImageViewToolbarControls {
             .child(
                 IconButton::new("zoom-in", IconName::Plus)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_, cx| Tooltip::for_action("Zoom In", &ZoomIn, cx))
+                    .tooltip(|_, cx| Tooltip::localized_for_action("Zoom In", &ZoomIn, cx))
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {
@@ -1036,7 +1058,9 @@ impl Render for ImageViewToolbarControls {
             .child(
                 IconButton::new("fit-to-view", IconName::Maximize)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_window, cx| Tooltip::for_action("Fit to View", &FitToView, cx))
+                    .tooltip(|_window, cx| {
+                        Tooltip::localized_for_action("Fit to View", &FitToView, cx)
+                    })
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {
@@ -1065,6 +1089,13 @@ impl ToolbarItemView for ImageViewToolbarControls {
         self._subscription = None;
         self.zoom_editor = None;
         self._zoom_subscription = None;
+
+        let info = self
+            .image_info
+            .get_or_insert_with(|| cx.new(|_| ImageInfo::default()));
+        info.update(cx, |info, cx| {
+            workspace::StatusItemView::set_active_pane_item(info, active_pane_item, _window, cx);
+        });
 
         if let Some(item) = active_pane_item.and_then(|i| i.downcast::<ImageView>()) {
             self._subscription = Some(cx.observe(&item, |_, _, cx| {

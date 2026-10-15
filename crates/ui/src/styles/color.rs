@@ -142,28 +142,28 @@ impl Component for Color {
                     vec![
                         single_example(
                             "Default",
-                            Label::new("Default text color")
+                            Label::localized("Default text color")
                                 .color(Color::Default)
                                 .into_any_element(),
                         )
                         .description(Color::Default.get_variant_docs()),
                         single_example(
                             "Muted",
-                            Label::new("Muted text color")
+                            Label::localized("Muted text color")
                                 .color(Color::Muted)
                                 .into_any_element(),
                         )
                         .description(Color::Muted.get_variant_docs()),
                         single_example(
                             "Accent",
-                            Label::new("Accent text color")
+                            Label::localized("Accent text color")
                                 .color(Color::Accent)
                                 .into_any_element(),
                         )
                         .description(Color::Accent.get_variant_docs()),
                         single_example(
                             "Disabled",
-                            Label::new("Disabled text color")
+                            Label::localized("Disabled text color")
                                 .color(Color::Disabled)
                                 .into_any_element(),
                         )
@@ -175,28 +175,28 @@ impl Component for Color {
                     vec![
                         single_example(
                             "Success",
-                            Label::new("Success status")
+                            Label::localized("Success status")
                                 .color(Color::Success)
                                 .into_any_element(),
                         )
                         .description(Color::Success.get_variant_docs()),
                         single_example(
                             "Warning",
-                            Label::new("Warning status")
+                            Label::localized("Warning status")
                                 .color(Color::Warning)
                                 .into_any_element(),
                         )
                         .description(Color::Warning.get_variant_docs()),
                         single_example(
                             "Error",
-                            Label::new("Error status")
+                            Label::localized("Error status")
                                 .color(Color::Error)
                                 .into_any_element(),
                         )
                         .description(Color::Error.get_variant_docs()),
                         single_example(
                             "Info",
-                            Label::new("Info status")
+                            Label::localized("Info status")
                                 .color(Color::Info)
                                 .into_any_element(),
                         )
@@ -208,28 +208,28 @@ impl Component for Color {
                     vec![
                         single_example(
                             "Created",
-                            Label::new("Created item")
+                            Label::localized("Created item")
                                 .color(Color::Created)
                                 .into_any_element(),
                         )
                         .description(Color::Created.get_variant_docs()),
                         single_example(
                             "Modified",
-                            Label::new("Modified item")
+                            Label::localized("Modified item")
                                 .color(Color::Modified)
                                 .into_any_element(),
                         )
                         .description(Color::Modified.get_variant_docs()),
                         single_example(
                             "Deleted",
-                            Label::new("Deleted item")
+                            Label::localized("Deleted item")
                                 .color(Color::Deleted)
                                 .into_any_element(),
                         )
                         .description(Color::Deleted.get_variant_docs()),
                         single_example(
                             "Conflict",
-                            Label::new("Conflict item")
+                            Label::localized("Conflict item")
                                 .color(Color::Conflict)
                                 .into_any_element(),
                         )

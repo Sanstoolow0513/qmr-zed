@@ -85,12 +85,16 @@ impl Render for SecurityModal {
 
         let restricted_count = self.restricted_paths.len();
         let header_label: SharedString = if restricted_count == 1 {
-            "Unrecognized Project".into()
+            i18n::text("Unrecognized Project", cx)
         } else {
-            format!("Unrecognized Projects ({})", restricted_count).into()
+            i18n::format(
+                "Unrecognized Projects ({count})",
+                &[("count", &restricted_count.to_string())],
+                cx,
+            )
         };
 
-        let trust_label = self.build_trust_label();
+        let trust_label = self.build_trust_label(cx);
 
         // The editable trust-scope field is shown only when a single project is
         // being prompted for (Delta opens one worktree per thread).
@@ -186,13 +190,13 @@ impl Render for SecurityModal {
                     .child(
                         v_flex()
                             .child(
-                                Label::new(
+                                Label::localized(
                                     "Untrusted projects are opened in Restricted Mode to protect your system.",
                                 )
                                 .color(Color::Muted),
                             )
                             .child(
-                                Label::new(
+                                Label::localized(
                                     "Review .zed/settings.json for any extensions or commands configured by this project.",
                                 )
                                 .color(Color::Muted),
@@ -200,10 +204,10 @@ impl Render for SecurityModal {
                     )
                     .child(
                         v_flex()
-                            .child(Label::new("Restricted Mode prevents:").color(Color::Muted))
-                            .child(ListBulletItem::new("Project settings from being applied"))
-                            .child(ListBulletItem::new("Language servers from running"))
-                            .child(ListBulletItem::new("MCP Server integrations from installing")),
+                            .child(Label::localized("Restricted Mode prevents:").color(Color::Muted))
+                            .child(ListBulletItem::new(i18n::text("Project settings from being applied", cx)))
+                            .child(ListBulletItem::new(i18n::text("Language servers from running", cx)))
+                            .child(ListBulletItem::new(i18n::text("MCP Server integrations from installing", cx))),
                     )
                     .map(|this| {
                         let Some(trust_label) = trust_label else {
@@ -226,7 +230,7 @@ impl Render for SecurityModal {
                                             "trust-parents",
                                             ToggleState::from(self.trust_parents),
                                         )
-                                        .label("Trust all projects in")
+                                        .label(i18n::text("Trust all projects in", cx))
                                         .on_click(cx.listener(
                                             |security_modal, state: &ToggleState, _, cx| {
                                                 let trust_parents = state.selected();
@@ -273,7 +277,7 @@ impl Render for SecurityModal {
                     .gap_1()
                     .justify_end()
                     .child(
-                        Button::new("rm", "Stay in Restricted Mode")
+                        Button::localized("rm", "Stay in Restricted Mode")
                             .key_binding(
                                 KeyBinding::for_action(
                                     &ToggleWorktreeSecurity,
@@ -288,7 +292,7 @@ impl Render for SecurityModal {
                             })),
                     )
                     .child(
-                        Button::new("tc", "Trust and Continue")
+                        Button::localized("tc", "Trust and Continue")
                             .style(ButtonStyle::Filled)
                             .layer(ui::ElevationIndex::ModalSurface)
                             .key_binding(
@@ -312,7 +316,7 @@ impl SecurityModal {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let trust_path_input = cx.new(|cx| InputField::new(window, cx, "Folder to trust"));
+        let trust_path_input = cx.new(|cx| InputField::localized(window, cx, "Folder to trust"));
         let mut this = Self {
             worktree_store,
             remote_host: remote_host.map(|host| host.into()),
@@ -340,7 +344,7 @@ impl SecurityModal {
         this
     }
 
-    fn build_trust_label(&self) -> Option<Cow<'static, str>> {
+    fn build_trust_label(&self, cx: &App) -> Option<SharedString> {
         let mut has_restricted_files = false;
         let available_parents = self
             .restricted_paths
@@ -354,16 +358,23 @@ impl SecurityModal {
         match available_parents.len() {
             0 => {
                 if has_restricted_files {
-                    Some(Cow::Borrowed("Trust all single files"))
+                    Some(i18n::text("Trust all single files", cx))
                 } else {
                     None
                 }
             }
-            1 => Some(Cow::Owned(format!(
-                "Trust all projects in the {:} folder",
-                self.shorten_path(available_parents[0]).display()
-            ))),
-            _ => Some(Cow::Borrowed("Trust all projects in the parent folders")),
+            1 => Some(i18n::format(
+                "Trust all projects in the {folder} folder",
+                &[(
+                    "folder",
+                    &self
+                        .shorten_path(available_parents[0])
+                        .display()
+                        .to_string(),
+                )],
+                cx,
+            )),
+            _ => Some(i18n::text("Trust all projects in the parent folders", cx)),
         }
     }
 
@@ -402,8 +413,9 @@ impl SecurityModal {
             Ok(scope) => scope,
             Err(error) => {
                 // Invalid path: flag the field and keep the modal open.
-                self.trust_path_input
-                    .update(cx, |input, cx| input.set_error(Some(error), cx));
+                self.trust_path_input.update(cx, |input, cx| {
+                    input.set_error(Some(i18n::text(error, cx)), cx)
+                });
                 return;
             }
         };

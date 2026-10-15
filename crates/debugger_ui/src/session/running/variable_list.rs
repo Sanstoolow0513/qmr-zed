@@ -708,14 +708,19 @@ impl VariableList {
                 let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                     menu.when_some(entry.as_variable(), |menu, _| {
                         menu.action("Copy Name", CopyVariableName.boxed_clone())
+                            .localize_last()
                             .action("Copy Value", CopyVariableValue.boxed_clone())
+                            .localize_last()
                             .when(supports_set_variable, |menu| {
                                 menu.action("Edit Value", EditVariable.boxed_clone())
+                                    .localize_last()
                             })
                             .when(supports_go_to_memory, |menu| {
                                 menu.action("Go To Memory", GoToMemory.boxed_clone())
+                                    .localize_last()
                             })
                             .action("Watch Variable", AddWatch.boxed_clone())
+                            .localize_last()
                             .when_some(can_toggle_data_breakpoint, |mut menu, data_info| {
                                 menu = menu.separator();
                                 if let Some(access_types) = data_info.access_types {
@@ -744,16 +749,21 @@ impl VariableList {
                                         crate::ToggleDataBreakpoint { access_type: None }
                                             .boxed_clone(),
                                     )
+                                    .localize_last()
                                 }
                             })
                     })
                     .when(entry.as_watcher().is_some(), |menu| {
                         menu.action("Copy Name", CopyVariableName.boxed_clone())
+                            .localize_last()
                             .action("Copy Value", CopyVariableValue.boxed_clone())
+                            .localize_last()
                             .when(supports_set_variable, |menu| {
                                 menu.action("Edit Value", EditVariable.boxed_clone())
+                                    .localize_last()
                             })
                             .action("Remove Watch", RemoveWatch.boxed_clone())
+                            .localize_last()
                     })
                     .context(focus_handle.clone())
                 });
@@ -1214,7 +1224,7 @@ impl VariableList {
                                 h_flex()
                                     .min_w_0()
                                     .child(
-                                        Label::new("=  ")
+                                        Label::localized("=  ")
                                             .single_line()
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)

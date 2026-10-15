@@ -198,34 +198,36 @@ impl Component for Tab {
                 vec![
                     single_example(
                         "Default",
-                        Tab::new("default").child("Default Tab").into_any_element(),
+                        Tab::new("default")
+                            .child(i18n::Message::new("Default Tab"))
+                            .into_any_element(),
                     ),
                     single_example(
                         "Selected",
                         Tab::new("selected")
                             .toggle_state(true)
-                            .child("Selected Tab")
+                            .child(i18n::Message::new("Selected Tab"))
                             .into_any_element(),
                     ),
                     single_example(
                         "First",
                         Tab::new("first")
                             .position(TabPosition::First)
-                            .child("First Tab")
+                            .child(i18n::Message::new("First Tab"))
                             .into_any_element(),
                     ),
                     single_example(
                         "Middle",
                         Tab::new("middle")
                             .position(TabPosition::Middle(Ordering::Equal))
-                            .child("Middle Tab")
+                            .child(i18n::Message::new("Middle Tab"))
                             .into_any_element(),
                     ),
                     single_example(
                         "Last",
                         Tab::new("last")
                             .position(TabPosition::Last)
-                            .child("Last Tab")
+                            .child(i18n::Message::new("Last Tab"))
                             .into_any_element(),
                     ),
                 ],

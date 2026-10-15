@@ -852,7 +852,7 @@ impl Component for SwitchField {
                                 ToggleState::Unselected,
                                 |_, _, _| {},
                             )
-                            .tooltip(Tooltip::text("This is content for this tooltip!"))
+                            .tooltip(Tooltip::localized_text("This is content for this tooltip!"))
                             .into_any_element(),
                         ),
                         single_example(
@@ -864,7 +864,7 @@ impl Component for SwitchField {
                                 ToggleState::Selected,
                                 |_, _, _| {},
                             )
-                            .tooltip(Tooltip::text("This is content for this tooltip!"))
+                            .tooltip(Tooltip::localized_text("This is content for this tooltip!"))
                             .into_any_element(),
                         ),
                     ],

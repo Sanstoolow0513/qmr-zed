@@ -192,8 +192,8 @@ impl PickerDelegate for LspCommandSelectorDelegate {
         "lsp command selector"
     }
 
-    fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select a language server command…".into()
+    fn placeholder_text(&self, _window: &mut Window, cx: &mut App) -> Arc<str> {
+        i18n::static_text("Select a language server command…", cx).into()
     }
 
     fn match_count(&self) -> usize {
@@ -370,7 +370,7 @@ impl PickerDelegate for LspCommandSelectorDelegate {
                         .gap_2()
                         .justify_between()
                         .child(
-                            Label::new("Arguments")
+                            Label::localized("Arguments")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -383,7 +383,7 @@ impl PickerDelegate for LspCommandSelectorDelegate {
                                     cx,
                                 ))
                                 .child(
-                                    Label::new("to switch focus")
+                                    Label::localized("to switch focus")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 ),
@@ -393,7 +393,7 @@ impl PickerDelegate for LspCommandSelectorDelegate {
                 .map(|footer| match &self.execution {
                     Execution::Idle => footer,
                     Execution::Running { .. } => footer.child(
-                        Label::new("Executing command…")
+                        Label::localized("Executing command…")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),

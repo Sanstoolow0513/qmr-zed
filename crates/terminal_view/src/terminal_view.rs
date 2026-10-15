@@ -1,8 +1,11 @@
 mod persistence;
 pub mod terminal_element;
+pub mod terminal_metadata_store;
+mod terminal_notification;
 pub mod terminal_panel;
 mod terminal_path_like_target;
 pub mod terminal_scrollbar;
+pub mod workspace_terminal_panel;
 
 use editor::{
     Editor, EditorSettings, actions::SelectAll, blink_manager::BlinkManager,
@@ -60,7 +63,6 @@ use workspace::{
         Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
     },
 };
-use zed_actions::{agent::AddSelectionToThread, assistant::InlineAssist};
 
 struct ImeState {
     marked_text: String,
@@ -565,58 +567,49 @@ impl TerminalView {
     pub fn deploy_context_menu(
         &mut self,
         position: GpuiPoint<Pixels>,
-        has_selection: bool,
+        _has_selection: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let assistant_enabled = self
-            .workspace
-            .upgrade()
-            .and_then(|workspace| workspace.read(cx).panel::<TerminalPanel>(cx))
-            .is_some_and(|terminal_panel| terminal_panel.read(cx).assistant_enabled());
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.action("New Terminal", Box::new(NewTerminal::default()))
+                        .localize_last()
                         .action(
                             "New Center Terminal",
                             Box::new(NewCenterTerminal::default()),
                         )
+                        .localize_last()
                         .separator()
                 })
                 .action("Copy", Box::new(Copy))
+                .localize_last()
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
                         menu.action("Paste", Box::new(Paste))
+                            .localize_last()
                             .action("Paste Text", Box::new(PasteText))
+                            .localize_last()
                     },
                 )
                 .action("Select All", Box::new(SelectAll))
+                .localize_last()
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| menu.action("Clear", Box::new(Clear)),
-                )
-                .when(
-                    assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| {
-                        menu.separator()
-                            .when(!self.read_only, |menu| {
-                                menu.action("Inline Assist", Box::new(InlineAssist::default()))
-                            })
-                            .when(has_selection && self.shows_workspace_actions(), |menu| {
-                                menu.action("Add to Agent Thread", Box::new(AddSelectionToThread))
-                            })
-                    },
+                    |menu| menu.action("Clear", Box::new(Clear)).localize_last(),
                 )
                 .when(self.shows_workspace_actions(), |menu| {
-                    menu.separator().action(
-                        "Close Terminal Tab",
-                        Box::new(CloseActiveItem {
-                            save_intent: None,
-                            close_pinned: true,
-                        }),
-                    )
+                    menu.separator()
+                        .action(
+                            "Close Terminal Tab",
+                            Box::new(CloseActiveItem {
+                                save_intent: None,
+                                close_pinned: true,
+                            }),
+                        )
+                        .localize_last()
                 })
         });
 
@@ -1164,7 +1157,9 @@ impl TerminalView {
                 .size(ButtonSize::Compact)
                 .icon_color(Color::Default)
                 .shape(ui::IconButtonShape::Square)
-                .tooltip(move |_window, cx| Tooltip::for_action("Rerun task", &RerunTask, cx))
+                .tooltip(move |_window, cx| {
+                    Tooltip::localized_for_action("Rerun task", &RerunTask, cx)
+                })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(terminal_rerun_override(&task_id)), cx);
                 }),
@@ -1551,15 +1546,22 @@ impl Item for TerminalView {
             let title = terminal.title(false);
             let pid = terminal.pid_getter()?.fallback_pid();
 
-            move |_, _| {
+            move |_, cx| {
                 v_flex()
                     .gap_1()
                     .child(Label::new(title.clone()))
                     .child(h_flex().flex_grow_1().child(Divider::horizontal()))
                     .child(
-                        Label::new(format!("Process ID (PID): {}", pid))
-                            .color(Color::Muted)
-                            .size(LabelSize::Small),
+                        Label::new(
+                            i18n::format(
+                                "Process ID (PID): {argument0}",
+                                &[("argument0", &format!("{}", pid))],
+                                cx,
+                            )
+                            .to_string(),
+                        )
+                        .color(Color::Muted)
+                        .size(LabelSize::Small),
                     )
                     .into_any_element()
             }

@@ -28,14 +28,18 @@ mod toolbar;
 pub mod welcome;
 pub mod workspace_error;
 mod workspace_settings;
+mod workspace_tools;
+
+pub use workspace_tools::WorkspaceTools;
 
 pub use dock::Panel;
 pub use multi_workspace::{
     CloseWorkspaceSidebar, DraggedSidebar, FocusWorkspaceSidebar, MoveProjectDown,
-    MoveProjectToNewWindow, MoveProjectUp, MultiWorkspace, MultiWorkspaceEvent, NewThread,
-    NextProject, NextThread, PreviousProject, PreviousThread, ProjectGroup, ProjectGroupKey,
-    RemovalIntent, SerializedProjectGroupState, Sidebar, SidebarEvent, SidebarHandle,
-    SidebarRenderState, SidebarSide, ToggleWorkspaceSidebar, sidebar_side_context_menu,
+    MoveProjectToNewWindow, MoveProjectUp, MultiWorkspace, MultiWorkspaceEvent,
+    NewWorkspaceTerminal, NextProject, NextWorkspaceTerminal, PreviousProject,
+    PreviousWorkspaceTerminal, ProjectGroup, ProjectGroupKey, RemovalIntent,
+    SerializedProjectGroupState, Sidebar, SidebarEvent, SidebarHandle, SidebarRenderState,
+    SidebarSide, ToggleWorkspaceSidebar, sidebar_side_context_menu,
 };
 pub use path_list::{PathList, SerializedPathList};
 pub use remote::{
@@ -43,7 +47,6 @@ pub use remote::{
 };
 pub use toast_layer::{ToastAction, ToastLayer, ToastView};
 
-use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, anyhow};
 use client::{
     ChannelId, Client, ErrorExt, ParticipantIndex, Status, TypedEnvelope, User, UserStore,
@@ -75,7 +78,7 @@ pub use item::{
     ProjectItem, SerializableItem, SerializableItemHandle, WeakItemHandle,
 };
 use itertools::Itertools;
-use language::{Buffer, LanguageRegistry, Rope, language_settings::all_language_settings};
+use language::{Buffer, LanguageRegistry, Rope};
 pub use modal_layer::*;
 use node_runtime::NodeRuntime;
 use notifications::{
@@ -116,7 +119,6 @@ use serde::Deserialize;
 use session::AppSession;
 use settings::{
     CenteredPaddingSettings, DefaultOpenBehavior, Settings, SettingsLocation, SettingsStore,
-    update_settings_file,
 };
 
 use sqlez::{
@@ -161,7 +163,8 @@ use uuid::Uuid;
 pub use workspace_settings::{
     AccessibleMode, AutosaveSetting, BottomDockLayout, EncodingDisplayOptions, FocusFollowsMouse,
     RestoreOnStartupBehavior, StatusBarSettings, TabBarSettings, WorkspaceSettings,
-    closing_last_window_quits_app, observe_accessible_mode,
+    WorkspaceSidebarSettings, WorkspaceTerminalSettings, closing_last_window_quits_app,
+    observe_accessible_mode,
 };
 use zed_actions::{Spawn, feedback::FileBugReport, theme::ToggleMode};
 
@@ -394,7 +397,7 @@ actions!(
         /// Activates the last pane in the workspace.
         ActivateLastPane,
         /// Moves focus to the next major region of the window (editor, open
-        /// panels, status bar), cycling and wrapping around. Intended as a
+        /// panels), cycling and wrapping around. Intended as a
         /// discoverable, screen-reader-friendly way to navigate the window.
         FocusNextPart,
         /// Moves focus to the previous major region of the window. See
@@ -470,8 +473,6 @@ actions!(
         ToggleBottomDock,
         /// Toggles centered layout mode.
         ToggleCenteredLayout,
-        /// Toggles edit prediction feature globally for all files.
-        ToggleEditPrediction,
         /// Toggles the left dock.
         ToggleLeftDock,
         /// Toggles the right dock.
@@ -1411,6 +1412,12 @@ impl AppState {
         use session::Session;
         use settings::SettingsStore;
 
+        // Window IDs restart in each test App, so persisted window state must not
+        // share the fallback database with concurrently running tests.
+        if !cx.has_global::<db::AppDatabase>() {
+            cx.set_global(db::AppDatabase::test_new());
+        }
+
         if !cx.has_global::<SettingsStore>() {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
@@ -1574,7 +1581,7 @@ struct DispatchingKeystrokes {
 /// Collects everything project-related for a certain window opened.
 /// In some way, is a counterpart of a window, as the [`WindowHandle`] could be downcast into `Workspace`.
 ///
-/// A `Workspace` usually consists of 1 or more projects, a central pane group, 3 docks and a status bar.
+/// A `Workspace` usually consists of 1 or more projects, a central pane group and 3 docks.
 /// The `Workspace` owns everybody's state and serves as a default, "global context",
 /// that can be used to register a global action to be triggered from any place in the window.
 pub struct Workspace {
@@ -1594,6 +1601,8 @@ pub struct Workspace {
     last_active_center_pane: Option<WeakEntity<Pane>>,
     last_active_view_id: Option<proto::ViewId>,
     status_bar: Entity<StatusBar>,
+    tools: Entity<WorkspaceTools>,
+    transient_status: Vec<AnyView>,
     pub(crate) modal_layer: Entity<ModalLayer>,
     toast_layer: Entity<ToastLayer>,
     titlebar_item: Option<AnyView>,
@@ -1971,6 +1980,14 @@ impl Workspace {
         let left_dock = Dock::new(DockPosition::Left, modal_layer.clone(), window, cx);
         let bottom_dock = Dock::new(DockPosition::Bottom, modal_layer.clone(), window, cx);
         let right_dock = Dock::new(DockPosition::Right, modal_layer.clone(), window, cx);
+        let tools_workspace = cx.weak_entity();
+        let tools = cx.new(|cx| {
+            WorkspaceTools::new(
+                tools_workspace,
+                [left_dock.clone(), bottom_dock.clone(), right_dock.clone()],
+                cx,
+            )
+        });
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
         let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
@@ -2099,6 +2116,8 @@ impl Workspace {
             last_active_center_pane: Some(center_pane.downgrade()),
             last_active_view_id: None,
             status_bar,
+            tools,
+            transient_status: Vec::new(),
             modal_layer,
             toast_layer,
             titlebar_item: None,
@@ -2732,7 +2751,7 @@ impl Workspace {
                 return None;
             }
             let flex = flex.max(0.001);
-            let center_column_count = self.center_full_height_column_count();
+            let center_column_count = self.center_full_height_column_count(cx);
             let opposite = self.opposite_dock_panel_and_size_state(position, window, cx);
             if let Some(opposite_flex) = opposite.as_ref().and_then(|(_, s)| s.flex) {
                 let total_flex = flex + center_column_count + opposite_flex;
@@ -2771,7 +2790,7 @@ impl Workspace {
             return None;
         }
 
-        let center_column_count = self.center_full_height_column_count();
+        let center_column_count = self.center_full_height_column_count(cx);
         let opposite = self.opposite_dock_panel_and_size_state(position, window, cx);
         if let Some(opposite_flex) = opposite.as_ref().and_then(|(_, s)| s.flex) {
             let size = size.clamp(px(0.), workspace_width - px(1.));
@@ -2798,6 +2817,10 @@ impl Workspace {
             DockPosition::Bottom => return None,
         };
 
+        if self.expanded_dock_position(cx) == Some(opposite_position) {
+            return None;
+        }
+
         let opposite_dock = self.dock_at_position(opposite_position).read(cx);
         let panel = opposite_dock.visible_panel()?;
         let mut size_state = opposite_dock
@@ -2809,8 +2832,12 @@ impl Workspace {
         Some((panel.clone(), size_state))
     }
 
-    fn center_full_height_column_count(&self) -> f32 {
-        self.center.full_height_column_count().max(1) as f32
+    fn center_full_height_column_count(&self, cx: &App) -> f32 {
+        if self.expanded_dock_position(cx).is_some() {
+            1.0
+        } else {
+            self.center.full_height_column_count().max(1) as f32
+        }
     }
 
     pub fn default_dock_flex(&self, position: DockPosition) -> Option<f32> {
@@ -2881,8 +2908,23 @@ impl Workspace {
         self.sidebar_focus_handle = handle;
     }
 
-    pub fn status_bar_visible(&self, cx: &App) -> bool {
-        StatusBarSettings::get_global(cx).show
+    pub fn status_bar_visible(&self, _cx: &App) -> bool {
+        false
+    }
+
+    pub fn tools(&self) -> &Entity<WorkspaceTools> {
+        &self.tools
+    }
+
+    pub fn tools_visible_in_titlebar(&self, cx: &App) -> bool {
+        !self.right_dock.read(cx).is_open()
+            || self.zoomed_position == Some(DockPosition::Right)
+            || self.expanded_dock_position(cx) == Some(DockPosition::Right)
+    }
+
+    pub fn add_transient_status(&mut self, view: AnyView, cx: &mut Context<Self>) {
+        self.transient_status.push(view);
+        cx.notify();
     }
 
     pub fn multi_workspace(&self) -> Option<&WeakEntity<MultiWorkspace>> {
@@ -3678,9 +3720,12 @@ impl Workspace {
                     let answer = cx.update(|window, cx| {
                         window.prompt(
                             PromptLevel::Warning,
-                            "Do you want to leave the current call?",
+                            i18n::static_text("Do you want to leave the current call?", cx),
                             None,
-                            &["Close window and hang up", "Cancel"],
+                            &[
+                                i18n::static_text("Close window and hang up", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?;
@@ -3926,9 +3971,16 @@ impl Workspace {
                         );
                         window.prompt(
                             PromptLevel::Warning,
-                            "Do you want to save all changes in the following files?",
+                            i18n::static_text(
+                                "Do you want to save all changes in the following files?",
+                                cx,
+                            ),
                             Some(&detail),
-                            &["Save all", "Discard all", "Cancel"],
+                            &[
+                                i18n::static_text("Save all", cx),
+                                i18n::static_text("Discard all", cx),
+                                i18n::static_text("Cancel", cx),
+                            ],
                             cx,
                         )
                     })?;
@@ -4718,6 +4770,9 @@ impl Workspace {
     }
 
     pub fn focus_center_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.focus_expanded_dock(window, cx) {
+            return;
+        }
         if let Some(item) = self.active_item(cx) {
             item.item_focus_handle(cx).focus(window, cx);
         } else {
@@ -4854,7 +4909,7 @@ impl Workspace {
                     None
                 }
             })
-            .unwrap_or_else(|| self.active_pane.read(cx).focus_handle(cx))
+            .unwrap_or_else(|| self.focus_handle(cx))
     }
 
     fn dismiss_zoomed_items_to_reveal(
@@ -5653,6 +5708,9 @@ impl Workspace {
     }
 
     pub fn activate_next_pane(&mut self, window: &mut Window, cx: &mut App) {
+        if self.focus_expanded_dock(window, cx) {
+            return;
+        }
         let panes = self.center.panes();
         if let Some(ix) = panes.iter().position(|pane| **pane == self.active_pane) {
             let next_ix = (ix + 1) % panes.len();
@@ -5662,6 +5720,9 @@ impl Workspace {
     }
 
     pub fn activate_previous_pane(&mut self, window: &mut Window, cx: &mut App) {
+        if self.focus_expanded_dock(window, cx) {
+            return;
+        }
         let panes = self.center.panes();
         if let Some(ix) = panes.iter().position(|pane| **pane == self.active_pane) {
             let prev_ix = cmp::min(ix.wrapping_sub(1), panes.len() - 1);
@@ -5671,6 +5732,9 @@ impl Workspace {
     }
 
     pub fn activate_last_pane(&mut self, window: &mut Window, cx: &mut App) {
+        if self.focus_expanded_dock(window, cx) {
+            return;
+        }
         let last_pane = self.center.last_pane();
         window.focus(&last_pane.focus_handle(cx), cx);
     }
@@ -5690,6 +5754,8 @@ impl Workspace {
             Center,
         }
 
+        let expanded_dock = self.expanded_dock_position(cx);
+
         let origin: Origin = if self
             .sidebar_focus_handle
             .as_ref()
@@ -5705,7 +5771,11 @@ impl Workspace {
             .into_iter()
             .find_map(|(dock, origin)| {
                 if dock.focus_handle(cx).contains_focused(window, cx) && dock.read(cx).is_open() {
-                    Some(origin)
+                    Some(if expanded_dock == Some(dock.read(cx).position()) {
+                        Origin::Center
+                    } else {
+                        origin
+                    })
                 } else {
                     None
                 }
@@ -5727,8 +5797,15 @@ impl Workspace {
             (pane.read(cx).items_len() != 0).then_some(pane)
         };
 
-        let try_dock =
-            |dock: &Entity<Dock>| dock.read(cx).is_open().then(|| Target::Dock(dock.clone()));
+        let center_target = || {
+            expanded_dock
+                .map(|position| Target::Dock(self.dock_at_position(position).clone()))
+                .or_else(|| get_last_active_pane().map(Target::Pane))
+        };
+        let try_dock = |dock: &Entity<Dock>| {
+            (dock.read(cx).is_open() && expanded_dock != Some(dock.read(cx).position()))
+                .then(|| Target::Dock(dock.clone()))
+        };
 
         let sidebar_target = self
             .sidebar_focus_handle
@@ -5757,7 +5834,7 @@ impl Workspace {
 
         let target = match (origin, direction) {
             (Origin::Sidebar, dir) if dir == away_from_sidebar => try_dock(near_dock)
-                .or_else(|| get_last_active_pane().map(Target::Pane))
+                .or_else(center_target)
                 .or_else(|| try_dock(&self.bottom_dock))
                 .or_else(|| try_dock(far_dock)),
 
@@ -5766,7 +5843,11 @@ impl Workspace {
             // We're in the center, so we first try to go to a different pane,
             // otherwise try to go to a dock.
             (Origin::Center, direction) => {
-                if let Some(pane) = self.find_pane_in_direction(direction, cx) {
+                if let Some(pane) = expanded_dock
+                    .is_none()
+                    .then(|| self.find_pane_in_direction(direction, cx))
+                    .flatten()
+                {
                     Some(Target::Pane(pane))
                 } else {
                     match direction {
@@ -5793,8 +5874,8 @@ impl Workspace {
             }
 
             (Origin::LeftDock, SplitDirection::Right) => {
-                if let Some(last_active_pane) = get_last_active_pane() {
-                    Some(Target::Pane(last_active_pane))
+                if let Some(target) = center_target() {
+                    Some(target)
                 } else {
                     try_dock(&self.bottom_dock).or_else(|| try_dock(&self.right_dock))
                 }
@@ -5811,7 +5892,7 @@ impl Workspace {
             (Origin::LeftDock, SplitDirection::Down)
             | (Origin::RightDock, SplitDirection::Down) => try_dock(&self.bottom_dock),
 
-            (Origin::BottomDock, SplitDirection::Up) => get_last_active_pane().map(Target::Pane),
+            (Origin::BottomDock, SplitDirection::Up) => center_target(),
             (Origin::BottomDock, SplitDirection::Left) => {
                 let dock_target = try_dock(&self.left_dock);
                 if sidebar_on_right {
@@ -5830,8 +5911,8 @@ impl Workspace {
             }
 
             (Origin::RightDock, SplitDirection::Left) => {
-                if let Some(last_active_pane) = get_last_active_pane() {
-                    Some(Target::Pane(last_active_pane))
+                if let Some(target) = center_target() {
+                    Some(target)
                 } else {
                     try_dock(&self.bottom_dock).or_else(|| try_dock(&self.left_dock))
                 }
@@ -6195,6 +6276,15 @@ impl Workspace {
 
         if serialize_workspace {
             self.serialize_workspace(window, cx);
+        }
+
+        if self
+            .center
+            .panes()
+            .iter()
+            .any(|pane| pane.focus_handle(cx).contains_focused(window, cx))
+        {
+            self.focus_expanded_dock(window, cx);
         }
     }
 
@@ -8085,7 +8175,6 @@ impl Workspace {
             .on_action(cx.listener(Self::move_item_to_pane_at_index))
             .on_action(cx.listener(Self::move_focused_panel_to_next_position))
             .on_action(cx.listener(Self::reopen_last_picker))
-            .on_action(cx.listener(Self::toggle_edit_predictions_all_files))
             .on_action(cx.listener(Self::toggle_theme_mode))
             .on_action(cx.listener(|workspace, _: &Unfollow, window, cx| {
                 let pane = workspace.active_pane().clone();
@@ -8642,6 +8731,42 @@ impl Workspace {
             )
     }
 
+    pub fn expanded_dock_position(&self, cx: &App) -> Option<DockPosition> {
+        if self.zoomed.is_some()
+            || self
+                .center
+                .panes()
+                .iter()
+                .any(|pane| pane.read(cx).items_len() > 0)
+        {
+            return None;
+        }
+
+        self.all_docks().into_iter().find_map(|dock| {
+            let dock = dock.read(cx);
+            dock.visible_panel()
+                .filter(|panel| panel.expands_into_empty_center(cx))
+                .map(|_| dock.position())
+        })
+    }
+
+    fn focus_expanded_dock(&self, window: &mut Window, cx: &mut App) -> bool {
+        let Some(position) = self.expanded_dock_position(cx) else {
+            return false;
+        };
+        let panel = self
+            .dock_at_position(position)
+            .read(cx)
+            .visible_panel()
+            .cloned();
+        if let Some(panel) = panel {
+            panel.activation_focus_handle(cx).focus(window, cx);
+            true
+        } else {
+            false
+        }
+    }
+
     fn render_dock(
         &self,
         position: DockPosition,
@@ -8649,7 +8774,9 @@ impl Workspace {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Stateful<Div>> {
-        if self.zoomed_position == Some(position) {
+        if self.zoomed_position == Some(position)
+            || self.expanded_dock_position(cx) == Some(position)
+        {
             return None;
         }
 
@@ -8684,9 +8811,13 @@ impl Workspace {
                     })
             })
             .flex()
+            .flex_col()
             .overflow_hidden()
             .flex_none()
-            .child(dock.clone())
+            .when(position == DockPosition::Right && dock_is_open, |this| {
+                this.child(self.tools.clone())
+            })
+            .child(div().flex_1().min_h_0().w_full().child(dock.clone()))
             .children(leader_border);
 
         // Apply sizing only when the dock is open. When closed the dock is still
@@ -8706,7 +8837,7 @@ impl Workspace {
                     None
                 };
                 if let Some(grow) = flex_grow {
-                    let grow = (grow / self.center_full_height_column_count()).max(0.001);
+                    let grow = (grow / self.center_full_height_column_count(cx)).max(0.001);
                     let style = container.style();
                     style.flex_grow = Some(grow);
                     style.flex_shrink = Some(1.0);
@@ -8738,8 +8869,8 @@ impl Workspace {
     }
 
     /// Returns the currently-visible major window regions ("parts"), in a stable
-    /// cyclic order: title bar, left dock, editor, right dock, bottom dock,
-    /// status bar. Closed docks are skipped. Used by
+    /// cyclic order: title bar, left dock, center, right dock, bottom dock.
+    /// Closed docks are skipped. Used by
     /// [`FocusNextPart`]/[`FocusPreviousPart`] so keyboard and screen-reader
     /// users can move between regions without a mouse.
     fn focusable_parts(&self, cx: &App) -> Vec<FocusablePart> {
@@ -8753,9 +8884,9 @@ impl Workspace {
                 .unwrap_or_else(|| dock.focus_handle(cx))
         }
 
+        let expanded_dock = self.expanded_dock_position(cx);
         let dock_part = |dock: &Entity<Dock>, wrapper: &FocusHandle| {
-            dock.read(cx)
-                .is_open()
+            (dock.read(cx).is_open() && expanded_dock != Some(dock.read(cx).position()))
                 .then(|| FocusablePart::landmark(wrapper.clone(), dock_content_handle(dock, cx)))
         };
 
@@ -8770,14 +8901,18 @@ impl Workspace {
             &self.region_focus_handles.left_dock,
         ));
 
-        let center_pane = self
-            .last_active_center_pane
-            .as_ref()
-            .and_then(|pane| pane.upgrade())
-            .unwrap_or_else(|| self.center.first_pane());
+        let center_handle = if let Some(position) = expanded_dock {
+            dock_content_handle(self.dock_at_position(position), cx)
+        } else {
+            self.last_active_center_pane
+                .as_ref()
+                .and_then(|pane| pane.upgrade())
+                .unwrap_or_else(|| self.center.first_pane())
+                .focus_handle(cx)
+        };
         parts.push(FocusablePart::landmark(
             self.region_focus_handles.editor.clone(),
-            center_pane.read(cx).focus_handle(cx),
+            center_handle,
         ));
 
         parts.extend(dock_part(
@@ -8787,11 +8922,6 @@ impl Workspace {
         parts.extend(dock_part(
             &self.bottom_dock,
             &self.region_focus_handles.bottom_dock,
-        ));
-        // The status bar is an ARIA toolbar, so region navigation lands on its
-        // first control rather than the toolbar container.
-        parts.push(FocusablePart::toolbar(
-            self.status_bar.read(cx).focus_handle(cx),
         ));
         parts
     }
@@ -8885,21 +9015,36 @@ impl Workspace {
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
+        let expanded_dock = self.expanded_dock_position(cx);
+        let label = expanded_dock
+            .and_then(|position| self.dock_at_position(position).read(cx).visible_panel())
+            .and_then(|panel| panel.icon_tooltip(window, cx))
+            .unwrap_or("Editor");
         div()
             .id("editor-region")
             .role(gpui::Role::Main)
-            .aria_label("Editor")
+            .aria_label(i18n::text(label, cx))
             .when(window.is_a11y_active(), |this| {
                 this.track_focus(&self.region_focus_handles.editor)
             })
             .size_full()
-            .child(self.center.render(
-                self.zoomed.as_ref(),
-                self.maximized_pane.as_ref(),
-                render_cx,
-                window,
-                cx,
-            ))
+            .overflow_hidden()
+            .when(expanded_dock.is_some(), |this| {
+                this.debug_selector(|| "empty-center-panel".into())
+            })
+            .map(|this| {
+                if let Some(position) = expanded_dock {
+                    this.child(self.dock_at_position(position).clone())
+                } else {
+                    this.child(self.center.render(
+                        self.zoomed.as_ref(),
+                        self.maximized_pane.as_ref(),
+                        render_cx,
+                        window,
+                        cx,
+                    ))
+                }
+            })
     }
 
     pub fn for_window(window: &Window, cx: &App) -> Option<Entity<Workspace>> {
@@ -8984,17 +9129,23 @@ impl Workspace {
     }
 
     fn resize_left_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
+        let expanded_dock = self.expanded_dock_position(cx);
+        if expanded_dock == Some(DockPosition::Left) {
+            return;
+        }
         let workspace_width = self.bounds.size.width;
         let mut size = new_size.min(workspace_width - RESIZE_HANDLE_SIZE);
 
-        self.right_dock.read_with(cx, |right_dock, cx| {
-            let right_dock_size = right_dock
-                .stored_active_panel_size(window, cx)
-                .unwrap_or(Pixels::ZERO);
-            if right_dock_size + size > workspace_width {
-                size = workspace_width - right_dock_size
-            }
-        });
+        if expanded_dock != Some(DockPosition::Right) {
+            self.right_dock.read_with(cx, |right_dock, cx| {
+                let right_dock_size = right_dock
+                    .stored_active_panel_size(window, cx)
+                    .unwrap_or(Pixels::ZERO);
+                if right_dock_size + size > workspace_width {
+                    size = workspace_width - right_dock_size
+                }
+            });
+        }
 
         let flex_grow = self.dock_flex_for_size(DockPosition::Left, size, window, cx);
         self.left_dock.update(cx, |left_dock, cx| {
@@ -9003,16 +9154,22 @@ impl Workspace {
     }
 
     fn resize_right_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
+        let expanded_dock = self.expanded_dock_position(cx);
+        if expanded_dock == Some(DockPosition::Right) {
+            return;
+        }
         let workspace_width = self.bounds.size.width;
         let mut size = new_size.min(workspace_width - RESIZE_HANDLE_SIZE);
-        self.left_dock.read_with(cx, |left_dock, cx| {
-            let left_dock_size = left_dock
-                .stored_active_panel_size(window, cx)
-                .unwrap_or(Pixels::ZERO);
-            if left_dock_size + size > workspace_width {
-                size = workspace_width - left_dock_size
-            }
-        });
+        if expanded_dock != Some(DockPosition::Left) {
+            self.left_dock.read_with(cx, |left_dock, cx| {
+                let left_dock_size = left_dock
+                    .stored_active_panel_size(window, cx)
+                    .unwrap_or(Pixels::ZERO);
+                if left_dock_size + size > workspace_width {
+                    size = workspace_width - left_dock_size
+                }
+            });
+        }
         let flex_grow = self.dock_flex_for_size(DockPosition::Right, size, window, cx);
         self.right_dock.update(cx, |right_dock, cx| {
             right_dock.resize_panel_sizes(Some(size), flex_grow, window, cx);
@@ -9020,22 +9177,12 @@ impl Workspace {
     }
 
     fn resize_bottom_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
+        if self.expanded_dock_position(cx) == Some(DockPosition::Bottom) {
+            return;
+        }
         let size = new_size.min(self.bounds.bottom() - RESIZE_HANDLE_SIZE - self.bounds.top());
         self.bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.resize_panel_sizes(Some(size), None, window, cx);
-        });
-    }
-
-    fn toggle_edit_predictions_all_files(
-        &mut self,
-        _: &ToggleEditPrediction,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let fs = self.project().read(cx).fs().clone();
-        let show_edit_predictions = all_language_settings(None, cx).show_edit_predictions(None, cx);
-        update_settings_file(fs, cx, move |file, _| {
-            file.project.all_languages.defaults.show_edit_predictions = Some(!show_edit_predictions)
         });
     }
 
@@ -9386,7 +9533,7 @@ struct FocusablePart {
 }
 
 enum PartBehavior {
-    /// An ARIA toolbar (title bar, status bar). Region navigation focuses the
+    /// An ARIA toolbar (such as the title bar). Region navigation focuses the
     /// container and descends to its first control, which is usable for
     /// everyone, so this is not gated on assistive technology.
     Toolbar,
@@ -9544,7 +9691,10 @@ fn adjust_open_docks_size_by_px(
 
 impl Focusable for Workspace {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.active_pane.focus_handle(cx)
+        self.expanded_dock_position(cx)
+            .and_then(|position| self.dock_at_position(position).read(cx).visible_panel())
+            .map(|panel| panel.activation_focus_handle(cx))
+            .unwrap_or_else(|| self.active_pane.focus_handle(cx))
     }
 }
 
@@ -9562,6 +9712,12 @@ impl Render for Workspace {
         static FIRST_PAINT: AtomicBool = AtomicBool::new(true);
         if FIRST_PAINT.swap(false, std::sync::atomic::Ordering::Relaxed) {
             log::info!("Rendered first frame");
+        }
+
+        let expanded_dock = self.expanded_dock_position(cx);
+        for dock in self.all_docks() {
+            let expanded = expanded_dock == Some(dock.read(cx).position());
+            dock.update(cx, |dock, cx| dock.set_expanded_in_center(expanded, cx));
         }
 
         let pad_center_pane = self.centered_layout
@@ -9639,7 +9795,7 @@ impl Render for Workspace {
                         .track_focus(&self.titlebar_focus_handle)
                         .tab_group()
                         .role(gpui::Role::Toolbar)
-                        .aria_label("Title bar")
+                        .aria_label(i18n::text("Title bar", cx))
                         .on_key_down(cx.listener(
                             |workspace, event: &gpui::KeyDownEvent, window, cx| {
                                 if event.keystroke.modifiers.modified() {
@@ -9685,7 +9841,6 @@ impl Render for Workspace {
                             .flex_col()
                             .overflow_hidden()
                             .border_t_1()
-                            .border_b_1()
                             .border_color(colors.border)
                             .child({
                                 let this = cx.entity();
@@ -9696,29 +9851,34 @@ impl Render for Workspace {
                                             this.bounds = bounds;
 
                                             if bounds_changed {
-                                                this.left_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.width,
-                                                        window,
-                                                        cx,
-                                                    )
-                                                });
-
-                                                this.right_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.width,
-                                                        window,
-                                                        cx,
-                                                    )
-                                                });
-
-                                                this.bottom_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.height,
-                                                        window,
-                                                        cx,
-                                                    )
-                                                });
+                                                let expanded_dock = this.expanded_dock_position(cx);
+                                                if expanded_dock != Some(DockPosition::Left) {
+                                                    this.left_dock.update(cx, |dock, cx| {
+                                                        dock.clamp_panel_size(
+                                                            bounds.size.width,
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    });
+                                                }
+                                                if expanded_dock != Some(DockPosition::Right) {
+                                                    this.right_dock.update(cx, |dock, cx| {
+                                                        dock.clamp_panel_size(
+                                                            bounds.size.width,
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    });
+                                                }
+                                                if expanded_dock != Some(DockPosition::Bottom) {
+                                                    this.bottom_dock.update(cx, |dock, cx| {
+                                                        dock.clamp_panel_size(
+                                                            bounds.size.height,
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    });
+                                                }
                                             }
                                         })
                                     },
@@ -10058,11 +10218,15 @@ impl Render for Workspace {
                                     }
                                 })
                             }))
-                            .children(self.render_notifications(window, cx)),
+                            .children(self.render_notifications(window, cx))
+                            .child(gpui::deferred(
+                                div()
+                                    .absolute()
+                                    .bottom_2()
+                                    .right_2()
+                                    .children(self.transient_status.iter().cloned()),
+                            )),
                     )
-                    .when(self.status_bar_visible(cx), |parent| {
-                        parent.child(self.status_bar.clone())
-                    })
                     .child(self.toast_layer.clone()),
             )
     }
@@ -10522,9 +10686,15 @@ async fn join_channel_internal(
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Warning,
-                        "Do you want to switch channels?",
-                        Some("Leaving this call will unshare your current project."),
-                        &["Yes, Join Channel", "Cancel"],
+                        i18n::static_text("Do you want to switch channels?", cx),
+                        Some(i18n::static_text(
+                            "Leaving this call will unshare your current project.",
+                            cx,
+                        )),
+                        &[
+                            i18n::static_text("Yes, Join Channel", cx),
+                            i18n::static_text("Cancel", cx),
+                        ],
                         cx,
                     )
                 })?
@@ -10752,9 +10922,9 @@ pub fn join_channel(
                         };
                         window.prompt(
                             PromptLevel::Critical,
-                            "Failed to join channel",
+                            i18n::static_text("Failed to join channel", cx),
                             Some(&detail),
-                            &["OK"],
+                            &[i18n::static_text("OK", cx)],
                             cx,
                         )
                     })?
@@ -11237,7 +11407,7 @@ pub fn open_paths(
                     open_options.requesting_window = Some(window);
                     window
                         .update(cx, |multi_workspace, _, cx| {
-                            if AgentSettings::get_global(cx).threads_sidebar.auto_open {
+                            if WorkspaceSidebarSettings::get_global(cx).auto_open {
                                 multi_workspace.open_sidebar(cx);
                             } else {
                                 // Opening the sidebar is also what pins the
@@ -11772,9 +11942,12 @@ pub fn reload(cx: &mut App) {
             .update(cx, |_, window, cx| {
                 window.prompt(
                     PromptLevel::Info,
-                    "Are you sure you want to restart?",
+                    i18n::static_text("Are you sure you want to restart?", cx),
                     None,
-                    &["Restart", "Cancel"],
+                    &[
+                        i18n::static_text("Restart", cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
                     cx,
                 )
             })
@@ -12997,7 +13170,7 @@ mod tests {
             });
         });
         cx.executor().run_until_parked();
-        assert_eq!(cx.window_title().as_deref(), Some("Zed — root1, root2"));
+        assert_eq!(cx.window_title().as_deref(), Some("QMR Zed — root1, root2"));
 
         let item = cx.new(|cx| {
             TestItem::new(cx).with_project_items(&[TestProjectItem::new_in_worktree(
@@ -13014,7 +13187,7 @@ mod tests {
         let expected_file_path = path!("/root1/src/one.txt");
         assert_eq!(
             cx.window_title().as_deref(),
-            Some(format!("Zed — root1, root2 — one — {expected_file_path}").as_str())
+            Some(format!("QMR Zed — root1, root2 — one — {expected_file_path}").as_str())
         );
     }
 
@@ -15812,6 +15985,149 @@ mod tests {
             assert_eq!(num_panes, 1);
             assert_eq!(num_items_in_current_pane, 3);
             assert_eq!(active_item.item_id(), last_item.item_id());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_empty_center_panel_preserves_layout_and_focus(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (terminal, tree, original_pane) = workspace.update_in(cx, |workspace, window, cx| {
+            let terminal = cx.new(|cx| {
+                let mut panel = TestPanel::new_flexible(DockPosition::Left, 0, cx);
+                panel.expands_into_empty_center = true;
+                panel
+            });
+            let tree = cx.new(|cx| TestPanel::new_flexible(DockPosition::Right, 100, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            workspace.add_panel(tree.clone(), window, cx);
+            workspace.toggle_dock(DockPosition::Left, window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            workspace.left_dock.update(cx, |dock, cx| {
+                dock.set_panel_size_state(
+                    &terminal,
+                    PanelSizeState {
+                        size: Some(px(450.)),
+                        flex: Some(1.5),
+                    },
+                    cx,
+                );
+            });
+            (terminal, tree, workspace.active_pane.clone())
+        });
+        cx.run_until_parked();
+
+        for layout in [
+            BottomDockLayout::Contained,
+            BottomDockLayout::Full,
+            BottomDockLayout::LeftAligned,
+            BottomDockLayout::RightAligned,
+        ] {
+            cx.update(|_, cx| {
+                cx.update_global(|store: &mut SettingsStore, cx| {
+                    store.update_user_settings(cx, |settings| {
+                        settings.workspace.bottom_dock_layout = Some(layout);
+                    });
+                });
+            });
+            cx.run_until_parked();
+            let filled_bounds = cx.debug_bounds("empty-center-panel");
+            if cfg!(debug_assertions) {
+                assert!(
+                    filled_bounds.is_some(),
+                    "layout {layout:?} must fill the empty center"
+                );
+            }
+            workspace.update_in(cx, |workspace, window, cx| {
+                assert_eq!(
+                    workspace.expanded_dock_position(cx),
+                    Some(DockPosition::Left)
+                );
+                assert_eq!(workspace.active_pane, original_pane);
+                assert_eq!(workspace.center.panes().len(), 1);
+                assert!(
+                    workspace
+                        .render_dock(DockPosition::Left, &workspace.left_dock, window, cx)
+                        .is_none()
+                );
+                assert_eq!(workspace.focusable_parts(cx).len(), 2);
+                assert_eq!(workspace.focus_handle(cx), terminal.focus_handle(cx));
+                assert_eq!(
+                    workspace.fallback_focus_handle(window, cx),
+                    terminal.focus_handle(cx)
+                );
+                workspace.focus_center_pane(window, cx);
+                assert!(terminal.focus_handle(cx).is_focused(window));
+                workspace.move_part_focus(true, window, cx);
+                assert!(tree.focus_handle(cx).is_focused(window));
+                workspace.activate_pane_in_direction(SplitDirection::Left, window, cx);
+                workspace.bounds.size.width = px(1200.);
+                workspace.resize_right_dock(px(300.), window, cx);
+                assert_eq!(
+                    workspace
+                        .right_dock
+                        .read(cx)
+                        .stored_panel_size_state(&tree)
+                        .unwrap()
+                        .flex,
+                    Some(1. / 3.)
+                );
+                assert_eq!(
+                    workspace
+                        .left_dock
+                        .read(cx)
+                        .stored_panel_size_state(&terminal),
+                    Some(PanelSizeState {
+                        size: Some(px(450.)),
+                        flex: Some(1.5)
+                    })
+                );
+            });
+            cx.run_until_parked();
+            workspace.update_in(cx, |_, window, cx| {
+                assert!(terminal.focus_handle(cx).is_focused(window));
+            });
+        }
+
+        let item = add_an_item_to_active_pane(cx, &workspace, 1);
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("empty-center-panel").is_none());
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert_eq!(workspace.expanded_dock_position(cx), None);
+            assert_eq!(workspace.active_pane, original_pane);
+            assert_eq!(
+                workspace
+                    .left_dock
+                    .read(cx)
+                    .stored_panel_size_state(&terminal),
+                Some(PanelSizeState {
+                    size: Some(px(450.)),
+                    flex: Some(1.5)
+                })
+            );
+            original_pane.update(cx, |pane, cx| {
+                window.focus(&pane.focus_handle(cx), cx);
+                pane.remove_item(item.entity_id(), true, false, window, cx);
+            });
+            assert_eq!(
+                workspace.expanded_dock_position(cx),
+                Some(DockPosition::Left)
+            );
+        });
+        cx.run_until_parked();
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(terminal.focus_handle(cx).is_focused(window));
+            workspace.zoomed = Some(AnyView::from(terminal.clone()).downgrade());
+            assert_eq!(workspace.expanded_dock_position(cx), None);
+            workspace.zoomed = None;
+            workspace
+                .left_dock
+                .update(cx, |dock, cx| dock.set_open(false, window, cx));
+            assert_eq!(workspace.expanded_dock_position(cx), None);
         });
     }
 
@@ -18928,7 +19244,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_status_bar_visibility(cx: &mut TestAppContext) {
+    async fn test_legacy_status_bar_setting_cannot_restore_footer(cx: &mut TestAppContext) {
         init_test(cx);
 
         let fs = FakeFs::new(cx.executor());
@@ -18936,10 +19252,14 @@ mod tests {
         let (workspace, _cx) =
             cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
 
-        // Test with status bar shown (default)
         workspace.read_with(cx, |workspace, cx| {
-            let visible = workspace.status_bar_visible(cx);
-            assert!(visible, "Status bar should be visible by default");
+            assert!(!workspace.status_bar_visible(cx));
+            assert!(
+                workspace
+                    .focusable_parts(cx)
+                    .iter()
+                    .all(|part| { part.container != workspace.status_bar.focus_handle(cx) })
+            );
         });
 
         // Test with status bar hidden
@@ -18954,7 +19274,7 @@ mod tests {
             assert!(!visible, "Status bar should be hidden when show is false");
         });
 
-        // Test with status bar shown explicitly
+        // Existing user settings remain readable without resurrecting the removed footer.
         cx.update_global(|store: &mut SettingsStore, cx| {
             store.update_user_settings(cx, |settings| {
                 settings.status_bar.get_or_insert_default().show = Some(true);
@@ -18963,7 +19283,7 @@ mod tests {
 
         workspace.read_with(cx, |workspace, cx| {
             let visible = workspace.status_bar_visible(cx);
-            assert!(visible, "Status bar should be visible when show is true");
+            assert!(!visible, "The legacy setting must not restore the footer");
         });
     }
 

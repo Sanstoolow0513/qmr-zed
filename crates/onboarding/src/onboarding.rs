@@ -1,6 +1,5 @@
 use crate::multibuffer_hint::MultibufferHint;
-use client::{Client, UserStore, zed_urls};
-use cloud_api_types::Plan;
+use client::{UserStore, zed_urls};
 use db::kvp::KeyValueStore;
 use fs::Fs;
 use gpui::{
@@ -9,7 +8,7 @@ use gpui::{
     Subscription, Task, WeakEntity, Window, actions,
 };
 use notifications::status_toast::StatusToast;
-use project::agent_server_store::AllAgentServersSettings;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{SettingsStore, VsCodeSettingsSource};
@@ -25,7 +24,6 @@ use workspace::{
     AppState, Workspace, WorkspaceId,
     dock::DockPosition,
     item::{Item, ItemEvent},
-    notifications::NotifyResultExt as _,
     open_new, register_serializable_item, with_active_or_new_workspace,
 };
 use zed_actions::OpenOnboarding;
@@ -217,42 +215,6 @@ impl Onboarding {
     fn new(workspace: &Workspace, cx: &mut App) -> Entity<Self> {
         let font_family_cache = theme::FontFamilyCache::global(cx);
 
-        let installed_agents = cx
-            .global::<SettingsStore>()
-            .get::<AllAgentServersSettings>(None)
-            .clone();
-        let client = Client::global(cx);
-        let status = *client.status().borrow();
-        let plan = workspace.user_store().read(cx).plan();
-        let zed_agent_state = if status.is_signed_out()
-            || matches!(
-                status,
-                client::Status::AuthenticationError | client::Status::ConnectionError
-            ) {
-            "signed_out"
-        } else if status.is_signing_in() {
-            "signing_in"
-        } else {
-            match plan {
-                Some(Plan::ZedPro) => "pro",
-                Some(Plan::ZedProTrial) => "trial",
-                Some(Plan::ZedBusiness) => "business",
-                Some(Plan::ZedVip) => "vip",
-                Some(Plan::ZedStudent) => "student",
-                Some(Plan::ZedFree) | None => "free",
-            }
-        };
-        let agents_installed = basics_page::FEATURED_AGENT_IDS
-            .iter()
-            .filter(|id| installed_agents.contains_key(**id))
-            .copied()
-            .collect::<Vec<_>>();
-        telemetry::event!(
-            "Welcome Agent Setup Viewed",
-            zed_agent = zed_agent_state,
-            agents_installed = agents_installed,
-        );
-
         cx.new(|cx| {
             cx.spawn(async move |this, cx| {
                 font_family_cache.prefetch(cx).await;
@@ -278,26 +240,14 @@ impl Onboarding {
         go_to_welcome_page(cx);
     }
 
-    fn handle_sign_in(&mut self, _: &SignIn, window: &mut Window, cx: &mut Context<Self>) {
-        let client = Client::global(cx);
-        let workspace = self.workspace.clone();
-
-        window
-            .spawn(cx, async move |mut cx| {
-                client
-                    .sign_in_with_optional_connect(true, &cx)
-                    .await
-                    .notify_workspace_async_err(workspace, &mut cx);
-            })
-            .detach();
-    }
+    fn handle_sign_in(&mut self, _: &SignIn, _: &mut Window, _: &mut Context<Self>) {}
 
     fn handle_open_account(_: &OpenAccount, _: &mut Window, cx: &mut App) {
         cx.open_url(&zed_urls::account_url(cx))
     }
 
     fn render_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        crate::basics_page::render_basics_page(&self.user_store, cx).into_any_element()
+        crate::basics_page::render_basics_page(cx).into_any_element()
     }
 }
 
@@ -351,19 +301,21 @@ impl Render for Onboarding {
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Welcome to Zed")
+                                                        Headline::localized("Welcome to Zed")
                                                             .size(HeadlineSize::Small),
                                                     )
                                                     .child(
-                                                        Label::new("The editor for what's next")
-                                                            .color(Color::Muted)
-                                                            .size(LabelSize::Small)
-                                                            .italic(),
+                                                        Label::localized(
+                                                            "The editor for what's next",
+                                                        )
+                                                        .color(Color::Muted)
+                                                        .size(LabelSize::Small)
+                                                        .italic(),
                                                     ),
                                             ),
                                     )
                                     .child({
-                                        Button::new("finish_setup", "Finish Setup")
+                                        Button::localized("finish_setup", "Finish Setup")
                                             .style(ButtonStyle::Filled)
                                             .size(ButtonSize::Medium)
                                             .width(rems_from_px(200_f32))
@@ -396,8 +348,8 @@ impl Focusable for Onboarding {
 impl Item for Onboarding {
     type Event = ItemEvent;
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Onboarding".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("Onboarding", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

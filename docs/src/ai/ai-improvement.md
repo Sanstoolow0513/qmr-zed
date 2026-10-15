@@ -1,3 +1,5 @@
+> **qmr-zed:** This page describes upstream AI features that are not included in this fork. For project and terminal navigation, see [Workspace Terminals](../workspace-terminals.md).
+
 ---
 title: Feedback and Training Data - Zed
 description: Understand opt-in AI feedback ratings, Edit Prediction training data, and when Zed may retain AI data.

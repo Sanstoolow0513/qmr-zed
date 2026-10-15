@@ -1,5 +1,5 @@
 use collections::{HashMap, HashSet, VecDeque};
-use edit_prediction::EditPredictionStore;
+
 use editor::{Editor, EditorEvent, MultiBufferOffset, actions::MoveToEnd, scroll::Autoscroll};
 use gpui::{
     Anchor, App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement,
@@ -390,17 +390,8 @@ impl LspLogView {
         );
         (editor, vec![editor_subscription, search_subscription])
     }
-    pub(crate) fn sync_copilot_for_project(&self, cx: &mut App) {
-        let server = EditPredictionStore::try_global(cx)
-            .and_then(|store| store.read(cx).copilot_for_project(&self.project))
-            .and_then(|copilot| copilot.read(cx).language_server().cloned());
-        self.log_store.update(cx, |log_store, cx| {
-            log_store.sync_copilot_for_project(&self.project.downgrade(), server, cx);
-        });
-    }
 
     pub(crate) fn menu_items(&self, cx: &mut App) -> Option<Vec<LogMenuItem>> {
-        self.sync_copilot_for_project(cx);
         let log_store = self.log_store.read(cx);
 
         let unknown_server = LanguageServerName::new_static("unknown server");
@@ -839,8 +830,8 @@ impl Item for LspLogView {
         Editor::to_item_events(event, f)
     }
 
-    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "LSP Logs".into()
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        i18n::text("LSP Logs", cx)
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -1403,7 +1394,7 @@ impl Render for LspLogToolbarItemView {
                     ),
             )
             .child(
-                Button::new("clear_log_button", "Clear").on_click(cx.listener(
+                Button::localized("clear_log_button", "Clear").on_click(cx.listener(
                     |this, _, window, cx| {
                         if let Some(log_view) = this.log_view.as_ref() {
                             log_view.update(cx, |log_view, cx| {
@@ -1435,7 +1426,7 @@ fn initialize_new_editor(
         editor.set_show_bookmarks(false, cx);
         editor.set_show_breakpoints(false, cx);
         editor.set_read_only(true);
-        editor.set_show_edit_predictions(Some(false), window, cx);
+
         editor.set_soft_wrap_mode(SoftWrap::EditorWidth, cx);
         if move_to_end {
             editor.move_to_end(&MoveToEnd, window, cx);

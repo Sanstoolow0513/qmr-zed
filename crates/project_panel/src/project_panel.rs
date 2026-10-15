@@ -58,6 +58,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use theme::IconColors;
 use theme_settings::ThemeSettings;
 use ui::{
     ContextMenu, DecoratedIcon, IconDecoration, IconDecorationKind, IndentGuideColors,
@@ -291,6 +292,7 @@ struct EntryDetails {
     filename: String,
     chevron: Option<SharedString>,
     icon: Option<SharedString>,
+    icon_colors: Option<IconColors>,
     path: Arc<RelPath>,
     depth: usize,
     kind: EntryKind,
@@ -634,6 +636,7 @@ struct DraggedProjectEntryView {
     selection: SelectedEntry,
     chevron: Option<SharedString>,
     icon: Option<SharedString>,
+    icon_colors: Option<IconColors>,
     filename: String,
     click_offset: Point<Pixels>,
     selections: Arc<[SelectedEntry]>,
@@ -1131,6 +1134,7 @@ impl ProjectPanel {
             return;
         };
 
+        let previous_selection = self.selection;
         self.selection = Some(SelectedEntry {
             worktree_id,
             entry_id,
@@ -1157,7 +1161,7 @@ impl ProjectPanel {
             let visible_worktrees_count = project.visible_worktrees(cx).count();
             let should_hide_rename = is_root
                 && (cfg!(target_os = "windows")
-                    || (settings.hide_root && visible_worktrees_count == 1));
+                    || (settings.hide_root && is_dir && visible_worktrees_count == 1));
             let should_show_compare = !is_dir && self.file_abs_paths_to_diff(cx).is_some();
 
             let (has_git_repo, has_history) = {
@@ -1182,13 +1186,17 @@ impl ProjectPanel {
                     if is_read_only {
                         menu.when(is_markdown, |menu| {
                             menu.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                                .localize_last()
                         })
                         .when(is_dir, |menu| {
                             menu.action("Search Inside", Box::new(NewSearchInDirectory))
+                                .localize_last()
                         })
                     } else {
                         menu.action("New File", Box::new(NewFile))
+                            .localize_last()
                             .action("New Folder", Box::new(NewDirectory))
+                            .localize_last()
                             .separator()
                             .when(is_local, |menu| {
                                 menu.action(
@@ -1198,29 +1206,39 @@ impl ProjectPanel {
                             })
                             .when(is_local, |menu| {
                                 menu.action("Open in Default App", Box::new(OpenWithSystem))
+                                    .localize_last()
                             })
                             .action("Open in Terminal", Box::new(OpenInTerminal))
+                            .localize_last()
                             .when(is_markdown, |menu| {
                                 menu.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                                    .localize_last()
                             })
                             .when(is_dir, |menu| {
                                 menu.separator()
                                     .action("Find in Folder…", Box::new(NewSearchInDirectory))
+                                    .localize_last()
                             })
                             .when(is_unfoldable, |menu| {
                                 menu.action("Unfold Directory", Box::new(UnfoldDirectory))
+                                    .localize_last()
                             })
                             .when(is_foldable, |menu| {
                                 menu.action("Fold Directory", Box::new(FoldDirectory))
+                                    .localize_last()
                             })
                             .when(should_show_compare, |menu| {
                                 menu.separator()
                                     .action("Compare Marked Files", Box::new(CompareMarkedFiles))
+                                    .localize_last()
                             })
                             .separator()
                             .action("Cut", Box::new(Cut))
+                            .localize_last()
                             .action("Copy", Box::new(Copy))
+                            .localize_last()
                             .action("Duplicate", Box::new(Duplicate))
+                            .localize_last()
                             .action_disabled_when(!has_pasteable_content, "Paste", Box::new(Paste))
                             .when(!is_collab, |menu| {
                                 let can_undo = self.undo_manager.can_undo();
@@ -1232,13 +1250,16 @@ impl ProjectPanel {
                             .when(is_remote, |menu| {
                                 menu.separator()
                                     .action("Download...", Box::new(DownloadFromRemote))
+                                    .localize_last()
                             })
                             .separator()
                             .action("Copy Path", Box::new(zed_actions::workspace::CopyPath))
+                            .localize_last()
                             .action(
                                 "Copy Relative Path",
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
+                            .localize_last()
                             .when(has_git_repo, |menu| {
                                 menu.separator()
                                     .when(!is_dir && self.has_git_changes(entry_id), |menu| {
@@ -1246,34 +1267,44 @@ impl ProjectPanel {
                                             "Restore File",
                                             Box::new(git::RestoreFile { skip_prompt: false }),
                                         )
+                                        .localize_last()
                                     })
                                     .action("Add to .gitignore", Box::new(git::AddToGitignore))
+                                    .localize_last()
                                     .action(
                                         "Add to .git/info/exclude",
                                         Box::new(git::AddToGitInfoExclude),
                                     )
+                                    .localize_last()
                                     .when(has_history, |menu| {
                                         menu.action("View History", Box::new(git::FileHistory))
+                                            .localize_last()
                                     })
                                     .when(!is_dir, |menu| {
                                         menu.action(
                                             "Open File Permalink",
                                             git::OpenFilePermalink.boxed_clone(),
                                         )
+                                        .localize_last()
                                         .action(
                                             "Copy File Permalink",
                                             git::CopyFilePermalink.boxed_clone(),
                                         )
+                                        .localize_last()
                                     })
                             })
                             .when(!should_hide_rename, |menu| {
-                                menu.separator().action("Rename", Box::new(Rename))
+                                menu.separator()
+                                    .action("Rename", Box::new(Rename))
+                                    .localize_last()
                             })
                             .when(!is_root && !is_collab, |menu| {
                                 menu.action("Trash", Box::new(Trash { skip_prompt: false }))
+                                    .localize_last()
                             })
                             .when(!is_root, |menu| {
                                 menu.action("Delete", Box::new(Delete { skip_prompt: false }))
+                                    .localize_last()
                             })
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
@@ -1281,20 +1312,26 @@ impl ProjectPanel {
                                         "Add Folders to Project…",
                                         Box::new(workspace::AddFolderToProject),
                                     )
+                                    .localize_last()
                                     .action("Remove from Project", Box::new(RemoveFromProject))
+                                    .localize_last()
                             })
                             .when(is_dir && !is_root, |menu| {
                                 menu.separator()
                                     .action("Expand All", Box::new(ExpandSelectedEntryAndChildren))
+                                    .localize_last()
                                     .action(
                                         "Collapse All",
                                         Box::new(CollapseSelectedEntryAndChildren),
                                     )
+                                    .localize_last()
                             })
                             .when(is_dir && is_root, |menu| {
                                 menu.separator()
                                     .action("Expand All", Box::new(ExpandAllEntries))
+                                    .localize_last()
                                     .action("Collapse All", Box::new(CollapseAllEntries))
+                                    .localize_last()
                             })
                     }
                 })
@@ -1321,10 +1358,27 @@ impl ProjectPanel {
             };
 
             window.focus(&context_menu.focus_handle(cx), cx);
-            let subscription = cx.subscribe(&context_menu, |this, _, _: &DismissEvent, cx| {
-                this.context_menu.take();
-                cx.notify();
-            });
+            let subscription = cx.subscribe_in(
+                &context_menu,
+                window,
+                move |this, _, _: &DismissEvent, window, cx| {
+                    this.context_menu.take();
+                    // Menu actions are deferred and may still need the hidden root as their target.
+                    cx.defer_in(window, move |this, _, cx| {
+                        if this.context_menu.is_none() && this.state.edit_state.is_none() {
+                            if this.selection.is_some_and(|entry| {
+                                Some(entry.entry_id) == this.hidden_root_entry_id(cx)
+                            }) {
+                                this.selection = previous_selection
+                                    .filter(|entry| this.index_for_selection(*entry).is_some());
+                            }
+                            this.normalize_hidden_root_selection(cx);
+                            cx.notify();
+                        }
+                    });
+                    cx.notify();
+                },
+            );
             self.context_menu = Some(DeployedContextMenu {
                 menu: context_menu,
                 position,
@@ -1525,6 +1579,7 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let hidden_root_entry_id = self.hidden_root_entry_id(cx);
         let worktree = worktree.read(cx);
         if let Some(folded_ancestors) = self.state.ancestors.get_mut(&entry.id)
             && folded_ancestors.current_ancestor_depth + 1 < folded_ancestors.max_ancestor_depth()
@@ -1544,6 +1599,9 @@ impl ProjectPanel {
         let mut entry = &entry;
         loop {
             let entry_id = entry.id;
+            if Some(entry_id) == hidden_root_entry_id {
+                break;
+            }
             match expanded_dir_ids.binary_search(&entry_id) {
                 Ok(ix) if entry.is_dir() => {
                     expanded_dir_ids.remove(ix);
@@ -2355,6 +2413,9 @@ impl ProjectPanel {
 
     fn discard_edit_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(edit_state) = self.state.edit_state.take() {
+            if edit_state.is_new_entry() {
+                self.selection = edit_state.previously_focused;
+            }
             self.state.temporarily_unfolded_pending_state = edit_state
                 .temporarily_unfolded
                 .and_then(|temporarily_unfolded_entry_id| {
@@ -2431,6 +2492,10 @@ impl ProjectPanel {
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let hidden_root_entry_id = self.hidden_root_entry_id(cx);
+        let previously_focused = self
+            .selection
+            .filter(|entry| Some(entry.entry_id) != hidden_root_entry_id);
         let Some((worktree_id, entry_id)) = self
             .selection
             .map(|entry| (entry.worktree_id, entry.entry_id))
@@ -2500,7 +2565,7 @@ impl ProjectPanel {
             leaf_entry_id: None,
             is_dir,
             processing_filename: None,
-            previously_focused: self.selection,
+            previously_focused,
             depth: 0,
             validation_state: ValidationState::None,
             temporarily_unfolded: (new_entry_id != entry_id).then_some(new_entry_id),
@@ -2555,7 +2620,7 @@ impl ProjectPanel {
                     let settings = ProjectPanelSettings::get_global(cx);
                     let visible_worktrees_count =
                         self.project.read(cx).visible_worktrees(cx).count();
-                    if settings.hide_root && visible_worktrees_count == 1 {
+                    if settings.hide_root && entry.is_dir() && visible_worktrees_count == 1 {
                         return;
                     }
                 }
@@ -2641,7 +2706,16 @@ impl ProjectPanel {
 
             let answer = if !action.skip_prompt {
                 let prompt = format!("Discard changes to {}?", MarkdownInlineCode(&file_name));
-                Some(window.prompt(PromptLevel::Info, &prompt, None, &["Restore", "Cancel"], cx))
+                Some(window.prompt(
+                    PromptLevel::Info,
+                    &prompt,
+                    None,
+                    &[
+                        i18n::static_text("Restore", cx),
+                        i18n::static_text("Cancel", cx),
+                    ],
+                    cx,
+                ))
             } else {
                 None
             };
@@ -2923,7 +2997,7 @@ impl ProjectPanel {
                     PromptLevel::Info,
                     &prompt.message,
                     prompt.detail,
-                    &[prompt.confirmation_label, "Cancel"],
+                    &[prompt.confirmation_label, i18n::static_text("Cancel", cx)],
                     cx,
                 ))
             } else {
@@ -3490,6 +3564,9 @@ impl ProjectPanel {
             if let Some(parent) = entry.path.parent() {
                 let worktree = worktree.read(cx);
                 if let Some(parent_entry) = worktree.entry_for_path(parent) {
+                    if Some(parent_entry.id) == self.hidden_root_entry_id(cx) {
+                        return;
+                    }
                     self.selection = Some(SelectedEntry {
                         worktree_id: worktree.id(),
                         entry_id: parent_entry.id,
@@ -3877,7 +3954,7 @@ impl ProjectPanel {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Download".into()),
+            prompt: Some(i18n::text("Download", cx)),
         });
 
         let fs = self.fs.clone();
@@ -4543,6 +4620,41 @@ impl ProjectPanel {
         }
     }
 
+    fn hidden_root_entry_id(&self, cx: &App) -> Option<ProjectEntryId> {
+        if !ProjectPanelSettings::get_global(cx).hide_root {
+            return None;
+        }
+        let mut worktrees = self.project.read(cx).visible_worktrees(cx);
+        let worktree = worktrees.next()?;
+        if worktrees.next().is_some() {
+            return None;
+        }
+        worktree
+            .read(cx)
+            .root_entry()
+            .filter(|entry| entry.is_dir())
+            .map(|entry| entry.id)
+    }
+
+    fn normalize_hidden_root_selection(&mut self, cx: &App) {
+        let Some(root_entry_id) = self.hidden_root_entry_id(cx) else {
+            return;
+        };
+        self.marked_entries
+            .retain(|entry| entry.entry_id != root_entry_id);
+        if self
+            .selection
+            .is_some_and(|entry| entry.entry_id == root_entry_id)
+        {
+            self.selection = self.state.visible_entries.iter().find_map(|worktree| {
+                worktree.entries.first().map(|entry| SelectedEntry {
+                    worktree_id: worktree.worktree_id,
+                    entry_id: entry.id,
+                })
+            });
+        }
+    }
+
     fn update_visible_entries(
         &mut self,
         new_selected_entry: Option<(WorktreeId, ProjectEntryId)>,
@@ -4603,7 +4715,10 @@ impl ProjectPanel {
                         let mut auto_folded_ancestors = vec![];
                         let worktree_abs_path = worktree_snapshot.abs_path();
                         while let Some(entry) = entry_iter.entry() {
-                            if hide_root && Some(entry.entry) == worktree_snapshot.root_entry() {
+                            if hide_root
+                                && entry.is_dir()
+                                && Some(entry.entry) == worktree_snapshot.root_entry()
+                            {
                                 if new_entry_parent_id == Some(entry.id) {
                                     visible_worktree_entries.push(Self::create_new_git_entry(
                                         entry.entry,
@@ -4832,6 +4947,9 @@ impl ProjectPanel {
                         entry_id,
                     });
                 }
+                if this.context_menu.is_none() {
+                    this.normalize_hidden_root_selection(cx);
+                }
                 let elapsed = now.elapsed();
                 if this.last_reported_update.elapsed() > Duration::from_secs(3600) {
                     telemetry::event!(
@@ -4933,7 +5051,7 @@ impl ProjectPanel {
                 .expanded_dir_ids
                 .get(&worktree_id)
                 .is_some_and(|entries| entries.binary_search(&entry.id).is_ok());
-            let (chevron, icon) = Self::entry_icons(entry, is_expanded, cx);
+            let (chevron, icon, _) = Self::entry_icons(entry, is_expanded, cx);
             for path in chevron.into_iter().chain(icon) {
                 Icon::from_path(path).preload(cx);
             }
@@ -5031,7 +5149,10 @@ impl ProjectPanel {
                                 PromptLevel::Info,
                                 &prompt_message,
                                 None,
-                                &["Replace", "Cancel"],
+                                &[
+                                    i18n::static_text("Replace", cx),
+                                    i18n::static_text("Cancel", cx),
+                                ],
                                 cx,
                             )
                         })?
@@ -6027,6 +6148,38 @@ impl ProjectPanel {
         false
     }
 
+    fn rendered_entry_icon(
+        &self,
+        details: &EntryDetails,
+        cx: &App,
+    ) -> (Option<SharedString>, Color) {
+        let mut icon = details.icon.clone();
+        let mut icon_colors = details.icon_colors;
+        if ProjectPanelSettings::get_global(cx).file_icons
+            && details.is_editing
+            && !details.is_processing
+            && details.kind.is_file()
+        {
+            let filename = self.filename_editor.read(cx).text(cx);
+            if !filename.is_empty() {
+                let definition = FileIcons::get_icon_definition(Path::new(&filename), cx);
+                icon_colors = definition.as_ref().and_then(|definition| definition.colors);
+                icon = definition.map(|definition| definition.path);
+            }
+        }
+        let color = icon_colors
+            .map(|colors| {
+                let color = colors.for_appearance(cx.theme().appearance());
+                Color::Custom(if details.is_ignored || details.is_cut {
+                    color.opacity(0.5)
+                } else {
+                    color
+                })
+            })
+            .unwrap_or(Color::Muted);
+        (icon, color)
+    }
+
     fn render_entry(
         &self,
         entry_id: ProjectEntryId,
@@ -6056,13 +6209,7 @@ impl ProjectPanel {
         let file_name = details.filename.clone();
 
         let chevron = details.chevron.clone();
-        let mut icon = details.icon.clone();
-        if settings.file_icons && show_editor && details.kind.is_file() {
-            let filename = self.filename_editor.read(cx).text(cx);
-            if filename.len() > 2 {
-                icon = FileIcons::get_icon(Path::new(&filename), cx);
-            }
-        }
+        let (icon, icon_color) = self.rendered_entry_icon(&details, cx);
 
         let filename_text_color = details.filename_text_color;
         let diagnostic_severity = details.diagnostic_severity;
@@ -6395,6 +6542,16 @@ impl ProjectPanel {
                             cx.new(|_| DraggedProjectEntryView {
                                 chevron: details.chevron.clone(),
                                 icon: details.icon.clone(),
+                                icon_colors: details.icon_colors.map(|colors| {
+                                    if details.is_ignored || details.is_cut {
+                                        IconColors {
+                                            light: colors.light.opacity(0.5),
+                                            dark: colors.dark.opacity(0.5),
+                                        }
+                                    } else {
+                                        colors
+                                    }
+                                }),
                                 filename: filename.clone(),
                                 click_offset,
                                 selection: selection.active_selection,
@@ -6631,10 +6788,11 @@ impl ProjectPanel {
                             entry_diagnostic_aware_icon_decoration_and_color(diagnostic_severity)
                                 .map(|(_, color)| color);
                         let decorated = |glyph: SharedString,
+                                         glyph_color: Color,
                                          decoration_kind: IconDecorationKind,
                                          color: Color| {
                             DecoratedIcon::new(
-                                Icon::from_path(glyph).color(Color::Muted),
+                                Icon::from_path(glyph).color(glyph_color),
                                 Some(
                                     IconDecoration::new(decoration_kind, bg_color, cx)
                                         .group_name(Some(GROUP_NAME.into()))
@@ -6651,11 +6809,15 @@ impl ProjectPanel {
 
                         let icon_slot = if let Some(icon) = &icon {
                             Some(match diagnostic_mark.zip(decoration_color) {
-                                Some((DiagnosticMark::OnIcon(decoration_kind), color)) => {
-                                    div().child(decorated(icon.clone(), decoration_kind, color))
-                                }
+                                Some((DiagnosticMark::OnIcon(decoration_kind), color)) => div()
+                                    .child(decorated(
+                                        icon.clone(),
+                                        icon_color,
+                                        decoration_kind,
+                                        color,
+                                    )),
                                 _ => h_flex()
-                                    .child(Icon::from_path(icon.to_string()).color(Color::Muted)),
+                                    .child(Icon::from_path(icon.to_string()).color(icon_color)),
                             })
                         } else if let Some(DiagnosticMark::Standalone(icon_name)) = diagnostic_mark
                         {
@@ -6682,7 +6844,7 @@ impl ProjectPanel {
                         let chevron =
                             chevron.map(|chevron| match diagnostic_mark.zip(decoration_color) {
                                 Some((DiagnosticMark::OnChevron(decoration_kind), color)) => {
-                                    decorated(chevron, decoration_kind, color)
+                                    decorated(chevron, Color::Muted, decoration_kind, color)
                                 }
                                 _ => Icon::from_path(chevron)
                                     .color(Color::Muted)
@@ -7024,16 +7186,21 @@ impl ProjectPanel {
         entry: &Entry,
         is_expanded: bool,
         cx: &App,
-    ) -> (Option<SharedString>, Option<SharedString>) {
+    ) -> (
+        Option<SharedString>,
+        Option<SharedString>,
+        Option<IconColors>,
+    ) {
         let settings = ProjectPanelSettings::get_global(cx);
         match entry.kind {
             EntryKind::File => {
                 let icon = if settings.file_icons {
-                    FileIcons::get_icon(entry.path.as_std_path(), cx)
+                    FileIcons::get_icon_definition(entry.path.as_std_path(), cx)
                 } else {
                     None
                 };
-                (None, icon)
+                let colors = icon.as_ref().and_then(|icon| icon.colors);
+                (None, icon.map(|icon| icon.path), colors)
             }
             _ => {
                 let indicator = FileIcons::get_folder_indicators(
@@ -7042,7 +7209,7 @@ impl ProjectPanel {
                     entry.path.as_std_path(),
                     cx,
                 );
-                (indicator.chevron, indicator.icon)
+                (indicator.chevron, indicator.icon, indicator.icon_colors)
             }
         }
     }
@@ -7068,7 +7235,7 @@ impl ProjectPanel {
             .unwrap_or(&[]);
         let is_expanded = expanded_entry_ids.binary_search(&entry.id).is_ok();
 
-        let (chevron, icon) = Self::entry_icons(entry, is_expanded, cx);
+        let (chevron, icon, icon_colors) = Self::entry_icons(entry, is_expanded, cx);
 
         let path_style = self.project.read(cx).path_style(cx);
         let (depth, difference) =
@@ -7143,6 +7310,7 @@ impl ProjectPanel {
             filename,
             chevron,
             icon,
+            icon_colors,
             path: entry.path.clone(),
             depth,
             kind: entry.kind,
@@ -8149,7 +8317,14 @@ impl Render for DraggedProjectEntryView {
                     .bg(cx.theme().colors().background)
                     .map(|this| {
                         if self.selections.len() > 1 && self.selections.contains(&self.selection) {
-                            this.child(Label::new(format!("{} entries", self.selections.len())))
+                            this.child(Label::new(
+                                i18n::format(
+                                    "{argument0} entries",
+                                    &[("argument0", &format!("{}", self.selections.len()))],
+                                    cx,
+                                )
+                                .to_string(),
+                            ))
                         } else {
                             this.child(
                                 h_flex()
@@ -8158,7 +8333,14 @@ impl Render for DraggedProjectEntryView {
                                         this.child(Icon::from_path(chevron))
                                     })
                                     .when_some(self.icon.clone(), |this, icon| {
-                                        this.child(Icon::from_path(icon))
+                                        this.child(Icon::from_path(icon).when_some(
+                                            self.icon_colors,
+                                            |icon, colors| {
+                                                icon.color(Color::Custom(
+                                                    colors.for_appearance(cx.theme().appearance()),
+                                                ))
+                                            },
+                                        ))
                                     }),
                             )
                             .child(Label::new(self.filename.clone()))
@@ -8204,8 +8386,8 @@ impl Panel for ProjectPanel {
             .then_some(IconName::FileTree)
     }
 
-    fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Project Panel")
+    fn icon_tooltip(&self, _window: &Window, cx: &App) -> Option<&'static str> {
+        Some(i18n::static_text("Project Panel", cx))
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

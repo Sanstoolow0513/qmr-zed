@@ -1,10 +1,9 @@
-use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
-use project::DisableAiSettings;
+
 use release_channel::ReleaseChannel;
-use settings::Settings;
+
 use terminal_view::terminal_panel;
-use zed_actions::{Quit, assistant, debug_panel, dev, git_panel, project_panel};
+use zed_actions::{Quit, debug_panel, dev, git_panel, project_panel};
 
 pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     let mut view_items = vec![
@@ -42,14 +41,14 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::separator(),
         MenuItem::action("Project Panel", project_panel::ToggleFocus),
         MenuItem::action("Outline Panel", outline_panel::ToggleFocus),
-        MenuItem::action("Collab Panel", collab_panel::ToggleFocus),
         MenuItem::action("Terminal Panel", terminal_panel::Toggle),
         MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
     ];
 
-    if !DisableAiSettings::get_global(cx).disable_ai {
-        view_items.push(MenuItem::action("Agent Panel", assistant::ToggleFocus));
-    }
+    view_items.push(MenuItem::action(
+        "Workspace Terminals",
+        terminal_view::workspace_terminal_panel::ToggleFocus,
+    ));
 
     view_items.extend([
         MenuItem::action("Git Panel", git_panel::ToggleFocus),
@@ -66,7 +65,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         view_items.push(MenuItem::separator());
     }
 
-    vec![
+    let mut menus = vec![
         Menu {
             name: "Zed".into(),
             disabled: false,
@@ -337,5 +336,20 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 ),
             ],
         },
-    ]
+    ];
+    fn translate_menu(menu: &mut Menu, cx: &App) {
+        menu.name = i18n::text(menu.name.clone(), cx);
+        for item in &mut menu.items {
+            match item {
+                MenuItem::Action { name, .. } => *name = i18n::text(name.clone(), cx),
+                MenuItem::Submenu(menu) => translate_menu(menu, cx),
+                MenuItem::SystemMenu(menu) => menu.name = i18n::text(menu.name.clone(), cx),
+                MenuItem::Separator => {}
+            }
+        }
+    }
+    for menu in &mut menus {
+        translate_menu(menu, cx);
+    }
+    menus
 }
