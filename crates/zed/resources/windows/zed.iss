@@ -2,10 +2,10 @@
 AppId={#AppId}
 AppName={#AppName}
 AppVerName={#AppDisplayName}
-AppPublisher=Zed Industries
-AppPublisherURL=https://www.zed.dev/
-AppSupportURL=https://www.zed.dev/
-AppUpdatesURL=https://www.zed.dev/
+AppPublisher=QMR Zed
+AppPublisherURL=https://github.com/Sanstoolow0513/qmr-zed
+AppSupportURL=https://github.com/Sanstoolow0513/qmr-zed/releases
+AppUpdatesURL=https://github.com/Sanstoolow0513/qmr-zed/releases
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 DisableReadyPage=yes

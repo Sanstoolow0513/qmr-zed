@@ -21,9 +21,9 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
   CARGO_INCREMENTAL: '0'
-  CARGO_PROFILE_RELEASE_DEBUG: '0'
   ZED_RELEASE_CHANNEL: stable
   RELEASE_CHANNEL: stable
+  ZED_UPDATE_EXPLANATION: QMR Zed is an independent fork. Download updates from https://github.com/Sanstoolow0513/qmr-zed/releases.
 
 jobs:
   prepare:
@@ -53,38 +53,54 @@ jobs:
       - name: Test release validation
         run: python3 script/test-qmr-release.py
 
-  remote_server:
+  bundle:
     if: github.repository == 'Sanstoolow0513/qmr-zed'
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-          - runner: macos-15
-            target: aarch64-apple-darwin
           - runner: windows-2022
+            os: windows
+            arch: x86_64
             target: x86_64-pc-windows-msvc
+            client: Zed-x86_64.exe
           - runner: windows-11-arm
+            os: windows
+            arch: aarch64
             target: aarch64-pc-windows-msvc
+            client: Zed-aarch64.exe
+          - runner: macos-15-intel
+            os: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
+            client: Zed-x86_64.dmg
+          - runner: macos-15
+            os: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
+            client: Zed-aarch64.dmg
+          - runner: ubuntu-24.04
+            os: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-musl
+            client: zed-linux-x86_64.tar.gz
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: aarch64
+            target: aarch64-unknown-linux-musl
+            client: zed-linux-aarch64.tar.gz
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       TARGET: ${{ matrix.target }}
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
       RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
-    defaults:
-      run:
-        shell: bash
     steps:
       - name: Configure Windows checkout
         if: runner.os == 'Windows'
+        shell: pwsh
         run: git config --global core.symlinks false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -94,54 +110,99 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - name: Install Inno Setup when the runner image does not include it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $inno = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $inno)) {
+            $setup = Join-Path $env:RUNNER_TEMP "innosetup.exe"
+            Invoke-WebRequest "https://jrsoftware.org/download.php/is.exe" -OutFile $setup
+            Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait
+          }
+          if (-not (Test-Path -LiteralPath $inno)) { throw "Inno Setup was not installed." }
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
           ./script/linux
-          echo 'CC=clang' >> "$GITHUB_ENV"
-          echo 'CXX=clang++' >> "$GITHUB_ENV"
-          compiler_variable="CC_${TARGET//-/_}"
-          echo "$compiler_variable=musl-gcc" >> "$GITHUB_ENV"
-      - name: Install Rust target and WASI SDK
+          lld=$(clang -print-prog-name=ld.lld)
+          if [[ "$lld" != /* ]]; then
+            lld=$(command -v ld.lld || command -v ld.lld-18)
+          fi
+          {
+            echo "CC=clang"
+            echo "CXX=clang++"
+            echo "LLD=$lld"
+          } >> "$GITHUB_ENV"
+      - name: Download the WASI SDK used by release builds
+        shell: bash
+        run: ./script/download-wasi-sdk
+      - name: Build Windows installer and remote server
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./script/bundle-windows.ps1 -Architecture ${{ matrix.arch }}
+      - name: Build macOS disk image and remote server
+        if: runner.os == 'macOS'
+        run: ./script/bundle-mac "$TARGET"
+      - name: Build Linux archive and remote server
+        if: runner.os == 'Linux'
+        run: ./script/bundle-linux --skip-sentry
+      - name: Collect release assets
+        shell: bash
         run: |
-          rustup target add "$TARGET"
-          ./script/download-wasi-sdk
-      - name: Build remote server separately from the client
-        run: cargo --config .cargo/bundle-config.toml build --locked --release --package remote_server --target "$TARGET"
-      - name: Verify and package server
-        run: python script/qmr-release.py package-server --target "$TARGET" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+          git checkout -- assets/licenses.md
+          if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+            git status --porcelain
+            echo "The bundler modified tracked sources." >&2
+            exit 1
+          fi
+          python script/qmr-release.py package-server --target "$TARGET" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+          case "${{ matrix.os }}" in
+            windows) client="target/${{ matrix.client }}" ;;
+            macos) client="target/$TARGET/release/${{ matrix.client }}" ;;
+            linux) client="target/release/${{ matrix.client }}" ;;
+          esac
+          test -f "$client"
+          cp "$client" target/qmr-release/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: qmr-server-${{ matrix.target }}
+          name: qmr-${{ matrix.os }}-${{ matrix.arch }}
           path: target/qmr-release/*
           if-no-files-found: error
 
-  windows_client:
+  bwrap:
     if: github.repository == 'Sanstoolow0513/qmr-zed'
     needs: prepare
-    runs-on: windows-2022
-    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
-      - name: Configure Windows checkout
-        run: git config --global core.symlinks false
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: cachix/install-nix-action@02a151ada4993995686f9ed4f1be7cfbb229e56f
         with:
-          ref: ${{ needs.prepare.outputs.commit }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Build and package client
-        shell: pwsh
-        run: ./script/bundle-qmr-windows.ps1 -Jobs 2
+          github_access_token: ${{ github.token }}
+      - name: Build static bubblewrap
+        run: |
+          nix build nixpkgs#pkgsStatic.bubblewrap -L
+          mkdir -p target/qmr-release
+          cp result/bin/bwrap "bwrap-linux-${{ matrix.arch }}"
+          chmod 755 "bwrap-linux-${{ matrix.arch }}"
+          gzip -f --stdout --best "bwrap-linux-${{ matrix.arch }}" > "target/qmr-release/bwrap-linux-${{ matrix.arch }}.gz"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: qmr-windows-client
-          path: |
-            target/qmr-dist/qmr-zed-*.zip
+          name: qmr-bwrap-${{ matrix.arch }}
+          path: target/qmr-release/*
           if-no-files-found: error
 
   publish:
     if: github.repository == 'Sanstoolow0513/qmr-zed'
-    needs: [prepare, remote_server, windows_client]
+    needs: [prepare, bundle, bwrap]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
