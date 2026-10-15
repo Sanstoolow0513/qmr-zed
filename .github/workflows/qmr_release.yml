@@ -150,7 +150,11 @@ jobs:
       - name: Collect release assets
         shell: bash
         run: |
-          git checkout -- assets/licenses.md
+          # licenses.md is generated into the bundle and ignored by git.
+          # checkout fails when the path is not in the commit.
+          if git cat-file -e "HEAD:assets/licenses.md" 2>/dev/null; then
+            git checkout -- assets/licenses.md
+          fi
           if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
             git status --porcelain
             echo "The bundler modified tracked sources." >&2
