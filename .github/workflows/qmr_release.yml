@@ -83,6 +83,9 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Configure Windows checkout
+        if: runner.os == 'Windows'
+        run: git config --global core.symlinks false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ needs.prepare.outputs.commit }}
@@ -119,6 +122,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 180
     steps:
+      - name: Configure Windows checkout
+        run: git config --global core.symlinks false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ needs.prepare.outputs.commit }}
