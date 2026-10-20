@@ -957,13 +957,17 @@ impl MultiWorkspace {
         }
 
         let workspaces = self.workspaces_for_project_group(group_key, cx);
+        if workspaces.is_empty() {
+            let previous_count = self.project_groups.len();
+            self.project_groups.retain(|group| group.key != *group_key);
+            let removed = previous_count != self.project_groups.len();
+            if removed {
+                cx.emit(MultiWorkspaceEvent::ProjectGroupsChanged);
+            }
+            return Task::ready(Ok(removed));
+        }
 
-        let task = self.remove(workspaces, RemovalIntent::CloseProject, window, cx);
-
-        self.project_groups.retain(|group| group.key != *group_key);
-        cx.emit(MultiWorkspaceEvent::ProjectGroupsChanged);
-
-        task
+        self.remove(workspaces, RemovalIntent::CloseProject, window, cx)
     }
 
     /// Returns the nearest retained workspace outside the project group at
@@ -1754,9 +1758,7 @@ impl MultiWorkspace {
         let original_active = self.workspace().clone();
         let group_key = original_active.read(cx).project_group_key(cx);
 
-        // Record the neighborhood of the project as the user sees it now:
-        // callers like `remove_project_group` delete the project row itself
-        // before the removal task runs.
+        // Save the neighborhood before consent can activate a different workspace.
         let group_index = self
             .project_groups
             .iter()
@@ -1793,6 +1795,22 @@ impl MultiWorkspace {
             let (removed_any, reopen_key) = this.update_in(cx, |this, window, cx| {
                 let mut removed_any = false;
                 let displayed_workspace = this.workspace().clone();
+
+                if intent == RemovalIntent::CloseProject {
+                    let workspace_to_delete_keys = workspaces
+                        .iter()
+                        .map(|workspace| workspace.read(cx).project_group_key(cx))
+                        .filter(|key| {
+                            this.workspaces_for_project_group(key, cx)
+                                .iter()
+                                .all(|workspace| workspaces.contains(workspace))
+                        })
+                        .collect::<Vec<_>>();
+
+                    this.project_groups
+                        .retain(|group| !workspace_to_delete_keys.contains(&group.key));
+                    cx.emit(MultiWorkspaceEvent::ProjectGroupsChanged);
+                }
 
                 for workspace in &workspaces {
                     if *workspace == displayed_workspace {

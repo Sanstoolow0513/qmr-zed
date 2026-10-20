@@ -51,14 +51,19 @@ impl FileIcons {
                 return maybe_path;
             }
 
-            // check if suffix based on first dot is in suffixes
-            // e.g. consider `module.js` as suffix to angular's module file named `auth.module.js`
-            while let Some((_, suffix)) = typ.split_once('.') {
+            let mut first_prefix = None;
+            while let Some((prefix, suffix)) = typ.split_once('.') {
+                first_prefix.get_or_insert(prefix);
                 let maybe_path = get_icon_from_suffix(suffix);
                 if maybe_path.is_some() {
                     return maybe_path;
                 }
                 typ = suffix;
+            }
+            if let Some(prefix) = first_prefix.and_then(get_icon_from_suffix) {
+                // check if stem (before first dot) is in stems
+                // e.g. catch file named `Dockerfile.prod` or `Podfile.lock`
+                return Some(prefix);
             }
         }
 
@@ -255,9 +260,11 @@ mod tests {
             );
         }
 
-        let docker = FileIcons::get_icon_definition(Path::new("Dockerfile"), cx).unwrap();
-        assert_eq!(docker.path, "icons/file_icons/docker.svg");
-        assert!(docker.colors.is_some());
+        for filename in ["Dockerfile", "Dockerfile.prod"] {
+            let docker = FileIcons::get_icon_definition(Path::new(filename), cx).unwrap();
+            assert_eq!(docker.path, "icons/file_icons/docker.svg");
+            assert!(docker.colors.is_some());
+        }
     }
 
     #[gpui::test]
@@ -448,6 +455,40 @@ mod tests {
                 FileIcons::get_folder_indicators(FolderIndicator::Icon, false, &path, cx),
                 "the default must stay `icon` so existing users see no change"
             );
+        });
+    }
+
+    #[gpui::test]
+    fn test_suffix_matches_take_precedence_over_prefixes(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            theme::init(theme::LoadThemes::JustBase, cx);
+        });
+
+        cx.update(|cx| {
+            assert_eq!(
+                FileIcons::get_icon("mod.rs".as_ref(), cx),
+                Some("icons/file_icons/rust.svg".into())
+            );
+            assert_eq!(
+                FileIcons::get_icon("Dockerfile.rs".as_ref(), cx),
+                Some("icons/file_icons/rust.svg".into())
+            );
+            assert_eq!(
+                FileIcons::get_icon("go.mod".as_ref(), cx),
+                Some("icons/file_icons/go.svg".into())
+            );
+            for (filename, icon) in [
+                ("Dockerfile.prod", "docker"),
+                ("Podfile.lock", "lock"),
+                ("Podfile.custom", "ruby"),
+                ("Procfile.web", "heroku"),
+            ] {
+                assert_eq!(
+                    FileIcons::get_icon(filename.as_ref(), cx),
+                    Some(format!("icons/file_icons/{icon}.svg").into()),
+                    "{filename}",
+                );
+            }
         });
     }
 }

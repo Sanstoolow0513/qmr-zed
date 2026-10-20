@@ -8605,7 +8605,6 @@ impl Editor {
                     project.restart_language_servers_for_buffers(
                         multi_buffer.all_buffers().into_iter().collect(),
                         HashSet::default(),
-                        true,
                         cx,
                     );
                 });
@@ -11431,7 +11430,7 @@ impl Editor {
             inlay_hints_style: make_inlay_hints_style(cx),
             edit_prediction_styles: make_suggestion_styles(cx),
             unnecessary_code_fade: settings.unnecessary_code_fade,
-            show_underlines: self.diagnostics_enabled(),
+            show_underlines: !self.mode.is_minimap(),
         }
     }
 

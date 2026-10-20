@@ -154,11 +154,11 @@ impl Scene {
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
         self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.texture_id.index));
         self.surfaces.sort_by_key(|surface| surface.order);
     }
 
@@ -711,10 +711,10 @@ impl Default for TransformationMatrix {
 pub struct MonochromeSprite {
     pub order: DrawOrder,
     pub pad: u32,
+    pub tile: AtlasTile,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
-    pub tile: AtlasTile,
     pub transformation: TransformationMatrix,
 }
 
@@ -730,10 +730,10 @@ impl From<MonochromeSprite> for Primitive {
 pub struct SubpixelSprite {
     pub order: DrawOrder,
     pub pad: u32, // align to 8 bytes
+    pub tile: AtlasTile,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
-    pub tile: AtlasTile,
     pub transformation: TransformationMatrix,
 }
 
@@ -749,12 +749,12 @@ impl From<SubpixelSprite> for Primitive {
 pub struct PolychromeSprite {
     pub order: DrawOrder,
     pub pad: u32,
+    pub tile: AtlasTile,
     pub grayscale: PaddedBool32,
     pub opacity: f32,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
-    pub tile: AtlasTile,
 }
 
 impl From<PolychromeSprite> for Primitive {
@@ -935,6 +935,92 @@ pub struct PathVertex<P: Clone + Debug + Default + PartialEq> {
     pub xy_position: Point<P>,
     pub st_position: Point<f32>,
     pub content_mask: ContentMask<P>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AtlasTextureId, AtlasTextureKind, TileId};
+
+    #[test]
+    fn sprites_on_the_same_texture_share_a_batch() {
+        let mut scene = Scene::default();
+        // Tile IDs are local to each texture and can interleave across textures.
+        for (tile_id, texture_index) in [(0, 1), (1, 0), (2, 1), (3, 0)] {
+            let tile = |kind| AtlasTile {
+                texture_id: AtlasTextureId {
+                    index: texture_index,
+                    kind,
+                },
+                tile_id: TileId(tile_id),
+                padding: 0,
+                bounds: Default::default(),
+            };
+            scene.monochrome_sprites.push(MonochromeSprite {
+                order: 0,
+                pad: 0,
+                tile: tile(AtlasTextureKind::Monochrome),
+                bounds: Default::default(),
+                content_mask: Default::default(),
+                color: Default::default(),
+                transformation: Default::default(),
+            });
+            scene.subpixel_sprites.push(SubpixelSprite {
+                order: 0,
+                pad: 0,
+                tile: tile(AtlasTextureKind::Subpixel),
+                bounds: Default::default(),
+                content_mask: Default::default(),
+                color: Default::default(),
+                transformation: Default::default(),
+            });
+            scene.polychrome_sprites.push(PolychromeSprite {
+                order: 0,
+                pad: 0,
+                tile: tile(AtlasTextureKind::Polychrome),
+                grayscale: false.into(),
+                opacity: 1.,
+                bounds: Default::default(),
+                content_mask: Default::default(),
+                corner_radii: Default::default(),
+            });
+        }
+        scene.finish();
+        let mut batches = 0;
+        let mut sprites = 0;
+        for batch in scene.batches() {
+            let (texture_id, tiles) = match batch {
+                PrimitiveBatch::MonochromeSprites { texture_id, range } => (
+                    texture_id,
+                    scene.monochrome_sprites[range]
+                        .iter()
+                        .map(|sprite| sprite.tile)
+                        .collect::<Vec<_>>(),
+                ),
+                PrimitiveBatch::SubpixelSprites { texture_id, range } => (
+                    texture_id,
+                    scene.subpixel_sprites[range]
+                        .iter()
+                        .map(|sprite| sprite.tile)
+                        .collect(),
+                ),
+                PrimitiveBatch::PolychromeSprites { texture_id, range } => (
+                    texture_id,
+                    scene.polychrome_sprites[range]
+                        .iter()
+                        .map(|sprite| sprite.tile)
+                        .collect(),
+                ),
+                _ => panic!("unexpected non-sprite batch"),
+            };
+            assert_eq!(tiles.len(), 2);
+            assert!(tiles.iter().all(|tile| tile.texture_id == texture_id));
+            sprites += tiles.len();
+            batches += 1;
+        }
+        assert_eq!(batches, 6);
+        assert_eq!(sprites, 12);
+    }
 }
 
 #[expect(missing_docs)]
