@@ -869,6 +869,10 @@ async fn test_close_workspace_prefers_workspace_in_same_project_group(cx: &mut T
             vec![workspace_a_2],
             "only the fallback workspace should remain in project group A"
         );
+        assert!(multi_workspace.project_group_keys().contains(&key_a));
+        multi_workspace
+            .assert_project_group_key_integrity(cx)
+            .unwrap();
     });
 }
 
@@ -915,6 +919,102 @@ async fn test_close_workspace_opens_unloaded_local_neighbor(cx: &mut TestAppCont
             key_b,
             "the unloaded local neighboring group should be opened"
         );
+    });
+}
+
+#[gpui::test]
+async fn test_remove_project_group_preserves_row_until_save_consent(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/project-a", json!({})).await;
+    fs.insert_tree("/project-b", json!({})).await;
+    let project_a = Project::test(fs.clone(), ["/project-a".as_ref()], cx).await;
+    let project_b = Project::test(fs, ["/project-b".as_ref()], cx).await;
+    let key_a = project_a.read_with(cx, |project, cx| project.project_group_key(cx));
+    let (multi_workspace, cx) = setup_multi_workspace(&[project_a, project_b], cx);
+    let workspace_a = multi_workspace.read_with(cx, |multi_workspace, cx| {
+        multi_workspace.workspaces_for_project_group(&key_a, cx)[0].clone()
+    });
+    let item = cx.new(|cx| TestItem::new(cx).with_dirty(true));
+    workspace_a.update_in(cx, |workspace, window, cx| {
+        workspace.add_item_to_active_pane(Box::new(item), None, true, window, cx);
+    });
+    let original_keys = multi_workspace.read_with(cx, |multi_workspace, _| {
+        multi_workspace.project_group_keys()
+    });
+
+    let removal = multi_workspace.update_in(cx, |multi_workspace, window, cx| {
+        multi_workspace.remove_project_group(&key_a, window, cx)
+    });
+    cx.run_until_parked();
+    assert!(cx.has_pending_prompt());
+    multi_workspace.read_with(cx, |multi_workspace, _| {
+        assert_eq!(multi_workspace.project_group_keys(), original_keys);
+    });
+    cx.simulate_prompt_answer("Cancel");
+    cx.run_until_parked();
+    assert!(!removal.await.unwrap());
+    multi_workspace.read_with(cx, |multi_workspace, cx| {
+        assert_eq!(multi_workspace.project_group_keys(), original_keys);
+        assert_eq!(
+            multi_workspace.workspaces_for_project_group(&key_a, cx),
+            vec![workspace_a.clone()],
+        );
+        multi_workspace
+            .assert_project_group_key_integrity(cx)
+            .unwrap();
+    });
+
+    let removal = multi_workspace.update_in(cx, |multi_workspace, window, cx| {
+        multi_workspace.remove_project_group(&key_a, window, cx)
+    });
+    cx.run_until_parked();
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("Don't Save");
+    cx.run_until_parked();
+    assert!(removal.await.unwrap());
+    multi_workspace.read_with(cx, |multi_workspace, cx| {
+        assert!(!multi_workspace.project_group_keys().contains(&key_a));
+        assert!(
+            multi_workspace
+                .workspaces_for_project_group(&key_a, cx)
+                .is_empty()
+        );
+        multi_workspace
+            .assert_project_group_key_integrity(cx)
+            .unwrap();
+    });
+}
+
+#[gpui::test]
+async fn test_remove_unloaded_project_group(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/project-a", json!({})).await;
+    let project = Project::test(fs, ["/project-a".as_ref()], cx).await;
+    let (multi_workspace, cx) = setup_multi_workspace(&[project], cx);
+    let unloaded_key = ProjectGroupKey::new(None, PathList::new(&[PathBuf::from("/project-b")]));
+    multi_workspace.update(cx, |multi_workspace, _| {
+        multi_workspace.test_add_project_group(ProjectGroup {
+            key: unloaded_key.clone(),
+            workspaces: Vec::new(),
+            expanded: false,
+        });
+    });
+    assert!(
+        multi_workspace
+            .update_in(cx, |multi_workspace, window, cx| {
+                multi_workspace.remove_project_group(&unloaded_key, window, cx)
+            })
+            .await
+            .unwrap()
+    );
+    multi_workspace.read_with(cx, |multi_workspace, cx| {
+        assert!(!multi_workspace.project_group_keys().contains(&unloaded_key));
+        assert_eq!(multi_workspace.workspaces().count(), 1);
+        multi_workspace
+            .assert_project_group_key_integrity(cx)
+            .unwrap();
     });
 }
 

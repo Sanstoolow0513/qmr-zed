@@ -260,9 +260,11 @@ mod tests {
             );
         }
 
-        let docker = FileIcons::get_icon_definition(Path::new("Dockerfile"), cx).unwrap();
-        assert_eq!(docker.path, "icons/file_icons/docker.svg");
-        assert!(docker.colors.is_some());
+        for filename in ["Dockerfile", "Dockerfile.prod"] {
+            let docker = FileIcons::get_icon_definition(Path::new(filename), cx).unwrap();
+            assert_eq!(docker.path, "icons/file_icons/docker.svg");
+            assert!(docker.colors.is_some());
+        }
     }
 
     #[gpui::test]
@@ -475,6 +477,18 @@ mod tests {
                 FileIcons::get_icon("go.mod".as_ref(), cx),
                 Some("icons/file_icons/go.svg".into())
             );
+            for (filename, icon) in [
+                ("Dockerfile.prod", "docker"),
+                ("Podfile.lock", "lock"),
+                ("Podfile.custom", "ruby"),
+                ("Procfile.web", "heroku"),
+            ] {
+                assert_eq!(
+                    FileIcons::get_icon(filename.as_ref(), cx),
+                    Some(format!("icons/file_icons/{icon}.svg").into()),
+                    "{filename}",
+                );
+            }
         });
     }
 }
