@@ -439,8 +439,8 @@ jobs:
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
-        name: Zed-aarch64.exe
-        path: target/Zed-aarch64.exe
+        name: QMRZed-aarch64.exe
+        path: target/QMRZed-aarch64.exe
         if-no-files-found: error
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -493,8 +493,8 @@ jobs:
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
-        name: Zed-x86_64.exe
-        path: target/Zed-x86_64.exe
+        name: QMRZed-x86_64.exe
+        path: target/QMRZed-x86_64.exe
         if-no-files-found: error
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -627,8 +627,8 @@ jobs:
         mv ./artifacts/zed-linux-x86_64.tar.gz/zed-linux-x86_64.tar.gz release-artifacts/zed-linux-x86_64.tar.gz
         mv ./artifacts/bwrap-linux-aarch64.gz/bwrap-linux-aarch64.gz release-artifacts/bwrap-linux-aarch64.gz
         mv ./artifacts/bwrap-linux-x86_64.gz/bwrap-linux-x86_64.gz release-artifacts/bwrap-linux-x86_64.gz
-        mv ./artifacts/Zed-x86_64.exe/Zed-x86_64.exe release-artifacts/Zed-x86_64.exe
-        mv ./artifacts/Zed-aarch64.exe/Zed-aarch64.exe release-artifacts/Zed-aarch64.exe
+        mv ./artifacts/QMRZed-x86_64.exe/QMRZed-x86_64.exe release-artifacts/QMRZed-x86_64.exe
+        mv ./artifacts/QMRZed-aarch64.exe/QMRZed-aarch64.exe release-artifacts/QMRZed-aarch64.exe
         mv ./artifacts/zed-remote-server-macos-aarch64.gz/zed-remote-server-macos-aarch64.gz release-artifacts/zed-remote-server-macos-aarch64.gz
         mv ./artifacts/zed-remote-server-macos-x86_64.gz/zed-remote-server-macos-x86_64.gz release-artifacts/zed-remote-server-macos-x86_64.gz
         mv ./artifacts/zed-remote-server-linux-aarch64.gz/zed-remote-server-linux-aarch64.gz release-artifacts/zed-remote-server-linux-aarch64.gz

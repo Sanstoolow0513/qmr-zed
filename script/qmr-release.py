@@ -16,8 +16,8 @@ import zipfile
 
 REPOSITORY = "Sanstoolow0513/qmr-zed"
 CLIENT_ASSETS = (
-    "Zed-x86_64.exe",
-    "Zed-aarch64.exe",
+    "QMRZed-x86_64.exe",
+    "QMRZed-aarch64.exe",
     "Zed-x86_64.dmg",
     "Zed-aarch64.dmg",
     "zed-linux-x86_64.tar.gz",

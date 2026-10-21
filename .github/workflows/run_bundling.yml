@@ -331,8 +331,8 @@ jobs:
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
-        name: Zed-aarch64.exe
-        path: target/Zed-aarch64.exe
+        name: QMRZed-aarch64.exe
+        path: target/QMRZed-aarch64.exe
         if-no-files-found: error
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -378,8 +378,8 @@ jobs:
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
-        name: Zed-x86_64.exe
-        path: target/Zed-x86_64.exe
+        name: QMRZed-x86_64.exe
+        path: target/QMRZed-x86_64.exe
         if-no-files-found: error
     - name: run_bundling::upload_artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -64,12 +64,12 @@ jobs:
             os: windows
             arch: x86_64
             target: x86_64-pc-windows-msvc
-            client: Zed-x86_64.exe
+            client: QMRZed-x86_64.exe
           - runner: windows-11-arm
             os: windows
             arch: aarch64
             target: aarch64-pc-windows-msvc
-            client: Zed-aarch64.exe
+            client: QMRZed-aarch64.exe
           - runner: macos-15-intel
             os: macos
             arch: x86_64
@@ -94,6 +94,9 @@ jobs:
     timeout-minutes: 360
     env:
       TARGET: ${{ matrix.target }}
+      ARCHITECTURE: ${{ matrix.arch }}
+      CLIENT_OS: ${{ matrix.os }}
+      CLIENT_ASSET: ${{ matrix.client }}
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
       RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
@@ -110,6 +113,10 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - name: Test Windows bundling contracts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./script/test-windows-bundle.ps1
       - name: Install Inno Setup when the runner image does not include it
         if: runner.os == 'Windows'
         shell: pwsh
@@ -140,7 +147,7 @@ jobs:
       - name: Build Windows installer and remote server
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./script/bundle-windows.ps1 -Architecture ${{ matrix.arch }}
+        run: ./script/bundle-windows.ps1 -Architecture $env:ARCHITECTURE
       - name: Build macOS disk image and remote server
         if: runner.os == 'macOS'
         run: ./script/bundle-mac "$TARGET"
@@ -161,10 +168,10 @@ jobs:
             exit 1
           fi
           python script/qmr-release.py package-server --target "$TARGET" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
-          case "${{ matrix.os }}" in
-            windows) client="target/${{ matrix.client }}" ;;
-            macos) client="target/$TARGET/release/${{ matrix.client }}" ;;
-            linux) client="target/release/${{ matrix.client }}" ;;
+          case "$CLIENT_OS" in
+            windows) client="target/$CLIENT_ASSET" ;;
+            macos) client="target/$TARGET/release/$CLIENT_ASSET" ;;
+            linux) client="target/release/$CLIENT_ASSET" ;;
           esac
           test -f "$client"
           cp "$client" target/qmr-release/
@@ -187,6 +194,8 @@ jobs:
             arch: aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    env:
+      ARCHITECTURE: ${{ matrix.arch }}
     steps:
       - uses: cachix/install-nix-action@02a151ada4993995686f9ed4f1be7cfbb229e56f
         with:
@@ -195,9 +204,9 @@ jobs:
         run: |
           nix build nixpkgs#pkgsStatic.bubblewrap -L
           mkdir -p target/qmr-release
-          cp result/bin/bwrap "bwrap-linux-${{ matrix.arch }}"
-          chmod 755 "bwrap-linux-${{ matrix.arch }}"
-          gzip -f --stdout --best "bwrap-linux-${{ matrix.arch }}" > "target/qmr-release/bwrap-linux-${{ matrix.arch }}.gz"
+          cp result/bin/bwrap "bwrap-linux-$ARCHITECTURE"
+          chmod 755 "bwrap-linux-$ARCHITECTURE"
+          gzip -f --stdout --best "bwrap-linux-$ARCHITECTURE" > "target/qmr-release/bwrap-linux-$ARCHITECTURE.gz"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: qmr-bwrap-${{ matrix.arch }}

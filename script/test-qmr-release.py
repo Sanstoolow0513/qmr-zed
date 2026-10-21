@@ -105,12 +105,26 @@ class ReleaseValidationTests(unittest.TestCase):
             self.validate()
 
     def test_missing_client_asset_prevents_release(self):
-        self.write_clients(missing="Zed-x86_64.exe")
-        with self.assertRaisesRegex(ValueError, "Missing client asset: Zed-x86_64.exe"):
+        self.write_clients(missing="QMRZed-x86_64.exe")
+        with self.assertRaisesRegex(ValueError, "Missing client asset: QMRZed-x86_64.exe"):
             self.validate()
 
+    def test_upstream_windows_installer_names_do_not_satisfy_release(self):
+        for architecture in ("x86_64", "aarch64"):
+            with self.subTest(architecture=architecture):
+                fork_installer = self.directory / f"QMRZed-{architecture}.exe"
+                upstream_installer = self.directory / f"Zed-{architecture}.exe"
+                fork_installer.rename(upstream_installer)
+                try:
+                    with self.assertRaisesRegex(
+                        ValueError, f"Missing client asset: QMRZed-{architecture}.exe"
+                    ):
+                        self.validate()
+                finally:
+                    upstream_installer.rename(fork_installer)
+
     def test_invalid_windows_installer_prevents_release(self):
-        (self.directory / "Zed-aarch64.exe").write_bytes(b"not an executable")
+        (self.directory / "QMRZed-aarch64.exe").write_bytes(b"not an executable")
         with self.assertRaisesRegex(ValueError, "not a Windows executable"):
             self.validate()
 
