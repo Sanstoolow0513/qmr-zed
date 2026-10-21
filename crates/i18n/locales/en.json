@@ -5686,5 +5686,10 @@
   "{selected_rows} / {total_rows} rows selected": "{selected_rows} / {total_rows} rows selected",
   "—  Modified in {scope}": "—  Modified in {scope}",
   "• Unlimited threads\n• Priority support\n• Advanced analytics": "• Unlimited threads\n• Priority support\n• Advanced analytics",
-  "简体中文": "简体中文"
+  "简体中文": "简体中文",
+  "Are you sure you want to discard {changes} to ": "Are you sure you want to discard {changes} to ",
+  "Discard {changes} to {tracked_count} files?": "Discard {changes} to {tracked_count} files?",
+  "Discard {changes} to {tracked_count} files and trash {untracked_count} files?": "Discard {changes} to {tracked_count} files and trash {untracked_count} files?",
+  "changes": "changes",
+  "unstaged changes": "unstaged changes"
 }
