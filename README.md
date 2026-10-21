@@ -19,15 +19,16 @@ original [font license](assets/fonts/maple-mono-nf-cn/LICENSE.txt) is included.
 
 ### QMR Zed releases
 
-Release assets use the same names and package types as upstream Zed:
+Release assets use these names and package types:
 
-- Windows: `Zed-x86_64.exe` and `Zed-aarch64.exe` (Inno Setup installers)
+- Windows: `QMRZed-x86_64.exe` and `QMRZed-aarch64.exe` (Inno Setup installers)
 - macOS: `Zed-x86_64.dmg` and `Zed-aarch64.dmg`
 - Linux: `zed-linux-x86_64.tar.gz` and `zed-linux-aarch64.tar.gz`
 - Linux sandbox: `bwrap-linux-x86_64.gz` and `bwrap-linux-aarch64.gz`
 - Remote servers for Linux, macOS, and Windows on x86_64 and aarch64
 
-The installed application is QMR Zed. It uses its own install location, file
+The Windows editor is installed as `QMRZed.exe`, with the `qmrzed` command in
+its `bin` directory. The installed application uses its own install location, file
 associations, and `%APPDATA%\QMRZed` / `%LOCALAPPDATA%\QMRZed` data directories,
 separate from official Zed. Automatic updates to official Zed builds are
 disabled. Download updates from this fork's
@@ -35,9 +36,10 @@ disabled. Download updates from this fork's
 
 These packages are unsigned: the fork does not have Apple or Azure signing
 certificates. Windows SmartScreen and macOS Gatekeeper show a warning. The
-Windows 11 Explorer package is unsigned, so that context-menu integration does
-not register; the installer still adds the optional registry entries used on
-earlier Windows versions.
+Windows installer enables "Open with QMR Zed" for files, folders, folder
+backgrounds, and drives by default. On Windows 11, these entries are available
+under **Show more options** even when the unsigned Explorer package cannot
+register. File and folder context menus can be disabled separately during setup.
 
 Build one platform locally with the upstream bundlers. Set
 `ZED_RELEASE_CHANNEL` to `stable`, `preview`, `nightly`, or `dev` first; when

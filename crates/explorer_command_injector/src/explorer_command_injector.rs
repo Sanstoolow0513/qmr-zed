@@ -44,7 +44,7 @@ struct ExplorerCommandInjector;
 impl IExplorerCommand_Impl for ExplorerCommandInjector_Impl {
     fn GetTitle(&self, _: Ref<IShellItemArray>) -> Result<windows_core::PWSTR> {
         let command_description =
-            retrieve_command_description().unwrap_or(HSTRING::from("Open with Zed"));
+            retrieve_command_description().unwrap_or(HSTRING::from("Open with QMR Zed"));
         unsafe { SHStrDupW(&command_description) }
     }
 
@@ -174,16 +174,16 @@ fn get_zed_install_folder() -> Option<PathBuf> {
 
 #[inline]
 fn get_zed_exe_path() -> Option<String> {
-    get_zed_install_folder().map(|path| path.join("Zed.exe").to_string_lossy().into_owned())
+    get_zed_install_folder().map(|path| path.join("QMRZed.exe").to_string_lossy().into_owned())
 }
 
 #[inline]
 fn retrieve_command_description() -> Result<HSTRING> {
     const REG_PATH: &str = cfg_select! {
-        feature = "stable" => { r#"Software\Classes\ZedContextMenu"# },
-        feature = "preview" => { r#"Software\Classes\ZedPreviewContextMenu"# },
-        feature = "nightly" => { r#"Software\Classes\ZedNightlyContextMenu"# },
-        _ => { r#"Software\Classes\ZedDevContextMenu"# },
+        feature = "stable" => { r#"Software\Classes\QMRZedContextMenu"# },
+        feature = "preview" => { r#"Software\Classes\QMRZedPreviewContextMenu"# },
+        feature = "nightly" => { r#"Software\Classes\QMRZedNightlyContextMenu"# },
+        _ => { r#"Software\Classes\QMRZedDevContextMenu"# },
     };
 
     let key = windows_registry::CURRENT_USER.open(REG_PATH)?;

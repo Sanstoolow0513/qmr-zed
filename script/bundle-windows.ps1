@@ -128,13 +128,13 @@ function GenerateLicenses {
 
 function BuildZedAndItsFriends {
     Write-Output "Building Zed and its friends, for channel: $channel"
-    # Build zed.exe, cli.exe and auto_update_helper.exe
+    # Build qmrzed.exe, cli.exe and auto_update_helper.exe
     cargo --config .cargo/bundle-config.toml build --locked --release --package zed --package cli --package auto_update_helper --target $target
     $editorBinary = ".\$CargoOutDir\qmrzed.exe"
     if (-not (Test-Path -LiteralPath $editorBinary)) {
         $editorBinary = ".\$CargoOutDir\zed.exe"
     }
-    Copy-Item -LiteralPath $editorBinary -Destination "$innoDir\Zed.exe" -Force
+    Copy-Item -LiteralPath $editorBinary -Destination "$innoDir\QMRZed.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
@@ -144,6 +144,9 @@ function BuildZedAndItsFriends {
         }
         "preview" {
             cargo --config .cargo/bundle-config.toml build --locked --release --features preview --no-default-features --package explorer_command_injector --target $target
+        }
+        "dev" {
+            cargo --config .cargo/bundle-config.toml build --locked --release --no-default-features --package explorer_command_injector --target $target
         }
         default {
             cargo --config .cargo/bundle-config.toml build --locked --release --package explorer_command_injector --target $target
@@ -188,7 +191,7 @@ function ZipZedAndItsFriendsDebug {
         return
     }
 
-    Compress-Archive -Path $items -DestinationPath ".\$CargoOutDir\zed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip" -Force
+    Compress-Archive -Path $items -DestinationPath ".\$CargoOutDir\QMRZed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip" -Force
 }
 
 
@@ -227,6 +230,9 @@ function MakeAppx {
         "preview" {
             $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Preview.xml"
         }
+        "dev" {
+            $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Dev.xml"
+        }
         default {
             $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Nightly.xml"
         }
@@ -245,7 +251,7 @@ function SignZedAndItsFriends {
         return
     }
 
-    $files = "$innoDir\Zed.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
+    $files = "$innoDir\QMRZed.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
     & "$innoDir\sign.ps1" $files
 }
 
@@ -270,8 +276,8 @@ function DownloadConpty {
 function CollectFiles {
     Move-Item -Path "$innoDir\zed_explorer_command_injector.appx" -Destination "$innoDir\appx\zed_explorer_command_injector.appx" -Force
     Move-Item -Path "$innoDir\zed_explorer_command_injector.dll" -Destination "$innoDir\appx\zed_explorer_command_injector.dll" -Force
-    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\zed.exe" -Force
-    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\zed" -Force
+    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\qmrzed.exe" -Force
+    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\qmrzed" -Force
     Move-Item -Path "$innoDir\auto_update_helper.exe" -Destination "$innoDir\tools\auto_update_helper.exe" -Force
     if($Architecture -eq "aarch64") {
         New-Item -Type Directory -Path "$innoDir\arm64" -Force
@@ -296,54 +302,53 @@ function BuildInstaller {
             $appIconName = "app-icon"
             $appName = "QMR Zed"
             $appDisplayName = "QMR Zed"
-            $appSetupName = "Zed-$Architecture"
+            $appSetupName = "QMRZed-$Architecture"
             # Must match format!("{}-Instance-Mutex", app_identifier()) in windows_only_instance.rs.
             $appMutex = "QMRZed-Editor-Stable-Instance-Mutex"
-            $appExeName = "Zed"
+            $appExeName = "QMRZed"
             $regValueName = "QMRZed"
             $appUserId = "Sanstoolow0513.QMRZed"
             $appShellNameShort = "Q&MR Zed"
-            # Not the official Zed package name, so setup does not remove that installation.
-            $appAppxFullName = "Sanstoolow0513.QMRZed_1.0.0.0_neutral__qmrstable"
+            $appAppxName = "Sanstoolow0513.QMRZed"
         }
         "preview" {
             $appId = "{{D15B7A42-8E04-4F63-B2C9-0A6E3F91C7D8}"
             $appIconName = "app-icon-preview"
             $appName = "QMR Zed Preview"
             $appDisplayName = "QMR Zed Preview"
-            $appSetupName = "Zed-$Architecture"
+            $appSetupName = "QMRZed-$Architecture"
             $appMutex = "QMRZed-Editor-Preview-Instance-Mutex"
-            $appExeName = "Zed"
+            $appExeName = "QMRZed"
             $regValueName = "QMRZedPreview"
             $appUserId = "Sanstoolow0513.QMRZed.Preview"
             $appShellNameShort = "Q&MR Zed Preview"
-            $appAppxFullName = "Sanstoolow0513.QMRZed.Preview_1.0.0.0_neutral__qmrpreview"
+            $appAppxName = "Sanstoolow0513.QMRZed.Preview"
         }
         "nightly" {
             $appId = "{{E26C8B53-9F15-4074-A3DA-1B7F40A2D8E9}"
             $appIconName = "app-icon-nightly"
             $appName = "QMR Zed Nightly"
             $appDisplayName = "QMR Zed Nightly"
-            $appSetupName = "Zed-$Architecture"
+            $appSetupName = "QMRZed-$Architecture"
             $appMutex = "QMRZed-Editor-Nightly-Instance-Mutex"
-            $appExeName = "Zed"
+            $appExeName = "QMRZed"
             $regValueName = "QMRZedNightly"
             $appUserId = "Sanstoolow0513.QMRZed.Nightly"
             $appShellNameShort = "Q&MR Zed Nightly"
-            $appAppxFullName = "Sanstoolow0513.QMRZed.Nightly_1.0.0.0_neutral__qmrnightly"
+            $appAppxName = "Sanstoolow0513.QMRZed.Nightly"
         }
         "dev" {
             $appId = "{{F37D9C64-A026-4185-B4EB-2C8051B3E9FA}"
             $appIconName = "app-icon-dev"
             $appName = "QMR Zed Dev"
             $appDisplayName = "QMR Zed Dev"
-            $appSetupName = "Zed-$Architecture"
+            $appSetupName = "QMRZed-$Architecture"
             $appMutex = "QMRZed-Editor-Dev-Instance-Mutex"
-            $appExeName = "Zed"
+            $appExeName = "QMRZed"
             $regValueName = "QMRZedDev"
             $appUserId = "Sanstoolow0513.QMRZed.Dev"
             $appShellNameShort = "Q&MR Zed Dev"
-            $appAppxFullName = "Sanstoolow0513.QMRZed.Dev_1.0.0.0_neutral__qmrdev"
+            $appAppxName = "Sanstoolow0513.QMRZed.Dev"
         }
         default {
             Write-Error "can't bundle installer for $channel."
@@ -371,7 +376,7 @@ function BuildInstaller {
         "AppUserId"      = $appUserId
         "Version"        = "$env:RELEASE_VERSION"
         "SourceDir"      = "$env:ZED_WORKSPACE"
-        "AppxFullName"   = $appAppxFullName
+        "AppxName"       = $appAppxName
     }
 
     $defs = @()
@@ -393,7 +398,10 @@ function BuildInstaller {
 
     if ($process.ExitCode -eq 0) {
         Write-Host "✅ Inno Setup successfully compiled the installer"
-        Write-Output "SETUP_PATH=target/$appSetupName.exe" >> $env:GITHUB_ENV
+        $script:setupPath = Join-Path $env:ZED_WORKSPACE "target\$appSetupName.exe"
+        if ($env:GITHUB_ENV) {
+            Write-Output "SETUP_PATH=target/$appSetupName.exe" >> $env:GITHUB_ENV
+        }
         $script:buildSuccess = $true
     }
     else {
@@ -404,8 +412,8 @@ function BuildInstaller {
 
 ParseZedWorkspace
 $innoDir = "$env:ZED_WORKSPACE\inno\$Architecture"
-$debugArchive = "$CargoOutDir\zed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip"
-$debugStoreKey = "$env:ZED_RELEASE_CHANNEL/zed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip"
+$debugArchive = "$CargoOutDir\QMRZed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip"
+$debugStoreKey = "$env:ZED_RELEASE_CHANNEL/QMRZed-$env:RELEASE_VERSION-$env:ZED_RELEASE_CHANNEL.dbg.zip"
 
 CheckEnvironmentVariables
 PrepareForBundle
@@ -427,8 +435,8 @@ if($env:CI) {
 if ($buildSuccess) {
     Write-Output "Build successful"
     if ($Install) {
-        Write-Output "Installing Zed..."
-        Start-Process -FilePath "$env:ZED_WORKSPACE/target/ZedEditorUserSetup-x64-$env:RELEASE_VERSION.exe"
+        Write-Output "Installing QMR Zed..."
+        Start-Process -FilePath $setupPath -WindowStyle Hidden
     }
     exit 0
 }
