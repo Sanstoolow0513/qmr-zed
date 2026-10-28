@@ -6323,7 +6323,7 @@ fn test_explain_move_error() {
         anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::AlreadyExists))
             .context("renaming \"/root/a/1.json\" into \"/root/1.json\"");
     assert_eq!(
-        explain_move_error(local_collision, Some(&names)).to_string(),
+        explain_move_error(local_collision, Some(&names), i18n::Locale::English).to_string(),
         explained_message
     );
 
@@ -6337,7 +6337,7 @@ fn test_explain_move_error() {
         "RenameProjectEntry",
     );
     assert_eq!(
-        explain_move_error(remote_collision, Some(&names)).to_string(),
+        explain_move_error(remote_collision, Some(&names), i18n::Locale::English).to_string(),
         explained_message
     );
 
@@ -6347,8 +6347,17 @@ fn test_explain_move_error() {
         anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
             .context(path_named_already_exists);
     assert_eq!(
-        explain_move_error(permission_denied, Some(&names)).to_string(),
+        explain_move_error(permission_denied, Some(&names), i18n::Locale::English).to_string(),
         path_named_already_exists
+    );
+    assert_eq!(
+        explain_move_error(
+            std::io::Error::from(std::io::ErrorKind::AlreadyExists).into(),
+            Some(&names),
+            i18n::Locale::SimplifiedChinese,
+        )
+        .to_string(),
+        "无法将 `a/1.json` 移动到 `1.json`。目标位置已存在文件或文件夹。"
     );
 }
 

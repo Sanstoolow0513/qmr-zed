@@ -66,7 +66,7 @@ pub fn show_error_toast(
         cx.defer(move |cx| {
             workspace.update(cx, |workspace, cx| {
                 let workspace_weak = cx.weak_entity();
-                let title = git_error_toast_title(&action, &message);
+                let title = i18n::text(git_error_toast_title(&action, &message), cx);
                 let toast = StatusToast::new(title, cx, |this, _cx| {
                     this.icon(
                         Icon::new(IconName::XCircle)

@@ -5484,6 +5484,7 @@ impl ProjectPanel {
                 .map(|wt| wt.read(cx).id());
 
             let path_style = self.project.read(cx).path_style(cx);
+            let locale = i18n::locale(cx);
 
             let mut move_tasks: Vec<(
                 ProjectEntryId,
@@ -5516,7 +5517,7 @@ impl ProjectPanel {
                     for (entry_id, names, task) in move_tasks {
                         if let Some(CreatedEntry::Included(new_entry)) = task
                             .await
-                            .map_err(|err| explain_move_error(err, names.as_ref()))
+                            .map_err(|err| explain_move_error(err, names.as_ref(), locale))
                             .notify_workspace_async_err(workspace.clone(), &mut cx)
                         {
                             if let (Some(old_path), Some(worktree_id)) =
@@ -5544,7 +5545,7 @@ impl ProjectPanel {
                     for (entry_id, names, task) in move_tasks {
                         if let Some(CreatedEntry::Included(new_entry)) = task
                             .await
-                            .map_err(|err| explain_move_error(err, names.as_ref()))
+                            .map_err(|err| explain_move_error(err, names.as_ref(), locale))
                             .notify_workspace_async_err(workspace.clone(), &mut cx)
                         {
                             if let (Some(old_path), Some(worktree_id)) =
@@ -8576,10 +8577,16 @@ fn git_status_indicator(git_status: GitSummary) -> Option<(&'static str, Color)>
     None
 }
 
-fn explain_move_error(err: anyhow::Error, names: Option<&(String, String)>) -> anyhow::Error {
+fn explain_move_error(
+    err: anyhow::Error,
+    names: Option<&(String, String)>,
+    locale: i18n::Locale,
+) -> anyhow::Error {
     match names {
-        Some((from, to)) if already_exists_error(&err) => err.context(format!(
-            "Failed to move `{from}` to `{to}`. A file or folder already exists there."
+        Some((from, to)) if already_exists_error(&err) => err.context(i18n::format_for_locale(
+            "Failed to move `{from}` to `{to}`. A file or folder already exists there.",
+            &[("from", from), ("to", to)],
+            locale,
         )),
         _ => err,
     }

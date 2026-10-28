@@ -1457,7 +1457,10 @@ impl PanelTool {
         } else {
             self.panel.toggle_action(window, cx)
         };
-        window.focus(&self.dock.read(cx).panel_button_focus_handle(window, cx), cx);
+        window.focus(
+            &self.dock.read(cx).panel_button_focus_handle(window, cx),
+            cx,
+        );
         window.dispatch_action(action, cx);
     }
 

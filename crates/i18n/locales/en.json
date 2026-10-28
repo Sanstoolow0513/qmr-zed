@@ -5691,5 +5691,7 @@
   "Discard {changes} to {tracked_count} files?": "Discard {changes} to {tracked_count} files?",
   "Discard {changes} to {tracked_count} files and trash {untracked_count} files?": "Discard {changes} to {tracked_count} files and trash {untracked_count} files?",
   "changes": "changes",
-  "unstaged changes": "unstaged changes"
+  "unstaged changes": "unstaged changes",
+  "Failed to move `{from}` to `{to}`. A file or folder already exists there.": "Failed to move `{from}` to `{to}`. A file or folder already exists there.",
+  "Push rejected: fetch and integrate remote changes before pushing again": "Push rejected: fetch and integrate remote changes before pushing again"
 }
