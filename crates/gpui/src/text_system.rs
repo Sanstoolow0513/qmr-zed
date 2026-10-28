@@ -1583,6 +1583,7 @@ mod font_resolution_tests {
         text_system.set_font_defaults(FontDefaults {
             proportional: "Arial".into(),
             monospace: "Maple Mono NF CN".into(),
+            asset_directory: "fonts/maple-mono-nf-cn/".into(),
         });
         {
             let mut font_ids = text_system.font_ids_by_font.write();
@@ -1601,6 +1602,7 @@ mod font_resolution_tests {
         text_system.set_font_defaults(FontDefaults {
             proportional: "Arial".into(),
             monospace: "Another Font".into(),
+            asset_directory: "fonts/maple-mono-nf-cn/".into(),
         });
         {
             let mut font_ids = text_system.font_ids_by_font.write();
