@@ -492,7 +492,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "sha2",
  "util",
+ "zstd 0.13.3",
 ]
 
 [[package]]

@@ -12,7 +12,9 @@ in **Settings → General → Display Language** (设置 → 通用 → 显示�
 to apply the change. The JSON setting is `"display_language": "zh-CN"` or `"en"`.
 Changing it in `settings.json` also shows a restart notification.
 
-All 16 faces from `MapleMono-NF-CN-unhinted.zip` are bundled as **Maple Mono NF CN**.
+The regular, italic, bold, and bold italic faces of **Maple Mono NF CN** are bundled.
+Other requested weights use the nearest available face. Release builds compress
+these four faces together without removing Chinese glyphs, Nerd Font icons, or ligatures.
 The interface and editor use this family by default, and terminals inherit the
 editor font unless overridden. Custom font settings remain supported. The
 original [font license](assets/fonts/maple-mono-nf-cn/LICENSE.txt) is included.
