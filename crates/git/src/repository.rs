@@ -909,9 +909,14 @@ pub trait GitRepository: Send + Sync {
         env: Arc<HashMap<String, String>>,
     ) -> BoxFuture<'_, Result<()>>;
 
+    /// Restores `paths` in the working tree.
+    ///
+    /// With `Some(commit)`, both the index and the working tree are reset to the
+    /// commit's version, discarding staged and unstaged changes. With `None`, only
+    /// the working tree is restored from the index, so staged changes are kept.
     fn checkout_files(
         &self,
-        commit: String,
+        commit: Option<String>,
         paths: Vec<RepoPath>,
         env: Arc<HashMap<String, String>>,
     ) -> BoxFuture<'_, Result<()>>;
@@ -1601,7 +1606,7 @@ impl GitRepository for RealGitRepository {
 
     fn checkout_files(
         &self,
-        commit: String,
+        commit: Option<String>,
         paths: Vec<RepoPath>,
         env: Arc<HashMap<String, String>>,
     ) -> BoxFuture<'_, Result<()>> {
@@ -1612,8 +1617,12 @@ impl GitRepository for RealGitRepository {
                 return Ok(());
             }
 
+            let mut args = vec!["checkout"];
+            args.extend(commit.as_deref());
+            args.push("--");
+
             let output = git
-                .build_command(&["checkout", &commit, "--"])
+                .build_command(&args)
                 .envs(env.iter())
                 .args(paths.iter().map(|path| path.as_unix_str()))
                 .output()
@@ -2133,8 +2142,40 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git = git?;
+                // Use `%gs` (reflog subject), not `%s` (commit subject). See
+                // https://github.com/zed-industries/zed/issues/55234 for further
+                // context.
+                //
+                // A stash is a regular commit object whose tree records the working
+                // directory state. The list of stashes is not an array — it's the
+                // reflog of `refs/stash`, where each reflog entry points at a stash
+                // commit. From git-stash(1):
+                //
+                //     "The latest stash you created is stored in `refs/stash`; older
+                //      stashes are found in the reflog of this reference and can be
+                //      named using the usual reflog syntax."
+                //     -- https://git-scm.com/docs/git-stash (DESCRIPTION)
+                //
+                // `git stash store` is documented as: "Store a given stash created via
+                // `git stash create` ... in the stash ref, updating the stash reflog."
+                // Crucially, it does not rewrite the underlying commit object — it
+                // only adds a reflog entry pointing at the existing commit.
+                //
+                // From git's pretty-format docs:
+                //
+                //     %s    subject
+                //     %gs   reflog subject
+                //
+                //     -- https://git-scm.com/docs/pretty-formats
+                //
+                // So `%s` would return the ORIGINAL message forever, regardless of how
+                // many times the stash gets renamed externally — no amount of cache
+                // invalidation or fs-watching can fix that, because the data we asked
+                // git for genuinely never changes. `%gs` reads the reflog message that
+                // `store -m` actually updates, and matches what `git stash list` shows
+                // by default.
                 let output = git
-                    .build_command(&["stash", "list", "--pretty=format:%gd%x00%H%x00%ct%x00%s"])
+                    .build_command(&["stash", "list", "--pretty=format:%gd%x00%H%x00%ct%x00%gs"])
                     .output()
                     .await?;
                 if output.status.success() {
@@ -2142,7 +2183,7 @@ impl GitRepository for RealGitRepository {
                     stdout.parse()
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    anyhow::bail!("git status failed: {stderr}");
+                    anyhow::bail!("git stash list failed: {stderr}");
                 }
             })
             .boxed()
@@ -4536,6 +4577,51 @@ mod tests {
                     TreeDiffStatus::Modified { old: base_oid },
                 )]),
             }
+        );
+    }
+
+    #[gpui::test]
+    async fn test_checkout_files_from_index_keeps_staged_changes(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let file_path = repo_dir.path().join("file.txt");
+        fs::write(&file_path, "head\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "head"]);
+        fs::write(&file_path, "staged\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        fs::write(&file_path, "unstaged\n").unwrap();
+
+        let repository = RealGitRepository::new(
+            &repo_dir.path().join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        let paths = vec![RepoPath::new("file.txt").unwrap()];
+
+        repository
+            .checkout_files(None, paths.clone(), Arc::default())
+            .await
+            .unwrap();
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "staged\n");
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["show", ":file.txt"]),
+            "staged"
+        );
+
+        repository
+            .checkout_files(Some("HEAD".into()), paths, Arc::default())
+            .await
+            .unwrap();
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "head\n");
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["show", ":file.txt"]),
+            "head"
         );
     }
 

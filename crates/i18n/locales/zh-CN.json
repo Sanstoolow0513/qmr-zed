@@ -5686,5 +5686,12 @@
   "{selected_rows} / {total_rows} rows selected": "已选择 {selected_rows} / {total_rows} 行",
   "—  Modified in {scope}": "—  已在{scope}中修改",
   "• Unlimited threads\n• Priority support\n• Advanced analytics": "• 不限会话数量；• 优先支持；• 高级分析",
-  "简体中文": "简体中文"
+  "简体中文": "简体中文",
+  "Are you sure you want to discard {changes} to ": "确定要放弃以下文件的{changes}：",
+  "Discard {changes} to {tracked_count} files?": "放弃 {tracked_count} 个文件的{changes}？",
+  "Discard {changes} to {tracked_count} files and trash {untracked_count} files?": "放弃 {tracked_count} 个文件的{changes}，并将 {untracked_count} 个文件移至回收站？",
+  "changes": "更改",
+  "unstaged changes": "未暂存更改",
+  "Failed to move `{from}` to `{to}`. A file or folder already exists there.": "无法将 `{from}` 移动到 `{to}`。目标位置已存在文件或文件夹。",
+  "Push rejected: fetch and integrate remote changes before pushing again": "推送被拒绝：请先获取并整合远端更改，再次推送"
 }

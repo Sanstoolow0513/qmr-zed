@@ -61,6 +61,7 @@ profiles = ["release"]
 # everything under a directory, and `dir/*` takes only what sits directly in it.
 [extra-inputs]
 # Own non-.rs files read at build time (protobufs, bindgen headers, doc/data).
+assets = ["../../assets/**"]
 proto = ["proto/**"]
 livekit_api = ["vendored/protocol/**"]
 gpui = [
