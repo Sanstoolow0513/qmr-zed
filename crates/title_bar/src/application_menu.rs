@@ -456,6 +456,8 @@ mod tests {
         init_test(cx);
 
         cx.update(|cx| {
+            // The fork disables AI by default; exercise both sides of the legacy transition explicitly.
+            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
             cx.set_menus(vec![view_menu(true)]);
         });
 

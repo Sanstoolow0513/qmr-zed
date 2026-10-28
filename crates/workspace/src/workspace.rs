@@ -12786,8 +12786,8 @@ mod tests {
     };
     use fs::{FakeFs, RemoveOptions};
     use gpui::{
-        DismissEvent, Empty, EventEmitter, FocusHandle, Focusable, Modifiers, Render,
-        TestAppContext, UpdateGlobal, VisualTestContext, px,
+        DismissEvent, Empty, EventEmitter, FocusHandle, Focusable, Render, TestAppContext,
+        UpdateGlobal, VisualTestContext, px,
     };
     use project::{Project, ProjectEntryId, WorktreeId};
     use serde_json::json;
@@ -20995,10 +20995,17 @@ mod tests {
             assert_eq!(workspace.zoomed_position, Some(DockPosition::Bottom));
         });
 
-        let sibling_button = cx
-            .debug_bounds("ICON-Terminal")
-            .expect("sibling panel button should be rendered in the status bar");
-        cx.simulate_click(sibling_button.center(), Modifiers::none());
+        // The fork exposes panels through tools, without a status bar in this test window.
+        let activate_panel_tool = |cx: &mut gpui::VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                let tool = crate::dock::PanelTool::collect(workspace.bottom_dock(), window, cx)
+                    .into_iter()
+                    .find(|tool| tool.key == SecondTestPanel::panel_key())
+                    .expect("sibling panel should have a tool");
+                tool.activate(window, cx);
+            });
+        };
+        activate_panel_tool(cx);
         cx.run_until_parked();
         workspace.update_in(cx, |workspace, window, cx| {
             let dock = workspace.bottom_dock().read(cx);
@@ -21021,10 +21028,7 @@ mod tests {
             assert_eq!(workspace.zoomed_position, Some(DockPosition::Bottom));
         });
 
-        let close_button = cx
-            .debug_bounds("ICON-Terminal")
-            .expect("active panel button should be rendered in the status bar");
-        cx.simulate_click(close_button.center(), Modifiers::none());
+        activate_panel_tool(cx);
         cx.run_until_parked();
         workspace.read_with(cx, |workspace, cx| {
             assert!(!workspace.bottom_dock().read(cx).is_open());
