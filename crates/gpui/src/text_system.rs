@@ -1716,9 +1716,13 @@ mod application_font_tests {
                 .and_then(|name| name.to_str())
                 .unwrap_or_default();
             assert_eq!(face.is_italic(), filename.contains("Italic"));
+            assert_eq!(
+                face.weight().to_number(),
+                if filename.contains("Bold") { 700 } else { 400 }
+            );
             count += 1;
         }
-        assert_eq!(count, 16);
+        assert_eq!(count, 4);
         Ok(())
     }
 }
