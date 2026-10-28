@@ -963,6 +963,8 @@ impl MultiWorkspace {
             let removed = previous_count != self.project_groups.len();
             if removed {
                 cx.emit(MultiWorkspaceEvent::ProjectGroupsChanged);
+                self.serialize(cx);
+                cx.notify();
             }
             return Task::ready(Ok(removed));
         }

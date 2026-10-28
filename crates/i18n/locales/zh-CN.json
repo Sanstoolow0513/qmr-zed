@@ -5691,5 +5691,7 @@
   "Discard {changes} to {tracked_count} files?": "放弃 {tracked_count} 个文件的{changes}？",
   "Discard {changes} to {tracked_count} files and trash {untracked_count} files?": "放弃 {tracked_count} 个文件的{changes}，并将 {untracked_count} 个文件移至回收站？",
   "changes": "更改",
-  "unstaged changes": "未暂存更改"
+  "unstaged changes": "未暂存更改",
+  "Failed to move `{from}` to `{to}`. A file or folder already exists there.": "无法将 `{from}` 移动到 `{to}`。目标位置已存在文件或文件夹。",
+  "Push rejected: fetch and integrate remote changes before pushing again": "推送被拒绝：请先获取并整合远端更改，再次推送"
 }
