@@ -1,5 +1,8 @@
 use std::ops::Range;
 
+use collections::HashMap;
+use futures::FutureExt;
+use futures::future::join_all;
 use gpui::{App, Context, HighlightStyle, Task};
 use itertools::Itertools as _;
 use language::language_settings::LanguageSettings;
@@ -14,7 +17,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use util::maybe;
 
 use crate::display_map::DisplaySnapshot;
-use crate::{Editor, LSP_REQUEST_DEBOUNCE_TIMEOUT, LspDataKind};
+use crate::{Editor, LSP_REQUEST_DEBOUNCE_TIMEOUT};
 
 impl Editor {
     /// Returns all document outline items for a buffer, using LSP or
@@ -30,15 +33,9 @@ impl Editor {
         };
 
         if lsp_symbols_enabled(buffer.read(cx), cx) {
-            let refresh_task = self
-                .lsp_data_tasks
-                .get(&buffer_id)
-                .and_then(|tasks| tasks.get(&LspDataKind::DocumentSymbols))
-                .cloned();
+            let refresh_task = self.refresh_document_symbols_task.clone();
             cx.spawn(async move |editor, cx| {
-                if let Some(refresh_task) = refresh_task {
-                    refresh_task.await;
-                }
+                refresh_task.await;
                 editor
                     .read_with(cx, |editor, _| {
                         editor
@@ -191,37 +188,46 @@ impl Editor {
             return;
         }
 
-        self.spawn_lsp_data_tasks(
-            LspDataKind::DocumentSymbols,
-            for_buffer,
-            buffers_to_query,
-            cx,
-            |buffer, cx| {
-                let project = project.clone();
-                let buffer_id = buffer.read(cx).remote_id();
-                cx.spawn(async move |editor, cx| {
-                    cx.background_executor()
-                        .timer(LSP_REQUEST_DEBOUNCE_TIMEOUT)
-                        .await;
+        self.refresh_document_symbols_task = cx
+            .spawn(async move |editor, cx| {
+                cx.background_executor()
+                    .timer(LSP_REQUEST_DEBOUNCE_TIMEOUT)
+                    .await;
 
-                    let Ok(task) = project.update(cx, |project, cx| {
+                let Some(tasks) = project
+                    .update(cx, |project, cx| {
                         project.lsp_store().update(cx, |lsp_store, cx| {
-                            lsp_store.fetch_document_symbols(&buffer, cx)
+                            buffers_to_query
+                                .into_iter()
+                                .map(|buffer| {
+                                    let buffer_id = buffer.read(cx).remote_id();
+                                    let task = lsp_store.fetch_document_symbols(&buffer, cx);
+                                    async move { (buffer_id, task.await) }
+                                })
+                                .collect::<Vec<_>>()
                         })
-                    }) else {
-                        return;
-                    };
+                    })
+                    .ok()
+                else {
+                    return;
+                };
 
-                    let mut items = task.await;
-                    editor
-                        .update(cx, |editor, cx| {
-                            let syntax = cx.theme().syntax().clone();
-                            let display_snapshot =
-                                editor.display_map.update(cx, |map, cx| map.snapshot(cx));
-                            let language = buffer.read(cx).language().cloned();
-                            for item in &mut items {
+                let results = join_all(tasks).await.into_iter().collect::<HashMap<_, _>>();
+                editor
+                    .update(cx, |editor, cx| {
+                        let syntax = cx.theme().syntax().clone();
+                        let display_snapshot =
+                            editor.display_map.update(cx, |map, cx| map.snapshot(cx));
+                        let mut highlighted_results = results;
+                        for (buffer_id, items) in highlighted_results.iter_mut() {
+                            let language = editor
+                                .buffer
+                                .read(cx)
+                                .buffer(*buffer_id)
+                                .and_then(|buffer| buffer.read(cx).language().cloned());
+                            for item in items {
                                 if let Some(highlights) =
-                                    highlights_from_buffer(&display_snapshot, item, &syntax)
+                                    highlights_from_buffer(&display_snapshot, &item, &syntax)
                                 {
                                     item.highlight_ranges = highlights;
                                 } else if let Some(language) = &language {
@@ -229,13 +235,13 @@ impl Editor {
                                         highlight_ranges_from_text(&item.text, language, &syntax);
                                 }
                             }
-                            editor.lsp_document_symbols.insert(buffer_id, items);
-                            editor.refresh_outline_symbols_at_cursor(cx);
-                        })
-                        .ok();
-                })
-            },
-        );
+                        }
+                        editor.lsp_document_symbols.extend(highlighted_results);
+                        editor.refresh_outline_symbols_at_cursor(cx);
+                    })
+                    .ok();
+            })
+            .shared();
     }
 }
 
