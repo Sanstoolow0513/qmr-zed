@@ -678,7 +678,7 @@ mod tests {
         let mut captures = Vec::new();
 
         while let Some(query_match) = matches.next() {
-            for capture in query_match.captures() {
+            for capture in query_match.captures {
                 let capture_name = query.capture_names()[capture.index as usize];
                 let captured_text = &source[capture.node.byte_range()];
 

@@ -63,19 +63,25 @@ CMake, the Windows SDK, and Inno Setup 6. macOS needs Xcode. Linux needs the
 packages installed by `script/linux`, including LLD 12 or newer.
 
 SSH, WSL, and dev-container connections download matching remote servers from
-this fork's GitHub Release. Release tags use `v` followed by the version in
-`crates/zed/Cargo.toml` (for example, `v2026.10.15`). The **QMR Zed release**
+this fork's GitHub Release. QMR Zed uses `YYYY.M.D` release versions (for example,
+`2026.10.15`), with an optional `-qmr.N` suffix. The version in
+`crates/zed/Cargo.toml` must match the `zed` package in `Cargo.lock`. Release
+tags add `v` to this version. The **QMR Zed release**
 workflow builds every client package and remote server from the same commit,
 then the static `bwrap` binaries. It publishes only after all of those assets
 pass validation. Linux servers are static musl binaries. A release version and
 its tag must never be reused for different source code.
 
-To release, commit the reviewed changes, create the matching tag on this fork,
-and push that tag to `origin`. The workflow also supports a manual run against
-an existing tag. It requires no upstream credentials or private runners. A
-locally built client needs the matching fork Release before a first remote
-connection can download its server. The client reports a missing release
-instead of falling back to an unrelated official server.
+Before tagging, run `python script/qmr-release.py check-version` to verify the
+two files and print the expected tag. Commit the reviewed changes, create the
+printed tag on that clean commit, and run
+`python script/qmr-release.py check-tag --tag vYYYY.M.D` with the actual tag.
+Push the tag to `origin` to start the workflow. The workflow also supports a
+manual run against an existing tag, and checks the remote tag against the
+built commit before publishing. It requires no upstream credentials or private
+runners. A locally built client needs the matching fork Release before its first
+remote connection can download the server. The client reports an error when the
+matching fork Release is missing.
 
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)

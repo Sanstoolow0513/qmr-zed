@@ -5,7 +5,7 @@ use crate::headless_project::HeadlessProject;
 
 use client::{Client, UserStore};
 use clock::FakeSystemClock;
-use collections::HashSet;
+use collections::{HashMap, HashSet};
 
 use languages::rust_lang;
 
