@@ -15013,6 +15013,7 @@ dependencies = [
  "theme_settings",
  "ui",
  "util",
+ "windows 0.62.2",
  "workspace",
  "zed_actions",
 ]
@@ -20700,7 +20701,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "2026.11.17"
+version = "2026.11.18"
 dependencies = [
  "activity_indicator",
  "anyhow",

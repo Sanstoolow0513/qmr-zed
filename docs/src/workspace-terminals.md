@@ -8,6 +8,12 @@ opens the recent-project picker. The toggle on the left of the search field
 hides the sidebar. When it is hidden, the toggle stays in the window's title bar
 on the same side.
 
+Terminal titles in the sidebar wrap to two lines. You can search for any part of
+the title, including text beyond the ellipsis. The sidebar shortens Windows
+shell paths to `pwsh` or `cmd`. On Windows, a local terminal shows the OpenAI
+icon for Codex or the OpenCode icon for OpenCode when the sidebar detects one
+of those agents running under its shell.
+
 The workspace terminal panel fills the central area when no files or other
 content are open. Opening a file restores the terminal's saved dock width and
 the editor beside it. The hide button in the terminal header keeps its process
