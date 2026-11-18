@@ -31,13 +31,13 @@ class ReleaseVersionTests(unittest.TestCase):
         )
 
     def test_valid_matching_versions(self):
-        for version in ("2026.11.8", "2028.2.29", "2026.11.8-qmr.2"):
+        for version in ("2026.11.8", "2028.2.29"):
             with self.subTest(version=version):
                 self.write_versions(version, version)
                 self.assertEqual(release.release_version(self.root), version)
 
     def test_invalid_release_versions(self):
-        for version in ("1.30.0", "2026.11.08", "2026.11.8+local", "2026.2.29"):
+        for version in ("1.30.0", "2026.11.08", "2026.11.8+local", "2026.11.8-qmr.2", "2026.2.29"):
             with self.subTest(version=version):
                 self.write_versions(version, version)
                 with self.assertRaisesRegex(ValueError, "Invalid QMR release"):

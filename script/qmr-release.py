@@ -17,9 +17,7 @@ import zipfile
 
 
 REPOSITORY = "Sanstoolow0513/qmr-zed"
-RELEASE_VERSION_PATTERN = re.compile(
-    r"([1-9][0-9]{3})\.([1-9][0-9]?)\.([1-9][0-9]?)(?:-qmr\.[1-9][0-9]*)?"
-)
+RELEASE_VERSION_PATTERN = re.compile(r"([1-9][0-9]{3})\.([1-9][0-9]?)\.([1-9][0-9]?)")
 CLIENT_ASSETS = (
     "QMRZed-x86_64.exe",
     "QMRZed-aarch64.exe",
@@ -58,7 +56,7 @@ def release_version(root=Path(".")):
     with (root / "crates/zed/Cargo.toml").open("rb") as source:
         version = tomllib.load(source)["package"]["version"]
     match = RELEASE_VERSION_PATTERN.fullmatch(version)
-    require(match is not None, f"Invalid QMR release version {version!r}; expected YYYY.M.D or YYYY.M.D-qmr.N")
+    require(match is not None, f"Invalid QMR release version {version!r}; expected YYYY.M.D")
     try:
         date(*map(int, match.groups()))
     except ValueError as error:

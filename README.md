@@ -64,7 +64,7 @@ packages installed by `script/linux`, including LLD 12 or newer.
 
 SSH, WSL, and dev-container connections download matching remote servers from
 this fork's GitHub Release. QMR Zed uses `YYYY.M.D` release versions (for example,
-`2026.10.15`), with an optional `-qmr.N` suffix. The version in
+`2026.10.15`) for compatibility with the Windows installer. The version in
 `crates/zed/Cargo.toml` must match the `zed` package in `Cargo.lock`. Release
 tags add `v` to this version. The **QMR Zed release**
 workflow builds every client package and remote server from the same commit,
