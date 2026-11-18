@@ -1285,6 +1285,21 @@ impl WorkspaceTerminalPanel {
             })
             .collect()
     }
+
+    #[cfg(windows)]
+    pub fn local_terminal_process(
+        &self,
+        terminal_id: TerminalId,
+        cx: &App,
+    ) -> Option<(gpui::EntityId, u32)> {
+        if !self.project.read(cx).is_local() {
+            return None;
+        }
+        let terminal = self.terminals.get(&terminal_id)?.view.read(cx).terminal();
+        let shell_pid = terminal.read(cx).pid_getter()?.fallback_pid().as_u32();
+        Some((terminal.entity_id(), shell_pid))
+    }
+
     pub fn is_visible(workspace: &Entity<Workspace>, cx: &App) -> bool {
         let workspace_read = workspace.read(cx);
 

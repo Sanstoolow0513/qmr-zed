@@ -34,6 +34,9 @@ util.workspace = true
 workspace.workspace = true
 zed_actions.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Diagnostics_ToolHelp"] }
+
 [dev-dependencies]
 chrono.workspace = true
 theme.workspace = true

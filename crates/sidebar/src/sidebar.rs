@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod sidebar_tests;
+#[cfg(windows)]
+mod terminal_agents;
 mod terminal_switcher;
 use editor::Editor;
 use gpui::{
@@ -37,6 +39,54 @@ gpui::actions!(
         NewTerminalInGroup,
     ]
 );
+
+fn sidebar_terminal_title(metadata: &TerminalMetadata) -> SharedString {
+    if metadata
+        .custom_title
+        .as_ref()
+        .is_some_and(|title| !title.trim().is_empty())
+    {
+        return metadata.display_title();
+    }
+
+    let title = metadata.title.as_ref();
+    let path = title
+        .strip_prefix('"')
+        .and_then(|title| title.strip_suffix('"'))
+        .unwrap_or(title);
+    let (directory, name) = path.rsplit_once(['\\', '/']).unwrap_or(("", path));
+    let short_name = if name.eq_ignore_ascii_case("pwsh.exe") {
+        "pwsh"
+    } else if name.eq_ignore_ascii_case("cmd.exe") {
+        "cmd"
+    } else {
+        return metadata.title.clone();
+    };
+
+    if name != path {
+        let directory = directory.strip_prefix(r"\\?\").unwrap_or(directory);
+        let directory = match directory.as_bytes() {
+            [drive, b':', ..] if drive.is_ascii_alphabetic() => &directory[2..],
+            _ => directory,
+        };
+        let windows = util::paths::PathStyle::Windows;
+        let path = std::path::Path::new(path);
+        if !windows.is_absolute(path)
+            || windows.file_name(path).is_none()
+            || directory.starts_with(r"\\.\")
+            || directory.contains(['"', '<', '>', '|', ':', '*', '?'])
+            || directory.chars().any(char::is_control)
+            || directory.to_ascii_lowercase().contains(".exe ")
+            || directory
+                .split_whitespace()
+                .skip(1)
+                .any(|word| word.starts_with(['-', '/']))
+        {
+            return metadata.title.clone();
+        }
+    }
+    short_name.into()
+}
 
 #[derive(Clone, PartialEq)]
 enum Entry {
@@ -76,6 +126,7 @@ pub struct Sidebar {
     selection: Option<usize>,
     entries: Vec<Entry>,
     list_state: ListState,
+    row_font: Option<(gpui::Font, Pixels)>,
     recent_projects_popover_handle: PopoverMenuHandle<SidebarRecentProjects>,
     observed: HashMap<EntityId, Subscription>,
     switcher: Option<Entity<TerminalSwitcher>>,
@@ -99,6 +150,8 @@ impl Sidebar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        #[cfg(windows)]
+        terminal_agents::AgentMonitor::observe_sidebar(cx);
         let filter_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_placeholder_text("Search projects and terminals…", window, cx);
@@ -151,6 +204,7 @@ impl Sidebar {
             selection: None,
             entries: Vec::new(),
             list_state,
+            row_font: None,
             recent_projects_popover_handle: PopoverMenuHandle::default(),
             observed: HashMap::new(),
             switcher: None,
@@ -245,7 +299,10 @@ impl Sidebar {
             let project_matches = query.is_empty() || title.to_lowercase().contains(&query);
             terminals.retain(|terminal| {
                 project_matches
-                    || terminal.display_title().to_lowercase().contains(&query)
+                    || sidebar_terminal_title(terminal)
+                        .to_lowercase()
+                        .contains(&query)
+                    || terminal.title.to_lowercase().contains(&query)
                     || terminal
                         .folder_paths()
                         .ordered_paths()
@@ -279,16 +336,36 @@ impl Sidebar {
             }
         }
         self.observed.retain(|id, _| observed.contains(id));
+        #[cfg(windows)]
+        terminal_agents::AgentMonitor::watch_entries(
+            &entries,
+            multi_workspace.read(cx).sidebar_open(),
+            cx,
+        );
         if self.entries == entries && self.active_workspace_terminal == active_workspace_terminal {
             return;
         }
         self.active_workspace_terminal = active_workspace_terminal;
         self.selection = self.selection.filter(|index| *index < entries.len());
         let count = entries.len();
-        self.entries = entries;
         if self.list_state.item_count() != count {
             self.list_state.reset(count);
+        } else {
+            for (index, (old, new)) in self.entries.iter().zip(&entries).enumerate() {
+                let height_may_change = match (old, new) {
+                    (Entry::Project { .. }, Entry::Project { .. }) => false,
+                    (
+                        Entry::Terminal { metadata: old, .. },
+                        Entry::Terminal { metadata: new, .. },
+                    ) => old.title != new.title || old.custom_title != new.custom_title,
+                    _ => true,
+                };
+                if height_may_change {
+                    self.list_state.remeasure_items(index..index + 1);
+                }
+            }
         }
+        self.entries = entries;
         cx.notify();
     }
 
@@ -745,9 +822,13 @@ impl Sidebar {
                     });
                 let close_metadata = metadata.clone();
                 let close_workspace = workspace;
+                let icon = IconName::Terminal;
+                #[cfg(windows)]
+                let icon = terminal_agents::AgentMonitor::icon_for(metadata.terminal_id, cx)
+                    .unwrap_or(icon);
                 h_flex()
                     .id(("terminal", index))
-                    .pl_5()
+                    .pl_3()
                     .pr_1()
                     .py_1()
                     .gap_2()
@@ -757,19 +838,27 @@ impl Sidebar {
                     })
                     .hover(|this| this.bg(cx.theme().colors().ghost_element_hover))
                     .child(
-                        Icon::new(IconName::Terminal)
-                            .size(IconSize::Small)
-                            .color(if notified {
-                                Color::Accent
-                            } else {
-                                Color::Muted
-                            }),
+                        div()
+                            .flex_none()
+                            .debug_selector(|| format!("sidebar-terminal-icon-{index}"))
+                            .child(
+                                Icon::new(icon)
+                                    .size(IconSize::Custom(
+                                        TextSize::default().rems(cx) * (16. / 14.),
+                                    ))
+                                    .color(if notified {
+                                        Color::Accent
+                                    } else {
+                                        Color::Muted
+                                    }),
+                            ),
                     )
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .overflow_hidden()
-                            .child(Label::new(metadata.display_title()).truncate()),
+                            .child(Label::new(sidebar_terminal_title(&metadata)).line_clamp(2)),
                     )
                     .child(
                         IconButton::new(("close-terminal", index), IconName::Close)
@@ -1228,6 +1317,11 @@ impl Focusable for Sidebar {
 }
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let row_font = (window.text_style().font(), window.rem_size());
+        if self.row_font.as_ref() != Some(&row_font) {
+            self.row_font = Some(row_font);
+            self.list_state.remeasure();
+        }
         v_flex()
             .id("workspace-sidebar")
             .key_context("WorkspaceSidebar")
