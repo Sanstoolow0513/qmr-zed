@@ -16,6 +16,39 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 
+class ReleaseVersionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.manifest = self.root / "crates/zed/Cargo.toml"
+        self.manifest.parent.mkdir(parents=True)
+
+    def write_versions(self, manifest_version, lock_version):
+        self.manifest.write_text(f'[package]\nversion = "{manifest_version}"\n', encoding="utf-8")
+        (self.root / "Cargo.lock").write_text(
+            f'[[package]]\nname = "zed"\nversion = "{lock_version}"\n', encoding="utf-8"
+        )
+
+    def test_valid_matching_versions(self):
+        for version in ("2026.11.8", "2028.2.29"):
+            with self.subTest(version=version):
+                self.write_versions(version, version)
+                self.assertEqual(release.release_version(self.root), version)
+
+    def test_invalid_release_versions(self):
+        for version in ("1.30.0", "2026.11.08", "2026.11.8+local", "2026.11.8-qmr.2", "2026.2.29"):
+            with self.subTest(version=version):
+                self.write_versions(version, version)
+                with self.assertRaisesRegex(ValueError, "Invalid QMR release"):
+                    release.release_version(self.root)
+
+    def test_lockfile_version_must_match(self):
+        self.write_versions("2026.11.8", "2026.10.28")
+        with self.assertRaisesRegex(ValueError, "Cargo.lock must contain the workspace zed version 2026.11.8"):
+            release.release_version(self.root)
+
+
 class ReleaseValidationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

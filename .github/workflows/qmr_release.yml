@@ -2,7 +2,7 @@ name: QMR Zed release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9][0-9][0-9][0-9].[0-9]+.[0-9]+']
   workflow_dispatch:
     inputs:
       tag:
@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate release identity
@@ -238,7 +238,22 @@ jobs:
         run: python3 script/qmr-release.py verify-assets --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
       - name: Publish matching client and servers
         run: |
+          verify_remote_tag() {
+            local tag_ref="refs/tags/$RELEASE_TAG" refs tag_commit
+            refs=$(git ls-remote --exit-code origin "$tag_ref" "$tag_ref^{}") || return 1
+            tag_commit=$(awk -v tag="$tag_ref" '
+              $2 == tag { commit = $1 }
+              $2 == tag "^{}" { peeled = $1 }
+              END { print (peeled ? peeled : commit) }
+            ' <<< "$refs")
+            if [[ "$tag_commit" != "$RELEASE_COMMIT" ]]; then
+              echo "Tag $RELEASE_TAG points to $tag_commit on origin, expected $RELEASE_COMMIT." >&2
+              return 1
+            fi
+          }
+          verify_remote_tag
           gh release create "$RELEASE_TAG" target/qmr-release/* \
             --repo Sanstoolow0513/qmr-zed --verify-tag --draft \
             --title "QMR Zed $RELEASE_TAG" --generate-notes
+          verify_remote_tag
           gh release edit "$RELEASE_TAG" --repo Sanstoolow0513/qmr-zed --draft=false

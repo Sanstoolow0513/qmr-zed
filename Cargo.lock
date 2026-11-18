@@ -12538,6 +12538,7 @@ dependencies = [
  "tracing",
  "unindent",
  "url",
+ "usvg",
  "util",
  "watch",
  "wax",
@@ -16243,10 +16244,13 @@ dependencies = [
  "gpui",
  "itertools 0.14.0",
  "language",
+ "languages",
  "menu",
+ "node_runtime",
  "picker",
  "project",
  "serde_json",
+ "settings",
  "task",
  "tree-sitter",
  "tree-sitter-json",
@@ -20696,7 +20700,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "2026.10.28"
+version = "2026.11.17"
 dependencies = [
  "activity_indicator",
  "anyhow",

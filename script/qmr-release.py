@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+from datetime import date
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +17,7 @@ import zipfile
 
 
 REPOSITORY = "Sanstoolow0513/qmr-zed"
+RELEASE_VERSION_PATTERN = re.compile(r"([1-9][0-9]{3})\.([1-9][0-9]?)\.([1-9][0-9]?)")
 CLIENT_ASSETS = (
     "QMRZed-x86_64.exe",
     "QMRZed-aarch64.exe",
@@ -49,11 +52,30 @@ def sha256(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def release_identity(tag, commit=None):
-    with Path("crates/zed/Cargo.toml").open("rb") as source:
+def release_version(root=Path(".")):
+    with (root / "crates/zed/Cargo.toml").open("rb") as source:
         version = tomllib.load(source)["package"]["version"]
+    match = RELEASE_VERSION_PATTERN.fullmatch(version)
+    require(match is not None, f"Invalid QMR release version {version!r}; expected YYYY.M.D")
+    try:
+        date(*map(int, match.groups()))
+    except ValueError as error:
+        raise ValueError(f"Invalid QMR release date in {version!r}: {error}") from error
+
+    with (root / "Cargo.lock").open("rb") as source:
+        packages = tomllib.load(source).get("package", [])
+    locked_versions = [
+        package["version"] for package in packages
+        if package["name"] == "zed" and "source" not in package
+    ]
+    require(locked_versions == [version],
+            f"Cargo.lock must contain the workspace zed version {version}; found {locked_versions}")
+    return version
+
+
+def release_identity(tag, commit=None):
+    version = release_version()
     require(tag == f"v{version}", f"Tag {tag!r} must equal v{version}")
-    require("+" not in version, "Release versions must not contain build metadata")
     source_commit = run("git", "rev-parse", "HEAD")
     tag_commit = run("git", "rev-parse", f"refs/tags/{tag}^{{commit}}")
     require(source_commit == tag_commit, "Checkout must point to the release tag")
@@ -167,6 +189,7 @@ def validate_assets(directory, version, commit):
 def main():
     parser = argparse.ArgumentParser(description="Package and validate QMR Zed release artifacts")
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("check-version", help="Check the manifest and lockfile before tagging")
     for name in ["check-tag", "package-server", "verify-assets"]:
         command = commands.add_parser(name)
         command.add_argument("--tag", required=True)
@@ -176,6 +199,9 @@ def main():
         if name == "package-server":
             command.add_argument("--target", choices=TARGETS, required=True)
     arguments = parser.parse_args()
+    if arguments.command == "check-version":
+        print(f"v{release_version()}")
+        return
     if arguments.command == "package-server":
         package_server(arguments)
         return
