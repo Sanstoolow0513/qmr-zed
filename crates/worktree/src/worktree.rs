@@ -309,6 +309,10 @@ struct RemovedEntriesGeneration {
 }
 
 impl RemovedEntries {
+    fn is_empty(&self) -> bool {
+        self.current.is_empty() && self.previous.is_empty()
+    }
+
     fn insert(&mut self, entry: &Entry) {
         self.current.insert(entry);
     }
@@ -335,6 +339,10 @@ impl RemovedEntries {
 }
 
 impl RemovedEntriesGeneration {
+    fn is_empty(&self) -> bool {
+        self.by_inode.is_empty() && self.by_path.is_empty()
+    }
+
     fn insert(&mut self, entry: &Entry) {
         self.by_path.insert(entry.path.clone(), entry.clone());
         match self.by_inode.entry(entry.inode) {
@@ -3871,6 +3879,7 @@ impl language::File for File {
             mtime: self.disk_state.mtime().map(|time| time.into()),
             is_deleted: self.disk_state.is_deleted(),
             is_historic: matches!(self.disk_state, DiskState::Historic { .. }),
+            is_private: self.is_private,
         }
     }
 
@@ -3958,7 +3967,7 @@ impl File {
             disk_state,
             entry_id: proto.entry_id.map(ProjectEntryId::from_proto),
             is_local: false,
-            is_private: false,
+            is_private: proto.is_private,
         })
     }
 
@@ -5391,20 +5400,19 @@ impl BackgroundScanner {
     }
 
     async fn scan_dir(&self, job: &ScanJob) -> Result<()> {
+        if self.settings.is_path_excluded(&job.path) {
+            log::error!("skipping excluded directory {:?}", job.path);
+            return Ok(());
+        }
+        log::trace!("scanning directory {:?}", job.path);
         let root_abs_path;
         let root_char_bag;
         {
             let snapshot = &self.state.lock().await.snapshot;
-            if self.settings.is_path_excluded(&job.path) {
-                log::error!("skipping excluded directory {:?}", job.path);
-                return Ok(());
-            }
-            log::trace!("scanning directory {:?}", job.path);
             root_abs_path = snapshot.abs_path().clone();
             root_char_bag = snapshot.root_char_bag;
         }
 
-        let next_entry_id = self.next_entry_id.clone();
         let mut ignore_stack = job.ignore_stack.clone();
         let mut new_ignore = None;
         let mut root_canonical_path = None;
@@ -5472,6 +5480,9 @@ impl BackgroundScanner {
             .collect::<Vec<_>>()
             .await;
 
+        // Siblings sorted by name are in `RelPath` order, which leaves little
+        // sorting for `populate_dir` to do while it holds the lock.
+        child_paths.sort_unstable_by(|a, b| a.file_name().cmp(&b.file_name()));
         // Ensure that .git and .gitignore are processed first.
         swap_to_front(&mut child_paths, GITIGNORE);
         swap_to_front(&mut child_paths, DOT_GIT);
@@ -5483,7 +5494,12 @@ impl BackgroundScanner {
             ignore_stack.global_ignore_root = Some(job.abs_path.clone());
         }
 
-        for child_abs_path in child_paths {
+        // Other workers take ids at the same time, so taking one per child as
+        // it's read would interleave this directory's ids with theirs.
+        // Contiguous ids let `populate_dir` insert into `entries_by_id` in
+        // one place.
+        let first_child_id = self.next_entry_id.fetch_add(child_paths.len(), SeqCst);
+        for (child_index, child_abs_path) in child_paths.into_iter().enumerate() {
             let child_abs_path: Arc<Path> = child_abs_path.into();
             let child_name = child_abs_path.file_name().unwrap();
             let Some(child_path) = child_name
@@ -5551,7 +5567,7 @@ impl BackgroundScanner {
             let mut child_entry = Entry::new(
                 child_path.clone(),
                 &child_metadata,
-                ProjectEntryId::new(&next_entry_id),
+                ProjectEntryId::from_usize(first_child_id + child_index),
                 root_char_bag,
                 None,
             );
@@ -5647,10 +5663,16 @@ impl BackgroundScanner {
         }
 
         let mut state = self.state.lock().await;
+        // Ids are only reused from removed entries and from children loaded
+        // earlier. The initial scan has neither, so it skips the lookups.
+        let may_reuse_entry_ids = !state.removed_entries.is_empty()
+            || state.snapshot.child_entries(&job.path).next().is_some();
         // Identify any subdirectories that should not be scanned.
         let mut job_ix = 0;
         for entry in &mut new_entries {
-            state.reuse_entry_id(entry);
+            if may_reuse_entry_ids {
+                state.reuse_entry_id(entry);
+            }
             if entry.is_dir() {
                 if !self.should_scan_directory(&state, entry, ignore_stack.repo_root.is_some()) {
                     log::debug!("defer scanning directory {:?}", entry.path);

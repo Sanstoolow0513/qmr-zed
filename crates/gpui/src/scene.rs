@@ -234,6 +234,8 @@ pub enum Primitive {
 impl Primitive {
     pub fn bounds(&self) -> &Bounds<ScaledPixels> {
         match self {
+            // An inset shadow paints the element around the hole stored in shadow.bounds.
+            Primitive::Shadow(shadow) if shadow.inset != 0 => &shadow.element_bounds,
             Primitive::Shadow(shadow) => &shadow.bounds,
             Primitive::Quad(quad) => &quad.bounds,
             Primitive::Path(path) => &path.bounds,
