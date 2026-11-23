@@ -78,6 +78,7 @@ pub struct MockRemoteConnection {
             )>,
         >,
     >,
+    pub(crate) proxy_exit_code: parking_lot::Mutex<Option<i32>>,
 }
 
 /// Wrapper to pass `AsyncApp` across thread boundaries in tests.
@@ -203,6 +204,7 @@ impl MockConnection {
             server_cx: SendableCx::new(server_cx),
             message_interceptors: parking_lot::Mutex::new(None),
             proxy_tx: Default::default(),
+            proxy_exit_code: Default::default(),
         });
 
         let (tx, rx) = oneshot::channel();
@@ -308,6 +310,9 @@ impl RemoteConnection for MockRemoteConnection {
         _delegate: Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Task<Result<i32>> {
+        if let Some(exit_code) = *self.proxy_exit_code.lock() {
+            return Task::ready(Ok(exit_code));
+        }
         if let Some(proxy_tx) = self.proxy_tx.lock().as_ref() {
             proxy_tx
                 .unbounded_send((client_incoming_tx, client_outgoing_rx))
