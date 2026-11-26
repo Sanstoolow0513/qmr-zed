@@ -448,12 +448,20 @@ impl DebugAdapter for GoDebugAdapter {
         let adapter_path = paths::debug_adapters_dir().join(&Self::ADAPTER_NAME);
         let dlv_binary = format!("dlv{}", consts::EXE_SUFFIX);
         let dlv_path = adapter_path.join(&dlv_binary);
+        let fs = delegate.fs();
+        let root = delegate.worktree_root_path();
+        let worktree_directory = if fs.is_file(root).await {
+            root.parent()
+                .context("single-file Go worktree has no parent directory")?
+        } else {
+            root
+        };
 
         let delve_path = if let Some(path) = user_installed_path {
             path.to_string_lossy().into_owned()
         } else if let Some(path) = delegate.which(OsStr::new("dlv")).await {
             path.to_string_lossy().into_owned()
-        } else if delegate.fs().is_file(&dlv_path).await {
+        } else if fs.is_file(&dlv_path).await {
             dlv_path.to_string_lossy().into_owned()
         } else {
             let go = delegate
@@ -461,11 +469,9 @@ impl DebugAdapter for GoDebugAdapter {
                 .await
                 .context("Go not found in path. Please install Go first, then Dlv will be installed automatically.")?;
 
-            let adapter_path = paths::debug_adapters_dir().join(&Self::ADAPTER_NAME);
-
             let install_output = util::command::new_command_with_environment(
                 &go,
-                delegate.worktree_root_path(),
+                worktree_directory,
                 Some(&delegate.shell_env().await),
             )?
             .env("GO111MODULE", "on")
@@ -488,14 +494,12 @@ impl DebugAdapter for GoDebugAdapter {
                 .into_owned()
         };
 
-        let cwd = Some(
-            task_definition
-                .config
-                .get("cwd")
-                .and_then(|s| s.as_str())
-                .map(PathBuf::from)
-                .unwrap_or_else(|| delegate.worktree_root_path().to_path_buf()),
-        );
+        let cwd = task_definition
+            .config
+            .get("cwd")
+            .and_then(|s| s.as_str())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| worktree_directory.to_path_buf());
 
         let arguments;
         let command;
@@ -507,15 +511,9 @@ impl DebugAdapter for GoDebugAdapter {
         if let Some(configuration) = configuration.as_object_mut() {
             configuration
                 .entry("cwd")
-                .or_insert_with(|| delegate.worktree_root_path().to_string_lossy().into());
+                .or_insert_with(|| cwd.to_string_lossy().into());
 
-            handle_envs(
-                configuration,
-                &mut envs,
-                cwd.as_deref(),
-                delegate.fs().clone(),
-            )
-            .await;
+            handle_envs(configuration, &mut envs, Some(&cwd), fs).await;
         }
 
         if let Some(connection_options) = &task_definition.tcp_connection {
@@ -557,7 +555,7 @@ impl DebugAdapter for GoDebugAdapter {
         Ok(DebugAdapterBinary {
             command,
             arguments,
-            cwd,
+            cwd: Some(cwd),
             envs,
             connection,
             request_args: StartDebuggingRequestArguments {
@@ -628,4 +626,75 @@ async fn handle_envs(
     // remove envFile now that it's been handled
     config.remove("envFile");
     Some(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use util::{paths::SanitizedPath, test::TempTree};
+
+    #[gpui::test]
+    async fn delve_installs_in_the_worktree_directory(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        let tree = TempTree::new(json!({"main.go": "", "run": {}}));
+        let directory = SanitizedPath::new(tree.path()).as_path();
+        let file = directory.join("main.go");
+        let run_directory = directory.join("run");
+        let (name, script) = if cfg!(windows) {
+            (
+                "go.cmd",
+                "@echo off\r\n>go-invocation.txt echo %~1\r\nexit /b 0\r\n",
+            )
+        } else {
+            (
+                "go",
+                "#!/bin/sh\nprintf '%s\\n' \"$1\" > go-invocation.txt\n",
+            )
+        };
+        let go = directory.join(name);
+        std::fs::write(&go, script).unwrap();
+        util::fs::make_file_executable(&go).await.unwrap();
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(directory, json!({"main.go": "", "run": {}}))
+            .await;
+
+        for (root, explicit_cwd) in [
+            (directory, None),
+            (&file, None),
+            (&file, Some(&run_directory)),
+        ] {
+            let delegate = test_mocks::MockDelegate::for_worktree(
+                root.to_path_buf(),
+                fs.clone(),
+                HashMap::from_iter([("go".into(), go.clone())]),
+            );
+            let mut config = json!({"request": "launch"});
+            if let Some(cwd) = explicit_cwd {
+                config["cwd"] = json!(cwd);
+            }
+            let definition = DebugTaskDefinition {
+                label: "test".into(),
+                adapter: GoDebugAdapter::ADAPTER_NAME.into(),
+                config,
+                tcp_connection: Some(TcpArgumentsTemplate {
+                    port: Some(1234),
+                    ..Default::default()
+                }),
+            };
+            let binary = GoDebugAdapter::default()
+                .get_binary(&delegate, &definition, None, None, None, &mut cx.to_async())
+                .await
+                .unwrap();
+            let marker = directory.join("go-invocation.txt");
+            assert_eq!(std::fs::read_to_string(&marker).unwrap().trim(), "install");
+            std::fs::remove_file(marker).unwrap();
+            let expected_cwd = explicit_cwd.map(PathBuf::as_path).unwrap_or(directory);
+            assert_eq!(binary.cwd.as_deref(), Some(expected_cwd));
+            assert_eq!(
+                binary.request_args.configuration["cwd"],
+                json!(expected_cwd)
+            );
+        }
+    }
 }

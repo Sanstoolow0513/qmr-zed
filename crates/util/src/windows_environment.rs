@@ -8,12 +8,13 @@ use std::{
 use windows::Win32::{
     Foundation::{ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, ERROR_PATH_NOT_FOUND},
     Globalization::{CSTR_EQUAL, CompareStringOrdinal},
+    Storage::FileSystem::GetBinaryTypeW,
     System::{
         Registry::{HKEY, RegEnumValueW},
         RemoteDesktop::ProcessIdToSessionId,
     },
 };
-use windows::core::PWSTR;
+use windows::core::{HSTRING, PWSTR};
 use windows_registry::{CURRENT_USER, Key, LOCAL_MACHINE, Type};
 
 type Environment = HashMap<String, String>;
@@ -281,12 +282,12 @@ fn resolve_with_extensions(
     let explicit_path = path.components().count() > 1 || path.has_root();
     let extensions = get(env, "PATHEXT").unwrap_or(".COM;.EXE;.BAT;.CMD");
     let find = |candidate: PathBuf| {
-        if (explicit_path
-            || candidate
+        if candidate.is_file()
+            && (candidate
                 .extension()
                 .and_then(OsStr::to_str)
-                .is_some_and(&accepts))
-            && candidate.is_file()
+                .is_some_and(&accepts)
+                || is_windows_binary(&candidate))
         {
             return Some(candidate);
         }
@@ -321,6 +322,13 @@ fn resolve_with_extensions(
             path.display()
         ),
     }
+}
+
+// A name without a recognized extension can be either a PE image or a Unix shim
+// installed alongside a Windows batch file.
+fn is_windows_binary(path: &Path) -> bool {
+    let mut binary_type = 0;
+    unsafe { GetBinaryTypeW(&HSTRING::from(path.as_os_str()), &mut binary_type).is_ok() }
 }
 
 pub fn system_shell(env: &Environment) -> String {
@@ -468,6 +476,40 @@ mod tests {
             )?,
             program
         );
+        Ok(())
+    }
+
+    #[test]
+    fn launches_windows_shims_and_extensionless_binaries() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let program = directory.path().join("npm");
+        let batch = program.with_extension("cmd");
+        let root = env::var("SystemRoot")?;
+        let env = Environment::from_iter([
+            ("SystemRoot".into(), root.clone()),
+            ("PATH".into(), directory.path().display().to_string()),
+            ("PATHEXT".into(), ".cmd;.exe".into()),
+        ]);
+        std::fs::write(&program, "#!/bin/sh\nexit 1\n")?;
+        std::fs::write(&batch, "@exit /b 37\r\n")?;
+        let launch = |name: &OsStr, args: &[&str]| -> Result<_> {
+            Ok(crate::command::new_std_command_with_environment(
+                name,
+                Some(directory.path()),
+                &env,
+            )?
+            .args(args)
+            .status()?
+            .code())
+        };
+        assert_eq!(resolve_program(program.as_os_str(), None, &env)?, batch);
+        assert_eq!(launch(program.as_os_str(), &[])?, Some(37));
+
+        std::fs::copy(Path::new(&root).join(r"System32\cmd.exe"), &program)?;
+        for name in [program.as_os_str(), OsStr::new("npm")] {
+            assert_eq!(resolve_native_program(name, None, &env)?, program);
+            assert_eq!(launch(name, &["/d", "/c", "exit 42"])?, Some(42));
+        }
         Ok(())
     }
 

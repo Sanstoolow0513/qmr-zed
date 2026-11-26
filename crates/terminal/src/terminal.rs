@@ -1209,6 +1209,7 @@ impl TerminalBuilder {
             let launch_shell = shell.clone();
             #[cfg(windows)]
             let launch_shell = if clear_inherited {
+                debug_assert!(!background_executor.is_main_thread());
                 util::windows_environment::resolve_shell(
                     &shell,
                     working_directory.as_deref(),

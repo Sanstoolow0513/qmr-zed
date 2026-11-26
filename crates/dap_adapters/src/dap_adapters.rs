@@ -47,12 +47,28 @@ mod test_mocks {
 
     pub(crate) struct MockDelegate {
         worktree_root: PathBuf,
+        fs: Option<Arc<dyn fs::Fs>>,
+        programs: collections::HashMap<std::ffi::OsString, PathBuf>,
     }
 
     impl MockDelegate {
         pub(crate) fn new() -> Arc<dyn adapters::DapDelegate> {
             Arc::new(Self {
                 worktree_root: PathBuf::from("/tmp/test"),
+                fs: None,
+                programs: Default::default(),
+            })
+        }
+
+        pub(crate) fn for_worktree(
+            worktree_root: PathBuf,
+            fs: Arc<dyn fs::Fs>,
+            programs: collections::HashMap<std::ffi::OsString, PathBuf>,
+        ) -> Arc<dyn adapters::DapDelegate> {
+            Arc::new(Self {
+                worktree_root,
+                fs: Some(fs),
+                programs,
             })
         }
     }
@@ -80,13 +96,13 @@ mod test_mocks {
         }
 
         fn fs(&self) -> Arc<dyn fs::Fs> {
-            unimplemented!("Not needed for tests")
+            self.fs.clone().expect("mock filesystem is required")
         }
 
         fn output_to_console(&self, _msg: String) {}
 
-        async fn which(&self, _command: &std::ffi::OsStr) -> Option<PathBuf> {
-            None
+        async fn which(&self, command: &std::ffi::OsStr) -> Option<PathBuf> {
+            self.programs.get(command).cloned()
         }
 
         async fn read_text_file(&self, _path: &util::rel_path::RelPath) -> Result<String> {
@@ -94,7 +110,11 @@ mod test_mocks {
         }
 
         async fn shell_env(&self) -> collections::HashMap<String, String> {
-            collections::HashMap::default()
+            // A real Windows child needs SystemRoot when its inherited environment is cleared.
+            std::env::var("SystemRoot")
+                .into_iter()
+                .map(|root| ("SystemRoot".into(), root))
+                .collect()
         }
 
         fn is_headless(&self) -> bool {

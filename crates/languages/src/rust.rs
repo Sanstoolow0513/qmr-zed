@@ -148,11 +148,7 @@ impl RustLspAdapter {
         async fn from_ldd_version() -> Option<LibcType> {
             use util::command::new_command;
 
-            let ldd_output = util::command::new_command("ldd")
-                .arg("--version")
-                .output()
-                .await
-                .ok()?;
+            let ldd_output = new_command("ldd").arg("--version").output().await.ok()?;
             let ldd_version = String::from_utf8_lossy(&ldd_output.stdout);
 
             if ldd_version.contains("GNU libc") || ldd_version.contains("GLIBC") {
