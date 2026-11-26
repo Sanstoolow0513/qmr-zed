@@ -20,7 +20,7 @@ use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
 };
-use util::command::new_command;
+use util::command::new_command_with_environment;
 use util::{ResultExt, paths::PathStyle, rel_path::RelPath};
 
 enum DebugpyLaunchMode<'a> {
@@ -30,8 +30,8 @@ enum DebugpyLaunchMode<'a> {
 
 #[derive(Default)]
 pub(crate) struct PythonDebugAdapter {
-    base_venv_path: OnceCell<Result<Arc<Path>, String>>,
-    debugpy_whl_base_path: OnceCell<Result<Arc<Path>, String>>,
+    base_venv_path: OnceCell<Arc<Path>>,
+    debugpy_whl_base_path: OnceCell<Arc<Path>>,
 }
 
 // debugpy doesn't support envFile natively, so we intercept it and convert to an env object
@@ -186,21 +186,25 @@ impl PythonDebugAdapter {
         std::fs::create_dir_all(&download_dir)?;
         let venv_python = self.base_venv_path(toolchain, delegate).await?;
 
-        let installation_succeeded = util::command::new_command(venv_python.as_ref())
-            .args([
-                "-m",
-                "pip",
-                "download",
-                "debugpy",
-                "--only-binary=:all:",
-                "-d",
-                download_dir.to_string_lossy().as_ref(),
-            ])
-            .output()
-            .await
-            .context("spawn system python")?
-            .status
-            .success();
+        let installation_succeeded = new_command_with_environment(
+            venv_python.as_ref(),
+            &download_dir,
+            Some(&delegate.shell_env().await),
+        )?
+        .args([
+            "-m",
+            "pip",
+            "download",
+            "debugpy",
+            "--only-binary=:all:",
+            "-d",
+            download_dir.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .await
+        .context("spawn system python")?
+        .status
+        .success();
         if !installation_succeeded {
             bail!("debugpy installation failed (could not fetch Debugpy's wheel)");
         }
@@ -288,7 +292,7 @@ impl PythonDebugAdapter {
         delegate: &Arc<dyn DapDelegate>,
     ) -> Result<Arc<Path>, String> {
         self.debugpy_whl_base_path
-            .get_or_init(|| async move {
+            .get_or_try_init(|| async move {
                 let adapter_path = debug_adapters_dir()
                     .join(Self::ADAPTER_NAME)
                     .join("debugpy")
@@ -312,7 +316,7 @@ impl PythonDebugAdapter {
                 Ok(Arc::from(adapter_path.as_ref()))
             })
             .await
-            .clone()
+            .cloned()
     }
 
     async fn base_venv_path(
@@ -320,8 +324,8 @@ impl PythonDebugAdapter {
         toolchain: Option<Toolchain>,
         delegate: &Arc<dyn DapDelegate>,
     ) -> Result<Arc<Path>> {
-        let result = self.base_venv_path
-            .get_or_init(|| async {
+        self.base_venv_path
+            .get_or_try_init(|| async {
                 let base_python = if let Some(toolchain) = toolchain {
                     toolchain.path.to_string()
                 } else {
@@ -330,27 +334,21 @@ impl PythonDebugAdapter {
                         if cfg!(windows){
                             message.push_str(". Install Python from the Microsoft Store, or manually from https://www.python.org/downloads/windows.")
                         }
-                        message
+                        anyhow::anyhow!(message)
                     })?
                 };
 
                 let debug_adapter_path = paths::debug_adapters_dir().join(Self::DEBUG_ADAPTER_NAME.as_ref());
-                let output = util::command::new_command(&base_python)
+                let output = new_command_with_environment(&base_python, &debug_adapter_path, Some(&delegate.shell_env().await))?
                     .args(["-m", "venv", "zed_base_venv"])
-                    .current_dir(
-                        &debug_adapter_path,
-                    )
-                    .spawn()
-                    .map_err(|e| format!("{e:#?}"))?
                     .output()
-                    .await
-                    .map_err(|e| format!("{e:#?}"))?;
+                    .await?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let debug_adapter_path = debug_adapter_path.display();
-                    return Err(format!("Failed to create base virtual environment with {base_python} in:\n{debug_adapter_path}\nstderr:\n{stderr}\nstdout:\n{stdout}\n"));
+                    bail!("Failed to create base virtual environment with {base_python} in:\n{debug_adapter_path}\nstderr:\n{stderr}\nstdout:\n{stdout}");
                 }
 
                 const PYTHON_PATH: &str = if cfg!(target_os = "windows") {
@@ -367,16 +365,13 @@ impl PythonDebugAdapter {
                 ))
             })
             .await
-            .clone();
-        match result {
-            Ok(path) => Ok(path),
-            Err(e) => Err(anyhow::anyhow!("{e}")),
-        }
+            .cloned()
     }
     async fn system_python_name(delegate: &Arc<dyn DapDelegate>) -> Option<String> {
         const BINARY_NAMES: [&str; 3] = ["python3", "python", "py"];
         let mut name = None;
 
+        let env = delegate.shell_env().await;
         for cmd in BINARY_NAMES {
             let Some(path) = delegate.which(OsStr::new(cmd)).await else {
                 continue;
@@ -384,12 +379,12 @@ impl PythonDebugAdapter {
             // Try to detect situations where `python3` exists but is not a real Python interpreter.
             // Notably, on fresh Windows installs, `python3` is a shim that opens the Microsoft Store app
             // when run with no arguments, and just fails otherwise.
-            let Some(output) = new_command(&path)
-                .args(["-c", "print(1 + 2)"])
-                .output()
-                .await
-                .ok()
+            let Ok(mut command) =
+                new_command_with_environment(&path, delegate.worktree_root_path(), Some(&env))
             else {
+                continue;
+            };
+            let Some(output) = command.args(["-c", "print(1 + 2)"]).output().await.ok() else {
                 continue;
             };
             if output.stdout.trim_ascii() != b"3" {

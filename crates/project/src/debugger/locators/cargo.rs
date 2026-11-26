@@ -14,17 +14,19 @@ async fn find_best_executable(
     executables: &[String],
     test_name: &str,
     executor: BackgroundExecutor,
+    build: &SpawnInTerminal,
 ) -> Option<String> {
     if executables.len() == 1 {
         return executables.first().cloned();
     }
     for executable in executables {
-        let Some(mut child) = new_command(&executable)
-            .arg("--list")
-            .stdout(Stdio::piped())
-            .spawn()
-            .ok()
-        else {
+        let mut command = new_command(executable);
+        #[cfg(windows)]
+        command.env_clear().envs(&build.env);
+        if let Some(cwd) = &build.cwd {
+            command.current_dir(cwd);
+        }
+        let Some(mut child) = command.arg("--list").stdout(Stdio::piped()).spawn().ok() else {
             continue;
         };
         let mut test_lines = String::default();
@@ -122,19 +124,25 @@ impl DapLocator for CargoLocator {
             .cwd
             .clone()
             .context("Couldn't get cwd from debug config which is needed for locators")?;
-        let builder = ShellBuilder::new(&build_config.shell, cfg!(windows)).non_interactive();
-        let mut child = builder
-            .build_smol_command(
-                Some("cargo".into()),
-                &build_config
-                    .args
-                    .iter()
-                    .cloned()
-                    .take_while(|arg| arg != "--")
-                    .chain(Some("--message-format=json".to_owned()))
-                    .collect::<Vec<_>>(),
-            )
-            .envs(build_config.env.iter().map(|(k, v)| (k.clone(), v.clone())))
+        let shell = &build_config.shell;
+        #[cfg(windows)]
+        let shell =
+            &util::windows_environment::resolve_shell(shell, Some(&cwd), &build_config.env)?;
+        let builder = ShellBuilder::new(shell, cfg!(windows)).non_interactive();
+        let mut command = builder.build_smol_command(
+            Some("cargo".into()),
+            &build_config
+                .args
+                .iter()
+                .cloned()
+                .take_while(|arg| arg != "--")
+                .chain(Some("--message-format=json".to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        #[cfg(windows)]
+        command.env_clear();
+        let mut child = command
+            .envs(&build_config.env)
             .current_dir(cwd)
             .stdout(SmolStdio::piped())
             .spawn()?;
@@ -198,7 +206,7 @@ impl DapLocator for CargoLocator {
                     .map(|name| build_config.env.get(name))
                     .unwrap_or(Some(name))
             }) {
-                find_best_executable(&executables, name, executor).await
+                find_best_executable(&executables, name, executor, &build_config).await
             } else {
                 None
             }

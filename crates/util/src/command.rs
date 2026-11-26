@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-#[cfg(not(target_os = "macos"))]
 use std::path::Path;
 
 #[cfg(target_os = "macos")]
@@ -15,6 +14,79 @@ pub use gpui_util::new_std_command;
 
 pub fn new_command(program: impl AsRef<OsStr>) -> Command {
     Command::new(program)
+}
+
+#[cfg(windows)]
+pub fn new_std_command_with_environment(
+    program: &OsStr,
+    directory: Option<&Path>,
+    environment: &collections::HashMap<String, String>,
+) -> anyhow::Result<std::process::Command> {
+    let program =
+        crate::windows_environment::resolve_native_program(program, directory, environment)?;
+    let mut command = new_std_command(program);
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
+    command.env_clear().envs(environment);
+    Ok(command)
+}
+
+/// Launch a project tool with the same environment used to locate its executable.
+pub fn new_command_with_environment(
+    program: impl AsRef<OsStr>,
+    directory: &Path,
+    environment: Option<&collections::HashMap<String, String>>,
+) -> anyhow::Result<Command> {
+    let program = program.as_ref();
+    #[cfg(windows)]
+    if let Some(env) = environment {
+        let command = new_std_command_with_environment(program, Some(directory), env)?;
+        return Ok(Command(smol::process::Command::from(command)));
+    }
+    let mut command = new_command(program);
+    command.current_dir(directory);
+    if let Some(env) = environment {
+        command.envs(env);
+    }
+    Ok(command)
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn project_commands_use_the_supplied_search_path_and_environment() -> anyhow::Result<()> {
+    use tempfile::tempdir;
+
+    let directory = tempdir()?;
+    let system_root = std::env::var("SystemRoot")?;
+    // Use an executable that is only on the project's PATH.
+    let executable = directory.path().join("qmr-env-probe.exe");
+    std::fs::copy(
+        Path::new(&system_root).join(r"System32\cmd.exe"),
+        &executable,
+    )?;
+    let env = collections::HashMap::from_iter([
+        ("SystemRoot".into(), system_root),
+        ("PATH".into(), directory.path().display().to_string()),
+        ("QMR_SDK".into(), "active".into()),
+    ]);
+    let mut command = new_command_with_environment("qmr-env-probe", directory.path(), Some(&env))?;
+    assert_eq!(
+        Path::new(command.get_program()).canonicalize()?,
+        executable.canonicalize()?
+    );
+    let output = smol::block_on(
+        command
+            .args([
+                "/D",
+                "/C",
+                "echo %QMR_SDK%& if defined USERPROFILE exit /b 1",
+            ])
+            .output(),
+    )?;
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout)?.trim(), "active");
+    Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -83,11 +83,16 @@ async fn lsp_task_context(
             .and_then(|worktree| worktree.read(cx).root_dir())
     });
 
-    let project_env = environment
-        .update(cx, |environment, cx| {
-            environment.buffer_environment(buffer, &worktree_store, cx)
-        })
-        .await;
+    let project_env = if cfg!(windows) && project.read_with(cx, |project, _| project.is_local()) {
+        // Local tasks get their current environment when they spawn, including on rerun.
+        None
+    } else {
+        environment
+            .update(cx, |environment, cx| {
+                environment.buffer_environment(buffer, &worktree_store, cx)
+            })
+            .await
+    };
 
     Some(TaskContext {
         cwd: worktree_abs_path.map(|p| p.to_path_buf()),

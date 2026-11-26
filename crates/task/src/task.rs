@@ -37,9 +37,19 @@ pub use zed_actions::RevealTarget;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
 pub struct TaskId(pub String);
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TaskCommandMode {
+    #[default]
+    Direct,
+    Shell,
+    ShellWithQuotedArgs,
+}
+
 /// Contains all information needed by Zed to spawn a new terminal tab for the given task.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SpawnInTerminal {
+    /// Defer shell selection until the launch environment has been resolved.
+    pub command_mode: TaskCommandMode,
     /// Id of the task to use when determining task tab affinity.
     pub id: TaskId,
     /// Full unshortened form of `label` field.
@@ -77,6 +87,28 @@ pub struct SpawnInTerminal {
     pub show_rerun: bool,
     /// Which edited buffers to save before running the task.
     pub save: SaveStrategy,
+}
+
+/// Translate a task command into the selected shell's executable and arguments.
+pub fn prepare_task_for_spawn(
+    task: &SpawnInTerminal,
+    shell: &Shell,
+    is_windows: bool,
+) -> SpawnInTerminal {
+    let builder = ShellBuilder::new(shell, is_windows);
+    let command_label = builder.command_label(task.command.as_deref().unwrap_or(""));
+    let (program, args) = if task.command_mode == TaskCommandMode::ShellWithQuotedArgs {
+        builder.build(task.command.clone(), &task.args)
+    } else {
+        builder.build_no_quote(task.command.clone(), &task.args)
+    };
+    SpawnInTerminal {
+        command_mode: TaskCommandMode::Direct,
+        command: Some(program),
+        args,
+        command_label,
+        ..task.clone()
+    }
 }
 
 impl SpawnInTerminal {

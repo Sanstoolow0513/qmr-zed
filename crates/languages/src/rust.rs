@@ -27,7 +27,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use task::{TaskTemplate, TaskTemplates, TaskVariables, VariableName};
-use util::command::{Stdio, new_command};
+use util::command::Stdio;
 use util::fs::{make_file_executable, remove_matching};
 use util::merge_json_value_into;
 use util::paths::PathStyle;
@@ -148,7 +148,11 @@ impl RustLspAdapter {
         async fn from_ldd_version() -> Option<LibcType> {
             use util::command::new_command;
 
-            let ldd_output = new_command("ldd").arg("--version").output().await.ok()?;
+            let ldd_output = util::command::new_command("ldd")
+                .arg("--version")
+                .output()
+                .await
+                .ok()?;
             let ldd_version = String::from_utf8_lossy(&ldd_output.stdout);
 
             if ldd_version.contains("GNU libc") || ldd_version.contains("GLIBC") {
@@ -211,10 +215,9 @@ impl RustLspAdapter {
         let rustup = delegate.which("rustup".as_ref()).await?;
         let env = delegate.shell_env().await;
         let worktree_root = delegate.worktree_root_path();
-        let output = new_command(rustup)
+        let output = util::command::new_command_with_environment(rustup, worktree_root, Some(&env))
+            .ok()?
             .args(["which", "rust-analyzer"])
-            .envs(env.iter())
-            .current_dir(worktree_root)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -621,19 +624,26 @@ impl LspAdapter for RustLspAdapter {
             .0
             .ok()?;
 
-        let mut command = util::command::new_command(&binary.path);
+        let mut env = delegate.shell_env().await;
+        util::extend_environment(&mut env, binary.env.unwrap_or_default());
+        let mut command = util::command::new_command_with_environment(
+            &binary.path,
+            delegate.worktree_root_path(),
+            Some(&env),
+        )
+        .log_err()?;
         command
             .arg("--print-config-schema")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let cmd = command
             .spawn()
-            .map_err(|e| log::debug!("failed to spawn command {command:?}: {e}"))
+            .map_err(|e| log::debug!("failed to start {:?} for config schema: {e}", binary.path))
             .ok()?;
         let output = cmd
             .output()
             .await
-            .map_err(|e| log::debug!("failed to execute command {command:?}: {e}"))
+            .map_err(|e| log::debug!("failed to read config schema from {:?}: {e}", binary.path))
             .ok()?;
         if !output.status.success() {
             return None;
@@ -1283,12 +1293,8 @@ async fn target_info_from_abs_path(
         return Ok(None);
     }
 
-    let mut command = util::command::new_command("cargo");
-    if let Some(envs) = project_env {
-        command.envs(envs);
-    }
+    let mut command = util::command::new_command_with_environment("cargo", directory, project_env)?;
     let output = command
-        .current_dir(directory)
         .arg("metadata")
         .arg("--no-deps")
         .arg("--format-version")
@@ -1373,20 +1379,10 @@ async fn human_readable_package_name(
     package_directory: &Path,
     project_env: Option<&HashMap<String, String>>,
 ) -> Option<String> {
-    let mut command = util::command::new_command("cargo");
-    if let Some(envs) = project_env {
-        command.envs(envs);
-    }
-    let pkgid = String::from_utf8(
-        command
-            .current_dir(package_directory)
-            .arg("pkgid")
-            .output()
-            .await
-            .log_err()?
-            .stdout,
-    )
-    .ok()?;
+    let mut command =
+        util::command::new_command_with_environment("cargo", package_directory, project_env)
+            .log_err()?;
+    let pkgid = String::from_utf8(command.arg("pkgid").output().await.log_err()?.stdout).ok()?;
     Some(package_name_from_pkgid(&pkgid)?.to_owned())
 }
 

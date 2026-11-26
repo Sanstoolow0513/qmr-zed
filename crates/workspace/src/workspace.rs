@@ -11290,6 +11290,8 @@ pub struct OpenOptions {
     pub requesting_window: Option<WindowHandle<MultiWorkspace>>,
     pub open_mode: OpenMode,
     pub env: Option<HashMap<String, String>>,
+    /// Apply an explicit CLI environment selection when reusing a local project.
+    pub change_environment: bool,
     pub open_in_dev_container: bool,
 }
 
@@ -11304,6 +11306,7 @@ impl Default for OpenOptions {
             requesting_window: None,
             open_mode: OpenMode::default(),
             env: None,
+            change_environment: false,
             open_in_dev_container: false,
         }
     }
@@ -11551,6 +11554,12 @@ pub fn open_paths(
                     window.activate_window();
                     multi_workspace.activate(target_workspace.clone(), None, window, cx);
                     target_workspace.update(cx, |workspace, cx| {
+                        #[cfg(windows)]
+                        if open_options.change_environment && workspace.project.read(cx).is_local() {
+                            workspace.project.update(cx, |project, cx| {
+                                project.set_cli_environment(open_options.env.take(), cx);
+                            });
+                        }
                         if open_in_dev_container {
                             workspace.set_open_in_dev_container(true);
                         }

@@ -544,20 +544,22 @@ pub async fn handle_cli_connection(
     cx: &mut AsyncApp,
 ) {
     if let Some(request) = requests.next().await {
+        let change_environment = matches!(request, CliRequest::OpenWithEnvironment(_));
         match request {
-            CliRequest::Open {
-                urls,
-                paths,
-                diff_paths,
-                diff_all,
-                wait,
-                wsl,
-                mut open_behavior,
-                env,
-                user_data_dir: _,
-                dev_container,
-                cwd,
-            } => {
+            CliRequest::Open(open) | CliRequest::OpenWithEnvironment(open) => {
+                let cli::OpenRequest {
+                    urls,
+                    paths,
+                    diff_paths,
+                    diff_all,
+                    wait,
+                    wsl,
+                    mut open_behavior,
+                    env,
+                    user_data_dir: _,
+                    dev_container,
+                    cwd,
+                } = open;
                 if !urls.is_empty() {
                     cx.update(|cx| {
                         match OpenRequest::parse(
@@ -625,6 +627,7 @@ pub async fn handle_cli_connection(
                     dev_container,
                     app_state.clone(),
                     env,
+                    change_environment,
                     cwd,
                     cx,
                 )
@@ -804,6 +807,7 @@ async fn open_workspaces(
     dev_container: bool,
     app_state: Arc<AppState>,
     env: Option<collections::HashMap<String, String>>,
+    change_environment: bool,
     cwd: Option<PathBuf>,
     cx: &mut AsyncApp,
 ) -> Result<()> {
@@ -854,6 +858,7 @@ async fn open_workspaces(
         let open_options = workspace::OpenOptions {
             wait,
             env: env.clone(),
+            change_environment,
             open_in_dev_container: dev_container,
             ..base_open_options
         };
@@ -2263,7 +2268,7 @@ mod tests {
     }
 
     fn make_cli_open_request(paths: Vec<String>, open_behavior: cli::OpenBehavior) -> CliRequest {
-        CliRequest::Open {
+        CliRequest::Open(cli::OpenRequest {
             paths,
             urls: vec![],
             diff_paths: vec![],
@@ -2275,14 +2280,14 @@ mod tests {
             user_data_dir: None,
             dev_container: false,
             cwd: None,
-        }
+        })
     }
 
     fn make_cli_url_open_request(
         urls: Vec<String>,
         open_behavior: cli::OpenBehavior,
     ) -> CliRequest {
-        CliRequest::Open {
+        CliRequest::Open(cli::OpenRequest {
             paths: vec![],
             urls,
             diff_paths: vec![],
@@ -2294,7 +2299,7 @@ mod tests {
             user_data_dir: None,
             dev_container: false,
             cwd: None,
-        }
+        })
     }
 
     /// Runs the real [`cli::run_cli_response_loop`] on an OS thread against
@@ -2389,6 +2394,59 @@ mod tests {
             "no prompt should be shown when no windows exist"
         );
         assert_eq!(cx.windows().len(), 1);
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn windows_cli_changes_only_the_selected_projects_environment(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let mut projects = Vec::new();
+        for dir in [path!("/project_a"), path!("/project_b")] {
+            app_state.fs.as_fake().insert_tree(dir, json!({})).await;
+            let result = cx
+                .update(|cx| {
+                    workspace::open_paths(
+                        &[PathBuf::from(dir)],
+                        app_state.clone(),
+                        workspace::OpenOptions {
+                            workspace_matching: workspace::WorkspaceMatching::None,
+                            ..Default::default()
+                        },
+                        cx,
+                    )
+                })
+                .await
+                .unwrap();
+            projects.push(cx.update(|cx| result.workspace.read(cx).project().clone()));
+        }
+        for (change, value, expected) in [
+            (true, Some("developer"), Some("developer")),
+            (false, None, Some("developer")),
+            (true, None, None),
+        ] {
+            let CliRequest::Open(mut open) = make_cli_open_request(
+                vec![path!("/project_a").to_string()],
+                cli::OpenBehavior::Classic,
+            ) else {
+                unreachable!()
+            };
+            open.env = value.map(|v| collections::HashMap::from_iter([("SDK".into(), v.into())]));
+            let request = if change {
+                CliRequest::OpenWithEnvironment(open)
+            } else {
+                CliRequest::Open(open)
+            };
+            let (status, _) = run_cli_with_zed_handler(cx, app_state.clone(), request, None);
+            assert_eq!(status, 0);
+            cx.update(|cx| {
+                let env = projects[0].read(cx).cli_environment(cx);
+                assert_eq!(
+                    env.as_ref().and_then(|e| e.get("SDK")).map(String::as_str),
+                    expected
+                );
+                assert!(projects[1].read(cx).cli_environment(cx).is_none());
+            });
+        }
     }
 
     #[gpui::test]

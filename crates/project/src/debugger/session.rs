@@ -199,6 +199,7 @@ impl RunningMode {
         worktree: WeakEntity<Worktree>,
         binary: DebugAdapterBinary,
         messages_tx: futures::channel::mpsc::UnboundedSender<Message>,
+        replace_environment: bool,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let message_handler = Box::new({
@@ -215,7 +216,14 @@ impl RunningMode {
                 .create_child_connection(session_id, binary.clone(), message_handler, cx)
                 .await?
         } else {
-            DebugAdapterClient::start(session_id, binary.clone(), message_handler, cx).await?
+            DebugAdapterClient::start(
+                session_id,
+                binary.clone(),
+                replace_environment,
+                message_handler,
+                cx,
+            )
+            .await?
         };
 
         Ok(Self {
@@ -950,6 +958,7 @@ impl Session {
         self.background_tasks = background_tasks;
         let id = self.id;
         let parent_session = self.parent_session.clone();
+        let replace_environment = cfg!(windows) && self.remote_client.is_none();
 
         cx.spawn(async move |this, cx| {
             let mode = RunningMode::new(
@@ -958,6 +967,7 @@ impl Session {
                 worktree.downgrade(),
                 binary.clone(),
                 message_tx,
+                replace_environment,
                 cx,
             )
             .await?;

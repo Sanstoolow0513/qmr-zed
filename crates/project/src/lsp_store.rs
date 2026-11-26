@@ -527,6 +527,21 @@ impl LocalLspStore {
         let worktree_abs_path = worktree.abs_path();
         let toolchain = key.toolchain.clone();
         let override_options = settings.initialization_options.clone();
+        // The adapter may resolve a bare server name before constructing the launch command.
+        #[cfg(windows)]
+        let delegate =
+            if let Some(overrides) = settings.binary.as_ref().and_then(|s| s.env.as_ref()) {
+                let mut delegate = delegate;
+                let launch = Arc::make_mut(&mut delegate);
+                launch.load_shell_env_task = crate::environment::with_launch_overrides(
+                    launch.load_shell_env_task.clone(),
+                    overrides.clone(),
+                    cx,
+                );
+                delegate
+            } else {
+                delegate
+            };
 
         let stderr_capture = Arc::new(Mutex::new(Some(String::new())));
 
@@ -823,7 +838,7 @@ impl LocalLspStore {
                     delegate.update_status(adapter.name(), BinaryStatus::Starting);
                 }
                 let mut env = delegate.shell_env().await;
-                env.extend(settings.env.unwrap_or_default());
+                util::extend_environment(&mut env, settings.env.unwrap_or_default());
 
                 Ok(LanguageServerBinary {
                     path: delegate.resolve_relative_path(path),
@@ -945,14 +960,14 @@ impl LocalLspStore {
             };
             let mut shell_env = delegate.shell_env().await;
 
-            shell_env.extend(binary.env.unwrap_or_default());
+            util::extend_environment(&mut shell_env, binary.env.unwrap_or_default());
 
             if let Some(settings) = settings.binary.as_ref() {
                 if let Some(arguments) = &settings.arguments {
                     binary.arguments = arguments.iter().map(Into::into).collect();
                 }
                 if let Some(env) = &settings.env {
-                    shell_env.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
+                    util::extend_environment(&mut shell_env, env.clone());
                 }
             }
 
@@ -2848,15 +2863,13 @@ impl LocalLspStore {
         });
 
         use util::command::Stdio;
-        let mut child = util::command::new_command(command);
-
-        if let Some(buffer_env) = buffer.env.as_ref() {
-            child.envs(buffer_env);
-        }
-
-        if let Some(working_dir_path) = working_dir_path {
-            child.current_dir(working_dir_path);
-        }
+        let mut child = util::command::new_command_with_environment(
+            command,
+            working_dir_path
+                .as_deref()
+                .unwrap_or_else(|| Path::new(".")),
+            buffer.env.as_ref(),
+        )?;
 
         if let Some(arguments) = arguments {
             child.args(arguments.iter().map(|arg| {
@@ -16999,6 +17012,7 @@ pub fn language_server_settings_for<'a>(
     ProjectSettings::get(Some(location), cx).lsp.get(language)
 }
 
+#[derive(Clone)]
 pub struct LocalLspAdapterDelegate {
     lsp_store: WeakEntity<LspStore>,
     worktree: worktree::Snapshot,
@@ -17100,12 +17114,11 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         };
 
         let env = self.shell_env().await;
-        let output = util::command::new_command(&npm)
-            .args(["root", "-g"])
-            .envs(env)
-            .current_dir(local_package_directory)
-            .output()
-            .await?;
+        let output =
+            util::command::new_command_with_environment(&npm, local_package_directory, Some(&env))?
+                .args(["root", "-g"])
+                .output()
+                .await?;
         let global_node_modules =
             PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
 
@@ -17125,9 +17138,11 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
 
         let env = self.shell_env().await;
 
-        let shell_path = env.get("PATH").cloned();
-
-        which::which_in(command, shell_path.as_ref(), worktree_abs_path).ok()
+        #[cfg(windows)]
+        return util::windows_environment::resolve_program(command, Some(&worktree_abs_path), &env)
+            .ok();
+        #[cfg(not(windows))]
+        which::which_in(command, env.get("PATH"), worktree_abs_path).ok()
     }
 
     async fn try_exec(&self, command: LanguageServerBinary) -> Result<()> {
@@ -17135,12 +17150,19 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         if self.fs.is_file(&working_dir).await {
             working_dir.pop();
         }
-        let output = util::command::new_command(&command.path)
-            .args(command.arguments)
-            .envs(command.env.clone().unwrap_or_default())
-            .current_dir(working_dir)
-            .output()
-            .await?;
+        #[cfg(windows)]
+        let env = {
+            let mut env = self.shell_env().await;
+            util::extend_environment(&mut env, command.env.unwrap_or_default());
+            Some(env)
+        };
+        #[cfg(not(windows))]
+        let env = command.env;
+        let output =
+            util::command::new_command_with_environment(&command.path, &working_dir, env.as_ref())?
+                .args(command.arguments)
+                .output()
+                .await?;
 
         anyhow::ensure!(
             output.status.success(),

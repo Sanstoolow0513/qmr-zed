@@ -537,11 +537,13 @@ impl LanguageServer {
             working_dir,
             binary.arguments
         );
-        let mut command = util::command::new_command(&binary.path);
+        let mut command = util::command::new_command_with_environment(
+            &binary.path,
+            working_dir,
+            binary.env.as_ref(),
+        )?;
         command
-            .current_dir(working_dir)
             .args(&binary.arguments)
-            .envs(binary.env.clone().unwrap_or_default())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -549,7 +551,7 @@ impl LanguageServer {
 
         let mut server = command
             .spawn()
-            .with_context(|| format!("failed to spawn command {command:?}",))?;
+            .with_context(|| format!("failed to spawn language server {:?}", binary.path))?;
 
         let stdin = server.stdin.take().unwrap();
         let stdout = server.stdout.take().unwrap();
@@ -2175,6 +2177,46 @@ mod tests {
     #[ctor::ctor(unsafe)]
     fn init_logger() {
         zlog::init_test();
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn restarted_server_uses_the_new_windows_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        let system_root = std::env::var("SystemRoot").unwrap();
+        let system_dir = Path::new(&system_root).join("System32");
+        assert!(std::env::var_os("USERPROFILE").is_some());
+
+        for sdk_version in [37, 42] {
+            let binary = LanguageServerBinary {
+                path: "cmd".into(),
+                arguments: [
+                    "/d",
+                    "/c",
+                    "if defined USERPROFILE (exit 1) else (exit %QMR_SDK_VERSION%)",
+                ]
+                .map(OsString::from)
+                .to_vec(),
+                env: Some(HashMap::from_iter([
+                    ("SystemRoot".into(), system_root.clone()),
+                    ("PATH".into(), system_dir.display().to_string()),
+                    ("QMR_SDK_VERSION".into(), sdk_version.to_string()),
+                ])),
+            };
+            let server = LanguageServer::new(
+                Default::default(),
+                LanguageServerId(0),
+                LanguageServerName::from("env-probe"),
+                binary,
+                &system_dir,
+                None,
+                None,
+                &mut cx.to_async(),
+            )
+            .unwrap();
+            let mut child = server.server.lock().take().unwrap();
+            assert_eq!(child.status().await.unwrap().code(), Some(sdk_version));
+        }
     }
 
     #[gpui::test]

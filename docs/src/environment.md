@@ -20,7 +20,22 @@ To make the best use of these features, it helps to understand where Zed gets en
 
 How Zed starts affects which environment variables it can use. That includes launching from the macOS Dock, a Linux window manager, or the `zed` CLI.
 
-### Launched from the CLI
+### Local Windows projects
+
+QMR Zed reads the Windows system, user, and sign-in environment when you start
+a terminal, task, language server, or debugger. If an installer adds a tool to
+your user `Path`, open a new terminal or split the current one to use it.
+Processes that are already running keep their own environment. Project and
+tool-specific settings such as `terminal.env` still apply.
+
+To use a developer shell's temporary SDK variables or activated virtual
+environment, open the project from that shell with `qmrzed --inherit-env .`.
+Use `qmrzed --reload-env .` to resume reading the Windows environment. Both
+commands apply to future launches in the selected project, including when its
+window is already open. The selection lasts for the current project session.
+Remote shells and tools use the environment on their own host.
+
+### Launched from the CLI on macOS and Unix
 
 If Zed is opened via the CLI (`zed`), it will inherit the environment variables from the surrounding shell session.
 
@@ -45,7 +60,7 @@ Since that can lead to problems for users who need different environment variabl
 
 ## Where and how are environment variables used?
 
-There are two sets of environment variables:
+On macOS and Unix there are two sets of environment variables:
 
 1. Environment variables of the Zed process
 2. Environment variables stored per project

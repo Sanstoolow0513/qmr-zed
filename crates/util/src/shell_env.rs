@@ -33,7 +33,7 @@ pub async fn capture(
     directory: impl AsRef<Path>,
 ) -> Result<collections::HashMap<String, String>> {
     #[cfg(windows)]
-    return capture_windows(shell_path.as_ref(), args, directory.as_ref()).await;
+    return capture_windows(shell_path.as_ref(), args, directory.as_ref(), None).await;
     #[cfg(unix)]
     return capture_unix(shell_path.as_ref(), args, directory.as_ref()).await;
 }
@@ -210,10 +210,11 @@ async fn spawn_and_read_fd(
 }
 
 #[cfg(windows)]
-async fn capture_windows(
+pub async fn capture_windows(
     shell_path: &Path,
     args: &[String],
     directory: &Path,
+    environment: Option<&HashMap<String, String>>,
 ) -> Result<collections::HashMap<String, String>> {
     use std::process::Stdio;
 
@@ -235,7 +236,7 @@ async fn capture_windows(
             .map(|quoted| quoted.into_owned())
             .context("unexpected null in directory name")
     };
-    let mut cmd = crate::command::new_command(shell_path);
+    let mut cmd = crate::command::new_command_with_environment(shell_path, directory, environment)?;
     cmd.args(args);
     let quoted_directory = quote_for_shell(&directory_string)?;
     let quoted_zed_path = quote_for_shell(&zed_path_string)?;
@@ -281,11 +282,24 @@ async fn capture_windows(
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
-    let output = cmd
-        .output()
-        .await
-        .with_context(|| format!("command {cmd:?}"))?;
+    let output = cmd.output().await.with_context(|| {
+        format!(
+            "capturing the project environment with {}",
+            shell_path.display()
+        )
+    })?;
     let env_output = String::from_utf8_lossy(&output.stdout);
+
+    if environment.is_some() {
+        // The child's output and the command's Debug representation contain the complete environment.
+        return parse_env_map_from_noisy_output(&env_output).map_err(|_| {
+            anyhow::anyhow!(
+                "{} returned no environment (exit status {})",
+                shell_path.display(),
+                output.status
+            )
+        });
+    }
 
     parse_env_output(
         &env_output,

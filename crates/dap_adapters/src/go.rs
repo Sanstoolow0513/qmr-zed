@@ -463,12 +463,16 @@ impl DebugAdapter for GoDebugAdapter {
 
             let adapter_path = paths::debug_adapters_dir().join(&Self::ADAPTER_NAME);
 
-            let install_output = util::command::new_command(&go)
-                .env("GO111MODULE", "on")
-                .env("GOBIN", &adapter_path)
-                .args(&["install", "github.com/go-delve/delve/cmd/dlv@latest"])
-                .output()
-                .await?;
+            let install_output = util::command::new_command_with_environment(
+                &go,
+                delegate.worktree_root_path(),
+                Some(&delegate.shell_env().await),
+            )?
+            .env("GO111MODULE", "on")
+            .env("GOBIN", &adapter_path)
+            .args(&["install", "github.com/go-delve/delve/cmd/dlv@latest"])
+            .output()
+            .await?;
 
             if !install_output.status.success() {
                 bail!(
@@ -598,7 +602,7 @@ async fn handle_envs(
             let file_envs: HashMap<String, String> = dotenvy::from_read_iter(file)
                 .filter_map(Result::ok)
                 .collect();
-            envs.extend(file_envs.iter().map(|(k, v)| (k.clone(), v.clone())));
+            util::extend_environment(envs, file_envs.clone());
             env_vars.extend(file_envs);
         } else {
             warn!("While starting Go debug session: failed to read env file {path:?}");
