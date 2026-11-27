@@ -6,6 +6,9 @@ use rpc::proto::{self, REMOTE_SERVER_PROJECT_ID};
 use std::{collections::VecDeque, path::Path, sync::Arc};
 use task::{Shell, shell_to_proto};
 use util::{ResultExt, command::new_command};
+
+#[cfg(windows)]
+mod windows;
 use worktree::Worktree;
 
 use collections::HashMap;
@@ -19,7 +22,10 @@ use crate::{
 
 pub struct ProjectEnvironment {
     cli_environment: Option<HashMap<String, String>>,
+    #[cfg(not(windows))]
     local_environments: HashMap<(Shell, Arc<Path>), Shared<Task<Option<HashMap<String, String>>>>>,
+    #[cfg(windows)]
+    windows_cache: windows::ProjectEnvironmentCache,
     remote_environments: HashMap<(Shell, Arc<Path>), Shared<Task<Option<HashMap<String, String>>>>>,
     environment_error_messages: VecDeque<String>,
     environment_error_messages_tx: mpsc::UnboundedSender<String>,
@@ -34,6 +40,21 @@ pub enum ProjectEnvironmentEvent {
 }
 
 impl EventEmitter<ProjectEnvironmentEvent> for ProjectEnvironment {}
+
+/// Adapters consult this snapshot during discovery as well as process creation.
+#[cfg(windows)]
+pub(crate) fn with_launch_overrides(
+    baseline: Shared<Task<Option<HashMap<String, String>>>>,
+    overrides: impl IntoIterator<Item = (String, String)> + Send + 'static,
+    cx: &App,
+) -> Shared<Task<Option<HashMap<String, String>>>> {
+    cx.background_spawn(async move {
+        let mut environment = baseline.await.unwrap_or_default();
+        util::extend_environment(&mut environment, overrides);
+        Some(environment)
+    })
+    .shared()
+}
 
 impl ProjectEnvironment {
     pub fn new(
@@ -55,7 +76,10 @@ impl ProjectEnvironment {
         });
         Self {
             cli_environment,
+            #[cfg(not(windows))]
             local_environments: Default::default(),
+            #[cfg(windows)]
+            windows_cache: Default::default(),
             remote_environments: Default::default(),
             environment_error_messages: Default::default(),
             environment_error_messages_tx: tx,
@@ -68,10 +92,15 @@ impl ProjectEnvironment {
 
     /// Returns the inherited CLI environment, if this project was opened from the Zed CLI.
     pub(crate) fn get_cli_environment(&self) -> Option<HashMap<String, String>> {
-        if cfg!(any(test, feature = "test-support")) {
+        if cfg!(all(not(windows), any(test, feature = "test-support"))) {
             return Some(HashMap::default());
         }
         if let Some(mut env) = self.cli_environment.clone() {
+            #[cfg(windows)]
+            {
+                let inherited = std::mem::take(&mut env);
+                util::extend_environment(&mut env, inherited);
+            }
             set_origin_marker(&mut env, EnvironmentOrigin::Cli);
             Some(env)
         } else {
@@ -96,6 +125,10 @@ impl ProjectEnvironment {
             .map(|f| f.worktree_id(cx))
             .and_then(|worktree_id| worktree_store.read(cx).worktree_for_id(worktree_id, cx))
         else {
+            #[cfg(windows)]
+            if !self.is_remote_project && self.remote_client.is_none() {
+                return self.windows_environment(&Shell::System, None, cx);
+            }
             return Task::ready(None).shared();
         };
         self.worktree_environment(worktree, cx)
@@ -144,6 +177,10 @@ impl ProjectEnvironment {
         cx: &mut App,
     ) -> Shared<Task<Option<HashMap<String, String>>>> {
         let remote_client = self.remote_client.as_ref().and_then(|it| it.upgrade());
+        #[cfg(windows)]
+        if remote_client.is_none() && !self.is_remote_project {
+            return self.windows_environment(&Shell::System, Some(abs_path), cx);
+        }
         match remote_client {
             Some(remote_client) => remote_client.clone().read(cx).shell().map(|shell| {
                 self.remote_directory_environment(
@@ -203,6 +240,10 @@ impl ProjectEnvironment {
             return Task::ready(Some(cli_environment)).shared();
         }
 
+        #[cfg(windows)]
+        return self.windows_environment(shell, Some(abs_path), cx);
+
+        #[cfg(not(windows))]
         self.local_environments
             .entry((shell.clone(), abs_path.clone()))
             .or_insert_with(|| {
@@ -249,6 +290,31 @@ impl ProjectEnvironment {
             .clone()
     }
 
+    #[cfg(windows)]
+    pub(crate) fn windows_environment(
+        &self,
+        shell: &Shell,
+        directory: Option<Arc<Path>>,
+        cx: &App,
+    ) -> Shared<Task<Option<HashMap<String, String>>>> {
+        if let Some(env) = self.get_cli_environment() {
+            return Task::ready(Some(env)).shared();
+        }
+        self.windows_cache.resolve(
+            shell.clone(),
+            directory,
+            ProjectSettings::get_global(cx).load_direnv.clone(),
+            self.environment_error_messages_tx.clone(),
+            cx,
+        )
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn set_cli_environment(&mut self, env: Option<HashMap<String, String>>) {
+        self.cli_environment = env;
+        self.windows_cache = Default::default();
+    }
+
     pub fn remote_directory_environment(
         &mut self,
         shell: &Shell,
@@ -291,7 +357,10 @@ impl ProjectEnvironment {
 }
 
 fn set_origin_marker(env: &mut HashMap<String, String>, origin: EnvironmentOrigin) {
-    env.insert(ZED_ENVIRONMENT_ORIGIN_MARKER.to_string(), origin.into());
+    util::extend_environment(
+        env,
+        [(ZED_ENVIRONMENT_ORIGIN_MARKER.to_string(), origin.into())],
+    );
 }
 
 const ZED_ENVIRONMENT_ORIGIN_MARKER: &str = "ZED_ENVIRONMENT";
@@ -299,6 +368,8 @@ const ZED_ENVIRONMENT_ORIGIN_MARKER: &str = "ZED_ENVIRONMENT";
 enum EnvironmentOrigin {
     Cli,
     WorktreeShell,
+    #[cfg(windows)]
+    Windows,
 }
 
 impl From<EnvironmentOrigin> for String {
@@ -306,6 +377,8 @@ impl From<EnvironmentOrigin> for String {
         match val {
             EnvironmentOrigin::Cli => "cli".into(),
             EnvironmentOrigin::WorktreeShell => "worktree-shell".into(),
+            #[cfg(windows)]
+            EnvironmentOrigin::Windows => "windows".into(),
         }
     }
 }
@@ -315,6 +388,7 @@ async fn load_directory_shell_environment(
     abs_path: Arc<Path>,
     load_direnv: DirenvSettings,
     tx: mpsc::UnboundedSender<String>,
+    #[cfg(windows)] baseline: &HashMap<String, String>,
 ) -> anyhow::Result<HashMap<String, String>> {
     if let DirenvSettings::Disabled = load_direnv {
         return Ok(HashMap::default());
@@ -339,21 +413,32 @@ async fn load_directory_shell_environment(
             .into()
     };
 
-    let (shell, args) = shell.program_and_args();
-    let mut envs = util::shell_env::capture(shell.clone(), args, abs_path)
-        .await
-        .with_context(|| {
-            tx.unbounded_send("Failed to load environment variables".into())
-                .ok();
-            format!("capturing shell environment with {shell:?}")
-        })?;
+    #[cfg(windows)]
+    let captured = {
+        let (program, args) = match &shell {
+            Shell::System => (
+                util::windows_environment::system_shell(Some(&dir), baseline),
+                &[][..],
+            ),
+            shell => shell.program_and_args(),
+        };
+        util::shell_env::capture_windows(Path::new(&program), args, &dir, Some(baseline)).await
+    };
+    #[cfg(not(windows))]
+    let captured = {
+        let (program, args) = shell.program_and_args();
+        util::shell_env::capture(program, args, abs_path).await
+    };
+    let mut envs = captured.with_context(|| {
+        tx.unbounded_send("Failed to load environment variables".into())
+            .ok();
+        format!("capturing shell environment with {shell:?}")
+    })?;
 
-    if cfg!(target_os = "windows")
-        && let Some(path) = envs.remove("Path")
+    #[cfg(windows)]
     {
-        // windows env vars are case-insensitive, so normalize the path var
-        // so we can just assume `PATH` in other places
-        envs.insert("PATH".into(), path);
+        let captured = std::mem::take(&mut envs);
+        util::extend_environment(&mut envs, captured);
     }
     // If the user selects `Direct` for direnv, it would set an environment
     // variable that later uses to know that it should not run the hook.

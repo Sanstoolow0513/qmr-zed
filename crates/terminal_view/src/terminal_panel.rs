@@ -19,7 +19,8 @@ use itertools::Itertools;
 use project::{Fs, Project};
 
 use settings::{Settings, TerminalDockPosition};
-use task::{RevealStrategy, RevealTarget, Shell, ShellBuilder, SpawnInTerminal, TaskId};
+pub use task::prepare_task_for_spawn;
+use task::{RevealStrategy, RevealTarget, Shell, SpawnInTerminal, TaskId};
 use terminal::{Terminal, terminal_settings::TerminalSettings};
 use ui::{
     ButtonLike, Clickable, CommonAnimationExt, ContextMenu, FluentBuilder, PopoverMenu,
@@ -638,7 +639,6 @@ impl TerminalPanel {
         }
 
         let remote_client = project.remote_client();
-        let is_windows = project.path_style(cx).is_windows();
         let remote_shell = remote_client
             .as_ref()
             .and_then(|remote_client| remote_client.read(cx).shell());
@@ -651,7 +651,11 @@ impl TerminalPanel {
             task.shell.clone()
         };
 
-        let task = prepare_task_for_spawn(task, &shell, is_windows);
+        let task = SpawnInTerminal {
+            shell,
+            command_mode: task::TaskCommandMode::Shell,
+            ..task.clone()
+        };
 
         if task.allow_concurrent_runs && task.use_new_terminal {
             return self.spawn_in_new_terminal(task, window, cx);
@@ -1265,26 +1269,6 @@ impl TerminalPanel {
         {
             cx.notify();
         }
-    }
-}
-
-/// Prepares a `SpawnInTerminal` by computing the command, args, and command_label
-/// based on the shell configuration. This is a pure function that can be tested
-/// without spawning actual terminals.
-pub fn prepare_task_for_spawn(
-    task: &SpawnInTerminal,
-    shell: &Shell,
-    is_windows: bool,
-) -> SpawnInTerminal {
-    let builder = ShellBuilder::new(shell, is_windows);
-    let command_label = builder.command_label(task.command.as_deref().unwrap_or(""));
-    let (command, args) = builder.build_no_quote(task.command.clone(), &task.args);
-
-    SpawnInTerminal {
-        command_label,
-        command: Some(command),
-        args,
-        ..task.clone()
     }
 }
 

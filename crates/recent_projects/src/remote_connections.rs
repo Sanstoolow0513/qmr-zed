@@ -134,7 +134,7 @@ pub async fn open_remote_project(
 ) -> Result<WindowHandle<MultiWorkspace>> {
     let created_new_window = open_options.requesting_window.is_none();
 
-    let (existing, open_visible) = find_existing_workspace(
+    let workspace_match = find_existing_workspace(
         &paths,
         &open_options,
         &SerializedWorkspaceLocation::Remote(connection_options.clone()),
@@ -142,7 +142,8 @@ pub async fn open_remote_project(
     )
     .await;
 
-    if let Some((existing_window, existing_workspace)) = existing {
+    let open_visible = workspace_match.open_visible;
+    if let Some((existing_window, existing_workspace)) = workspace_match.target {
         let remote_connection = cx.update(|cx| {
             existing_workspace
                 .read(cx)
@@ -710,26 +711,28 @@ mod tests {
             .unwrap();
 
         let search_paths = vec![PathBuf::from(path!("/project/src/lib.rs"))];
-        let (found, _) = find_existing_workspace(
+        let found = find_existing_workspace(
             &search_paths,
             &workspace::OpenOptions::default(),
             &SerializedWorkspaceLocation::Remote(other_opts),
             &mut async_cx,
         )
-        .await;
+        .await
+        .target;
         assert!(
             found.is_none(),
             "a matching path on another remote must not satisfy the request"
         );
 
         // Verify find_existing_workspace discovers the remote workspace.
-        let (found, _open_visible) = find_existing_workspace(
+        let found = find_existing_workspace(
             &search_paths,
             &workspace::OpenOptions::default(),
             &SerializedWorkspaceLocation::Remote(opts.clone()),
             &mut async_cx,
         )
-        .await;
+        .await
+        .target;
 
         assert!(
             found.is_some(),

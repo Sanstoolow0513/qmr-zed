@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use collections::FxHashMap;
+use collections::{FxHashMap, HashMap};
 use gpui::{App, BackgroundExecutor, Global, SharedString};
 use language::LanguageName;
 use parking_lot::RwLock;
@@ -10,6 +10,22 @@ use task::{
 
 use crate::adapters::{DebugAdapter, DebugAdapterName};
 use std::{collections::BTreeMap, sync::Arc};
+
+pub struct LocatorBuild {
+    /// The original build arguments and the environment overrides for the launch request.
+    pub task: SpawnInTerminal,
+    /// The environment used to replay the build, which may contain build-only credentials.
+    pub replay_environment: Option<HashMap<String, String>>,
+}
+
+impl From<SpawnInTerminal> for LocatorBuild {
+    fn from(task: SpawnInTerminal) -> Self {
+        Self {
+            task,
+            replay_environment: None,
+        }
+    }
+}
 
 /// Given a user build configuration, locator creates a fill-in debug target ([DebugScenario]) on behalf of the user.
 #[async_trait]
@@ -23,11 +39,7 @@ pub trait DapLocator: Send + Sync {
         adapter: &DebugAdapterName,
     ) -> Option<DebugScenario>;
 
-    async fn run(
-        &self,
-        build_config: SpawnInTerminal,
-        executor: BackgroundExecutor,
-    ) -> Result<DebugRequest>;
+    async fn run(&self, build: LocatorBuild, executor: BackgroundExecutor) -> Result<DebugRequest>;
 }
 
 #[derive(Default)]

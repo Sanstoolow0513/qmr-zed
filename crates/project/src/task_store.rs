@@ -348,7 +348,13 @@ fn local_task_context_for_location(
         task_variables.sweep();
 
         Ok(Some(TaskContext {
-            project_env: project_env.unwrap_or_default(),
+            // Windows resolves the complete environment at dispatch. Saving it among a task's
+            // overrides would reintroduce stale variables when the task is rerun.
+            project_env: if cfg!(windows) {
+                HashMap::default()
+            } else {
+                project_env.unwrap_or_default()
+            },
             cwd: worktree_abs_path.map(|p| p.to_path_buf()),
             task_variables,
         }))

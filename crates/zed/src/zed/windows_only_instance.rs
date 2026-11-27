@@ -151,7 +151,7 @@ fn send_args_to_instance(args: &Args) -> anyhow::Result<()> {
             }
         }
 
-        CliRequest::Open {
+        CliRequest::Open(cli::OpenRequest {
             paths,
             urls,
             diff_paths,
@@ -163,7 +163,7 @@ fn send_args_to_instance(args: &Args) -> anyhow::Result<()> {
             user_data_dir: args.user_data_dir.clone(),
             dev_container: args.dev_container,
             cwd: std::env::current_dir().ok(),
-        }
+        })
     };
 
     let exit_status = Arc::new(Mutex::new(None));

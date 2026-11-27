@@ -2260,6 +2260,18 @@ impl Project {
         self.environment.read(cx).get_cli_environment()
     }
 
+    #[cfg(windows)]
+    pub fn set_cli_environment(
+        &mut self,
+        env: Option<HashMap<String, String>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.environment.update(cx, |environment, cx| {
+            environment.set_cli_environment(env);
+            cx.notify();
+        });
+    }
+
     #[inline]
     pub fn peek_environment_error<'a>(&'a self, cx: &'a App) -> Option<&'a String> {
         self.environment.read(cx).peek_environment_error()

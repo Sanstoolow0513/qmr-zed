@@ -33,6 +33,7 @@ pub struct DebugAdapterClient {
     id: SessionId,
     sequence_count: AtomicU64,
     binary: DebugAdapterBinary,
+    replace_environment: bool,
     transport_delegate: TransportDelegate,
 }
 
@@ -42,13 +43,15 @@ impl DebugAdapterClient {
     pub async fn start(
         id: SessionId,
         binary: DebugAdapterBinary,
+        replace_environment: bool,
         message_handler: DapMessageHandler,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
-        let transport_delegate = TransportDelegate::start(&binary, cx).await?;
+        let transport_delegate = TransportDelegate::start(&binary, replace_environment, cx).await?;
         let this = Self {
             id,
             binary,
+            replace_environment,
             transport_delegate,
             sequence_count: AtomicU64::new(1),
         };
@@ -88,11 +91,20 @@ impl DebugAdapterClient {
                 connection: Some(connection),
                 request_args: binary.request_args,
             }
+        } else if self.replace_environment {
+            binary
         } else {
             self.binary.clone()
         };
 
-        Self::start(session_id, binary, message_handler, cx).await
+        Self::start(
+            session_id,
+            binary,
+            self.replace_environment,
+            message_handler,
+            cx,
+        )
+        .await
     }
 
     /// Send a request to an adapter and get a response back
@@ -300,6 +312,7 @@ mod tests {
                     request: dap_types::StartDebuggingRequestArgumentsRequest::Launch,
                 },
             },
+            false,
             Box::new(|_| {}),
             &mut cx.to_async(),
         )
@@ -368,6 +381,7 @@ mod tests {
                     request: dap_types::StartDebuggingRequestArgumentsRequest::Launch,
                 },
             },
+            false,
             Box::new({
                 let called_event_handler = called_event_handler.clone();
                 move |event| {
@@ -419,6 +433,7 @@ mod tests {
                     request: dap_types::StartDebuggingRequestArgumentsRequest::Launch,
                 },
             },
+            false,
             Box::new({
                 let called_event_handler = called_event_handler.clone();
                 move |event| {

@@ -2465,6 +2465,7 @@ impl ShellExec {
                 let shell = Shell::System;
 
                 let spawn_in_terminal = SpawnInTerminal {
+                    command_mode: Default::default(),
                     id: TaskId("vim".to_string()),
                     full_label: command.clone(),
                     label: command.clone(),

@@ -77,6 +77,7 @@ pub trait Transport: Send + Sync {
 
 async fn start(
     binary: &DebugAdapterBinary,
+    replace_environment: bool,
     log_handlers: LogHandlers,
     cx: &mut AsyncApp,
 ) -> Result<Box<dyn Transport>> {
@@ -89,15 +90,63 @@ async fn start(
         }
     }
 
+    let process = if let Some(program) = binary.command.clone() {
+        let binary = binary.clone();
+        let signal_mask = util::command::ChildSignalMask::capture()?;
+        Some(
+            cx.background_spawn(async move {
+                let mut command = adapter_command(&program, &binary, replace_environment)?;
+                signal_mask.apply_to_std(&mut command);
+                command.args(&binary.arguments);
+                let stdin = if binary.connection.is_some() {
+                    Stdio::null()
+                } else {
+                    Stdio::piped()
+                };
+                Child::spawn(command, stdin, Stdio::piped(), Stdio::piped())
+                    .context("failed to start debug adapter")
+            })
+            .await?,
+        )
+    } else {
+        None
+    };
+
     if binary.connection.is_some() {
         Ok(Box::new(
-            TcpTransport::start(binary, log_handlers, cx).await?,
+            TcpTransport::start(binary, process, log_handlers, cx).await?,
         ))
     } else {
-        Ok(Box::new(
-            StdioTransport::start(binary, log_handlers, cx).await?,
-        ))
+        Ok(Box::new(StdioTransport::start(
+            process.context("stdio debug adapters require an executable")?,
+            log_handlers,
+            cx,
+        )))
     }
+}
+
+fn adapter_command(
+    program: &str,
+    binary: &DebugAdapterBinary,
+    replace_environment: bool,
+) -> Result<std::process::Command> {
+    #[cfg(windows)]
+    if replace_environment {
+        return util::command::new_std_command_with_environment(
+            program.as_ref(),
+            binary.cwd.as_deref(),
+            &binary.envs,
+        );
+    }
+    let mut command = util::command::new_std_command(program);
+    if replace_environment {
+        command.env_clear();
+    }
+    if let Some(cwd) = &binary.cwd {
+        command.current_dir(cwd);
+    }
+    command.envs(&binary.envs);
+    Ok(command)
 }
 
 pub(crate) struct PendingRequests {
@@ -157,9 +206,13 @@ pub(crate) struct TransportDelegate {
 }
 
 impl TransportDelegate {
-    pub(crate) async fn start(binary: &DebugAdapterBinary, cx: &mut AsyncApp) -> Result<Self> {
+    pub(crate) async fn start(
+        binary: &DebugAdapterBinary,
+        replace_environment: bool,
+        cx: &mut AsyncApp,
+    ) -> Result<Self> {
         let log_handlers: LogHandlers = Default::default();
-        let transport = start(binary, log_handlers.clone(), cx).await?;
+        let transport = start(binary, replace_environment, log_handlers.clone(), cx).await?;
         Ok(Self {
             transport: Mutex::new(transport),
             log_handlers,
@@ -549,6 +602,7 @@ impl TcpTransport {
 
     async fn start(
         binary: &DebugAdapterBinary,
+        mut process: Option<Child>,
         log_handlers: LogHandlers,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
@@ -560,23 +614,10 @@ impl TcpTransport {
         let host = connection_args.host;
         let port = connection_args.port;
 
-        let mut process = None;
         let mut stdout_task = None;
         let mut stderr_task = None;
 
-        if let Some(command) = &binary.command {
-            let mut command = util::command::new_std_command(&command);
-
-            if let Some(cwd) = &binary.cwd {
-                command.current_dir(cwd);
-            }
-
-            command.args(&binary.arguments);
-            command.envs(&binary.envs);
-
-            let mut p = Child::spawn(command, Stdio::null(), Stdio::piped(), Stdio::piped())
-                .with_context(|| "failed to start debug adapter.")?;
-
+        if let Some(p) = process.as_mut() {
             stdout_task = p.stdout.take().map(|stdout| {
                 cx.background_executor()
                     .spawn(TransportDelegate::handle_adapter_log(
@@ -593,7 +634,6 @@ impl TcpTransport {
                         log_handlers,
                     ))
             });
-            process = Some(p);
         };
 
         let timeout = connection_args
@@ -704,27 +744,7 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     // #[allow(dead_code, reason = "This is used in non test builds of Zed")]
-    async fn start(
-        binary: &DebugAdapterBinary,
-        log_handlers: LogHandlers,
-        cx: &mut AsyncApp,
-    ) -> Result<Self> {
-        let Some(binary_command) = &binary.command else {
-            bail!(
-                "When using the `stdio` transport, the path to a debug adapter binary must be set by Zed."
-            );
-        };
-        let mut command = util::command::new_std_command(&binary_command);
-
-        if let Some(cwd) = &binary.cwd {
-            command.current_dir(cwd);
-        }
-
-        command.args(&binary.arguments);
-        command.envs(&binary.envs);
-
-        let mut process = Child::spawn(command, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
-
+    fn start(mut process: Child, log_handlers: LogHandlers, cx: &mut AsyncApp) -> Self {
         let _stderr_task = process.stderr.take().map(|stderr| {
             cx.background_spawn(TransportDelegate::handle_adapter_log(
                 stderr,
@@ -735,10 +755,10 @@ impl StdioTransport {
 
         let process = Mutex::new(process);
 
-        Ok(Self {
+        Self {
             process,
             _stderr_task,
-        })
+        }
     }
 }
 
@@ -1074,6 +1094,43 @@ impl Transport for FakeTransport {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(windows)]
+    #[test]
+    fn local_debug_adapter_launches_with_its_project_environment() -> Result<()> {
+        let system_root = std::env::var("SystemRoot")?;
+        let bin = std::path::Path::new(&system_root).join("System32");
+        let binary = DebugAdapterBinary {
+            command: Some("cmd".into()),
+            arguments: vec![],
+            envs: collections::HashMap::from_iter([
+                ("SystemRoot".into(), system_root),
+                ("PATH".into(), bin.display().to_string()),
+                ("QMR_DEBUG_SDK".into(), "selected".into()),
+            ]),
+            cwd: None,
+            connection: None,
+            request_args: dap_types::StartDebuggingRequestArguments {
+                request: dap_types::StartDebuggingRequestArgumentsRequest::Launch,
+                configuration: serde_json::Value::Null,
+            },
+        };
+        let mut command = adapter_command("cmd", &binary, true)?;
+        assert_eq!(
+            std::path::Path::new(command.get_program()).canonicalize()?,
+            bin.join("cmd.exe").canonicalize()?
+        );
+        let output = command
+            .args([
+                "/D",
+                "/C",
+                "echo %QMR_DEBUG_SDK%& if defined USERPROFILE exit /b 1",
+            ])
+            .output()?;
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout)?.trim(), "selected");
+        Ok(())
+    }
 
     #[test]
     fn test_interpolate_message() {

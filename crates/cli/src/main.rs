@@ -100,6 +100,14 @@ struct Args {
     /// Use `path:line:column` syntax to open a file at the given line and column.
     #[arg(trailing_var_arg = true, value_hint = clap::ValueHint::AnyPath)]
     paths_with_position: Vec<String>,
+    /// Use the calling shell's environment for this local project's future processes.
+    #[cfg(windows)]
+    #[arg(long, conflicts_with_all = ["reload_env", "wsl", "dev_container"])]
+    inherit_env: bool,
+    /// Refresh the local project's environment from Windows on each launch.
+    #[cfg(windows)]
+    #[arg(long, conflicts_with_all = ["wsl", "dev_container"])]
+    reload_env: bool,
     /// Print Zed's version and the app path.
     #[arg(short, long)]
     version: bool,
@@ -314,6 +322,16 @@ mod tests {
     use util::path;
     use util::paths::SanitizedPath;
     use util::test::TempTree;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_environment_flags_select_a_single_source() {
+        let inherited = Args::try_parse_from(["qmrzed", "--inherit-env", "."]).unwrap();
+        assert!(inherited.inherit_env && !inherited.reload_env);
+        let fresh = Args::try_parse_from(["qmrzed", "--reload-env", "."]).unwrap();
+        assert!(fresh.reload_env && !fresh.inherit_env);
+        assert!(Args::try_parse_from(["qmrzed", "--inherit-env", "--reload-env"]).is_err());
+    }
 
     macro_rules! assert_path_eq {
         ($left:expr, $right:expr) => {
@@ -618,9 +636,23 @@ fn run() -> Result<()> {
 
         #[cfg(target_os = "windows")]
         {
-            // On Windows, by default, a child process inherits a copy of the environment block of the parent process.
-            // So we don't need to pass env vars explicitly.
-            None
+            args.inherit_env
+                .then(|| {
+                    std::env::vars_os()
+                        .map(|(key, value)| {
+                            let key = key.into_string().map_err(|_| {
+                                anyhow::anyhow!("invalid Unicode in Windows environment name")
+                            })?;
+                            let value = value.into_string().map_err(|_| {
+                                anyhow::anyhow!(
+                                    "invalid Unicode in Windows environment value for {key}"
+                                )
+                            })?;
+                            anyhow::Ok((key, value))
+                        })
+                        .collect::<Result<collections::HashMap<_, _>>>()
+                })
+                .transpose()?
         }
 
         #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "windows")))]
@@ -691,6 +723,20 @@ fn run() -> Result<()> {
         }
     }
 
+    #[cfg(windows)]
+    let change_environment = args.inherit_env || args.reload_env;
+    #[cfg(not(windows))]
+    let change_environment = false;
+    if change_environment {
+        anyhow::ensure!(
+            urls.is_empty(),
+            "environment options apply to local file and directory paths"
+        );
+        if paths.is_empty() && diff_paths.is_empty() {
+            paths.push(std::env::current_dir()?.to_string_lossy().into_owned());
+        }
+    }
+
     anyhow::ensure!(
         args.dev_server_token.is_none(),
         "Dev servers were removed in v0.157.x please upgrade to SSH remoting: https://zed.dev/docs/remote-development"
@@ -717,7 +763,7 @@ fn run() -> Result<()> {
                 #[cfg(not(target_os = "windows"))]
                 let wsl = None;
 
-                let open_request = CliRequest::Open {
+                let open_request = cli::OpenRequest {
                     paths,
                     urls,
                     diff_paths,
@@ -731,7 +777,11 @@ fn run() -> Result<()> {
                     cwd: env::current_dir().ok(),
                 };
 
-                tx.send(open_request)?;
+                tx.send(if change_environment {
+                    CliRequest::OpenWithEnvironment(open_request)
+                } else {
+                    CliRequest::Open(open_request)
+                })?;
 
                 while let Ok(response) = rx.recv() {
                     match response {

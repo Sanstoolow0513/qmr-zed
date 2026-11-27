@@ -16,7 +16,7 @@ use crate::debugger::memory::{self, Memory, MemoryIterator, MemoryPageBuilder, P
 use anyhow::{Context as _, Result, anyhow, bail};
 use base64::Engine;
 use collections::{HashMap, HashSet, IndexMap, TypeIdHashMap};
-use dap::adapters::{DebugAdapterBinary, DebugAdapterName};
+use dap::adapters::{DebugAdapterBinary, DebugAdapterName, DebugTaskDefinition};
 use dap::messages::Response;
 use dap::requests::{Request, RunInTerminal, StartDebugging};
 use dap::transport::TcpTransport;
@@ -162,6 +162,7 @@ pub enum SessionState {
 #[derive(Clone)]
 pub struct RunningMode {
     client: Arc<DebugAdapterClient>,
+    definition: DebugTaskDefinition,
     binary: DebugAdapterBinary,
     tmp_breakpoint: Option<SourceBreakpoint>,
     worktree: WeakEntity<Worktree>,
@@ -197,8 +198,10 @@ impl RunningMode {
         session_id: SessionId,
         parent_session: Option<Entity<Session>>,
         worktree: WeakEntity<Worktree>,
+        definition: DebugTaskDefinition,
         binary: DebugAdapterBinary,
         messages_tx: futures::channel::mpsc::UnboundedSender<Message>,
+        replace_environment: bool,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let message_handler = Box::new({
@@ -215,13 +218,21 @@ impl RunningMode {
                 .create_child_connection(session_id, binary.clone(), message_handler, cx)
                 .await?
         } else {
-            DebugAdapterClient::start(session_id, binary.clone(), message_handler, cx).await?
+            DebugAdapterClient::start(
+                session_id,
+                binary.clone(),
+                replace_environment,
+                message_handler,
+                cx,
+            )
+            .await?
         };
 
         Ok(Self {
             client: Arc::new(client),
             worktree,
             tmp_breakpoint: None,
+            definition,
             binary,
             executor: cx.background_executor().clone(),
             is_started: false,
@@ -907,8 +918,9 @@ impl Session {
         }
     }
 
-    pub fn boot(
+    pub(super) fn boot(
         &mut self,
+        definition: DebugTaskDefinition,
         binary: DebugAdapterBinary,
         worktree: Entity<Worktree>,
         dap_store: WeakEntity<DapStore>,
@@ -950,14 +962,17 @@ impl Session {
         self.background_tasks = background_tasks;
         let id = self.id;
         let parent_session = self.parent_session.clone();
+        let replace_environment = cfg!(windows) && self.remote_client.is_none();
 
         cx.spawn(async move |this, cx| {
             let mode = RunningMode::new(
                 id,
                 parent_session,
                 worktree.downgrade(),
+                definition,
                 binary.clone(),
                 message_tx,
+                replace_environment,
                 cx,
             )
             .await?;
@@ -1063,9 +1078,15 @@ impl Session {
     }
 
     pub fn binary(&self) -> Option<&DebugAdapterBinary> {
+        self.launch_configuration().map(|(_, binary)| binary)
+    }
+
+    pub(super) fn launch_configuration(
+        &self,
+    ) -> Option<(&DebugTaskDefinition, &DebugAdapterBinary)> {
         match &self.state {
             SessionState::Booting(_) => None,
-            SessionState::Running(running_mode) => Some(&running_mode.binary),
+            SessionState::Running(mode) => Some((&mode.definition, &mode.binary)),
         }
     }
 

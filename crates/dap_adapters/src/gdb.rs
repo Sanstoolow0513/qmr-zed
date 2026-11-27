@@ -235,7 +235,7 @@ impl DebugAdapter for GdbDebugAdapter {
         }
 
         let mut base_env = delegate.shell_env().await;
-        base_env.extend(user_env.unwrap_or_default());
+        util::extend_environment(&mut base_env, user_env.unwrap_or_default());
 
         let config_env: HashMap<String, String> = config
             .config
@@ -248,7 +248,7 @@ impl DebugAdapter for GdbDebugAdapter {
             })
             .unwrap_or_else(HashMap::default);
 
-        base_env.extend(config_env);
+        util::extend_environment(&mut base_env, config_env);
 
         Ok(DebugAdapterBinary {
             command: Some(gdb_path),

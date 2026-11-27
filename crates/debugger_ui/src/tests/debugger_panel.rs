@@ -386,6 +386,149 @@ async fn test_handle_successful_run_in_terminal_reverse_request(
         .unwrap();
 }
 
+#[cfg(windows)]
+#[gpui::test]
+async fn gdb_restart_after_reload_uses_the_windows_environment(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/project"), json!({"main.rs": ""}))
+        .await;
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let _sessions = project::debugger::test::intercept_debug_sessions(cx, |_| {});
+    project.update(cx, |project, cx| {
+        project.set_cli_environment(
+            Some(collections::HashMap::from_iter([
+                ("PATH".into(), "old-sdk".into()),
+                ("OLD_SDK_ONLY".into(), "old".into()),
+            ])),
+            cx,
+        );
+    });
+    let target_env = json!({"DEBUG_TARGET": "explicit"});
+    let definition = DebugTaskDefinition {
+        adapter: "GDB".into(),
+        label: "GDB reload".into(),
+        config: json!({
+            "request": "launch",
+            "program": "target.exe",
+            "gdb_path": "gdb.exe",
+            "env": target_env,
+        }),
+        tcp_connection: None,
+    };
+    let session = start_debug_session_with(&workspace, cx, definition, |_| {}).unwrap();
+    let first = session.read_with(cx, |session, _| session.adapter_client().unwrap());
+    assert_eq!(first.binary().envs["PATH"], "old-sdk");
+
+    project.update(cx, |project, cx| project.set_cli_environment(None, cx));
+    session.update(cx, |session, cx| session.restart(None, cx));
+    cx.run_until_parked();
+    let restarted = active_debug_session_panel(workspace, cx).read_with(cx, |panel, cx| {
+        panel.session(cx).read(cx).adapter_client().unwrap()
+    });
+    assert_ne!(first.id(), restarted.id());
+    let binary = restarted.binary();
+    assert_eq!(binary.envs["ZED_ENVIRONMENT"], "windows");
+    assert_ne!(binary.envs["PATH"], "old-sdk");
+    assert!(!binary.envs.contains_key("OLD_SDK_ONLY"));
+    assert_eq!(binary.envs["DEBUG_TARGET"], "explicit");
+    assert_eq!(binary.request_args.configuration["env"], target_env);
+}
+
+#[cfg(windows)]
+#[gpui::test]
+async fn replacement_debug_adapter_uses_current_project_environment(cx: &mut TestAppContext) {
+    use gpui::UpdateGlobal as _;
+    init_test(cx);
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(
+                    r#"{"dap":{"fake-adapter":{"env":{"QMR_OVERRIDE":"adapter"}}}}"#,
+                    cx,
+                )
+                .unwrap();
+        });
+    });
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/project"), json!({"main.rs": ""}))
+        .await;
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let _sessions = project::debugger::test::intercept_debug_sessions(cx, |_| {});
+    let active_client = |cx: &mut TestAppContext| {
+        crate::tests::active_debug_session_panel(workspace, cx).read_with(cx, |panel, cx| {
+            panel.session(cx).read(cx).adapter_client().unwrap()
+        })
+    };
+    for tcp in [false, true] {
+        project.update(cx, |project, cx| {
+            project.set_cli_environment(
+                Some(collections::HashMap::from_iter([
+                    ("QMR_SDK".into(), "A".into()),
+                    ("OLD_ONLY".into(), "old".into()),
+                ])),
+                cx,
+            )
+        });
+        let parent = start_debug_session_with(
+            &workspace,
+            cx,
+            DebugTaskDefinition {
+                label: "test".into(),
+                adapter: "fake-adapter".into(),
+                config: json!({"request": "launch"}),
+                tcp_connection: tcp.then(Default::default),
+            },
+            |_| {},
+        )
+        .unwrap();
+        let original = parent.read_with(cx, |session, _| session.adapter_client().unwrap());
+        assert_eq!(original.binary().envs["QMR_SDK"], "A");
+        project.update(cx, |project, cx| {
+            project.set_cli_environment(
+                Some(collections::HashMap::from_iter([
+                    ("QMR_SDK".into(), "B".into()),
+                    ("QMR_OVERRIDE".into(), "project".into()),
+                ])),
+                cx,
+            )
+        });
+        let request = StartDebuggingRequestArguments {
+            request: StartDebuggingRequestArgumentsRequest::Launch,
+            configuration: json!({"child": true}),
+        };
+        original
+            .fake_reverse_request::<StartDebugging>(request.clone())
+            .await;
+        cx.run_until_parked();
+        let child = active_client(cx);
+        let assert_fresh = |binary: &dap::adapters::DebugAdapterBinary| {
+            assert!(binary.command.is_some());
+            assert_eq!(binary.envs["QMR_SDK"], "B");
+            assert_eq!(binary.envs["QMR_OVERRIDE"], "adapter");
+            assert!(!binary.envs.contains_key("OLD_ONLY"));
+        };
+        assert_eq!(child.binary().request_args, request);
+        if tcp {
+            assert!(child.binary().command.is_none());
+            assert!(child.binary().envs.is_empty());
+            assert_eq!(child.binary().connection, original.binary().connection);
+        } else {
+            assert_fresh(child.binary());
+        }
+        parent.update(cx, |session, cx| session.restart(None, cx));
+        cx.run_until_parked();
+        let restarted = active_client(cx);
+        assert_fresh(restarted.binary());
+        assert_eq!(
+            restarted.binary().request_args,
+            original.binary().request_args
+        );
+    }
+}
+
 #[gpui::test]
 async fn test_handle_start_debugging_request(
     executor: BackgroundExecutor,

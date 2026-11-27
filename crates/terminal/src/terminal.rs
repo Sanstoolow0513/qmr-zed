@@ -980,6 +980,28 @@ pub struct TerminalBuilder {
     events_rx: UnboundedReceiver<PtyEvent>,
 }
 
+pub struct TerminalEnvironment {
+    variables: HashMap<String, String>,
+    clear_inherited: bool,
+}
+
+impl TerminalEnvironment {
+    /// Local Windows project environments are complete. An SSH or WSL wrapper
+    /// still needs the host environment in order to start its transport.
+    pub fn for_project(variables: HashMap<String, String>, is_local: bool) -> Self {
+        Self {
+            variables,
+            clear_inherited: cfg!(windows) && is_local,
+        }
+    }
+}
+
+impl From<HashMap<String, String>> for TerminalEnvironment {
+    fn from(variables: HashMap<String, String>) -> Self {
+        Self::for_project(variables, false)
+    }
+}
+
 impl TerminalBuilder {
     pub fn new_display_only(
         cursor_shape: SettingsCursorShape,
@@ -1096,7 +1118,7 @@ impl TerminalBuilder {
         working_directory: Option<PathBuf>,
         mode: TerminalMode,
         shell: Shell,
-        mut env: HashMap<String, String>,
+        env: impl Into<TerminalEnvironment>,
         cursor_shape: SettingsCursorShape,
         alternate_scroll: AlternateScroll,
         max_scroll_history_lines: Option<usize>,
@@ -1108,6 +1130,10 @@ impl TerminalBuilder {
         activation_script: Vec<String>,
         path_style: PathStyle,
     ) -> Task<Result<TerminalBuilder>> {
+        let TerminalEnvironment {
+            variables: mut env,
+            clear_inherited,
+        } = env.into();
         let version = release_channel::AppVersion::global(cx);
         let background_executor = cx.background_executor().clone();
         // Headless hosts (e.g. the eval CLI) have no controlling TTY, so PTY
@@ -1135,18 +1161,28 @@ impl TerminalBuilder {
 
             // Remove SHLVL so the spawned shell initializes it to 1, matching
             // the behavior of standalone terminal emulators like iTerm2/Kitty/Alacritty.
-            env.remove("SHLVL");
+            if clear_inherited {
+                env.retain(|name, _| !name.eq_ignore_ascii_case("SHLVL"));
+            } else {
+                env.remove("SHLVL");
+            }
 
             // If the parent environment doesn't have a locale set
             // (As is the case when launched from a .app on MacOS),
             // and the Project doesn't have a locale set, then
             // set a fallback for our child environment to use.
-            if std::env::var("LANG").is_err() {
+            if !clear_inherited && std::env::var("LANG").is_err() {
                 env.entry("LANG".to_string())
                     .or_insert_with(|| "en_US.UTF-8".to_string());
             }
 
-            insert_zed_terminal_env(&mut env, &version);
+            if clear_inherited {
+                let mut terminal_vars = HashMap::default();
+                insert_zed_terminal_env(&mut terminal_vars, &version);
+                util::extend_environment(&mut env, terminal_vars);
+            } else {
+                insert_zed_terminal_env(&mut env, &version);
+            }
 
             #[derive(Default)]
             struct ShellParams {
@@ -1170,7 +1206,20 @@ impl TerminalBuilder {
                 }
             }
 
-            let shell_params = match shell.clone() {
+            let launch_shell = shell.clone();
+            #[cfg(windows)]
+            let launch_shell = if clear_inherited {
+                debug_assert!(!background_executor.is_main_thread());
+                util::windows_environment::resolve_shell(
+                    &shell,
+                    working_directory.as_deref(),
+                    &env,
+                )?
+            } else {
+                launch_shell
+            };
+            let shell_kind = launch_shell.shell_kind(cfg!(windows));
+            let shell_params = match launch_shell {
                 Shell::System => {
                     if cfg!(windows) {
                         Some(ShellParams::new(
@@ -1196,17 +1245,13 @@ impl TerminalBuilder {
             let shell_program = shell_params.as_ref().map(|params| {
                 use util::ResultExt;
 
+                if clear_inherited {
+                    return params.program.clone();
+                }
                 Self::resolve_path(&params.program)
                     .log_err()
                     .unwrap_or(params.program.clone())
             });
-
-            // Note: when remoting, this shell_kind will scrutinize `ssh` or
-            // `wsl.exe` as a shell and fall back to posix or powershell based on
-            // the compilation target. This is fine right now due to the restricted
-            // way we use the return value, but would become incorrect if we
-            // supported remoting into windows.
-            let shell_kind = shell.shell_kind(cfg!(windows));
 
             let scrolling_history = if task.is_some() {
                 // Tasks like `cargo build --all` may produce a lot of output, ergo allow maximum scrolling.
@@ -1247,6 +1292,7 @@ impl TerminalBuilder {
                     program,
                     args,
                     env.clone(),
+                    clear_inherited,
                     working_directory.clone(),
                     term.clone(),
                     events_tx,
@@ -1283,6 +1329,8 @@ impl TerminalBuilder {
                     child_signal_mask,
                     #[cfg(windows)]
                     shell_kind.tty_escape_args(),
+                    #[cfg(windows)]
+                    clear_inherited,
                 );
 
                 //Setup the pty...
@@ -1351,7 +1399,11 @@ impl TerminalBuilder {
                 activation_script: activation_script.clone(),
                 template: CopyTemplate {
                     shell,
-                    env,
+                    env: if clear_inherited {
+                        HashMap::default()
+                    } else {
+                        env
+                    },
                     cursor_shape,
                     alternate_scroll,
                     max_scroll_history_lines,
@@ -2248,6 +2300,13 @@ impl Terminal {
         self.init_command_startup_tx = Some(startup_tx);
 
         let shell_kind = self.template.shell.shell_kind(self.path_style.is_windows());
+        #[cfg(windows)]
+        let shell_kind = match self.shell_program.as_deref() {
+            Some(program) if !self.is_remote_terminal && !program.is_empty() => {
+                ShellKind::new(program, true)
+            }
+            _ => shell_kind,
+        };
         let mut input = init_command_startup_marker_command(shell_kind, marker_id).into_bytes();
         input.push(b'\x0d');
         self.write_to_pty(input);
@@ -3288,13 +3347,24 @@ impl Terminal {
         self.vi_mode_enabled
     }
 
-    pub fn clone_builder(&self, cx: &App, cwd: Option<PathBuf>) -> Task<Result<TerminalBuilder>> {
-        let working_directory = self.working_directory().or_else(|| cwd);
+    pub fn is_remote(&self) -> bool {
+        self.is_remote_terminal
+    }
+
+    pub fn clone_builder(
+        &self,
+        cx: &App,
+        working_directory: Option<PathBuf>,
+        env: Option<HashMap<String, String>>,
+    ) -> Task<Result<TerminalBuilder>> {
         TerminalBuilder::new(
             working_directory,
             TerminalMode::interactive(),
             self.template.shell.clone(),
-            self.template.env.clone(),
+            match env {
+                Some(env) => TerminalEnvironment::for_project(env, !self.is_remote_terminal),
+                None => self.template.env.clone().into(),
+            },
             self.template.cursor_shape,
             self.template.alternate_scroll,
             self.template.max_scroll_history_lines,
@@ -3390,6 +3460,7 @@ fn spawn_task_subprocess(
     program: String,
     args: Vec<String>,
     env: HashMap<String, String>,
+    clear_inherited: bool,
     working_directory: Option<PathBuf>,
     term: Arc<AlacrittyTermLock>,
     events_tx: futures::channel::mpsc::UnboundedSender<PtyEvent>,
@@ -3399,6 +3470,9 @@ fn spawn_task_subprocess(
     use std::process::Stdio;
 
     let mut command = util::command::new_std_command(&program);
+    if clear_inherited {
+        command.env_clear();
+    }
     command.args(&args);
     command.envs(&env);
     if let Some(directory) = &working_directory {

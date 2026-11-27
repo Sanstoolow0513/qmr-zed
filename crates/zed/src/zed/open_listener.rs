@@ -544,20 +544,22 @@ pub async fn handle_cli_connection(
     cx: &mut AsyncApp,
 ) {
     if let Some(request) = requests.next().await {
+        let change_environment = matches!(request, CliRequest::OpenWithEnvironment(_));
         match request {
-            CliRequest::Open {
-                urls,
-                paths,
-                diff_paths,
-                diff_all,
-                wait,
-                wsl,
-                mut open_behavior,
-                env,
-                user_data_dir: _,
-                dev_container,
-                cwd,
-            } => {
+            CliRequest::Open(open) | CliRequest::OpenWithEnvironment(open) => {
+                let cli::OpenRequest {
+                    urls,
+                    paths,
+                    diff_paths,
+                    diff_all,
+                    wait,
+                    wsl,
+                    mut open_behavior,
+                    env,
+                    user_data_dir: _,
+                    dev_container,
+                    cwd,
+                } = open;
                 if !urls.is_empty() {
                     cx.update(|cx| {
                         match OpenRequest::parse(
@@ -625,6 +627,7 @@ pub async fn handle_cli_connection(
                     dev_container,
                     app_state.clone(),
                     env,
+                    change_environment,
                     cwd,
                     cx,
                 )
@@ -804,6 +807,7 @@ async fn open_workspaces(
     dev_container: bool,
     app_state: Arc<AppState>,
     env: Option<collections::HashMap<String, String>>,
+    change_environment: bool,
     cwd: Option<PathBuf>,
     cx: &mut AsyncApp,
 ) -> Result<()> {
@@ -854,6 +858,7 @@ async fn open_workspaces(
         let open_options = workspace::OpenOptions {
             wait,
             env: env.clone(),
+            change_environment,
             open_in_dev_container: dev_container,
             ..base_open_options
         };
@@ -1870,7 +1875,7 @@ mod tests {
             &mut cx.to_async(),
         )
         .await
-        .0
+        .target
         .unwrap()
         .0;
 
@@ -2263,7 +2268,7 @@ mod tests {
     }
 
     fn make_cli_open_request(paths: Vec<String>, open_behavior: cli::OpenBehavior) -> CliRequest {
-        CliRequest::Open {
+        CliRequest::Open(cli::OpenRequest {
             paths,
             urls: vec![],
             diff_paths: vec![],
@@ -2275,14 +2280,14 @@ mod tests {
             user_data_dir: None,
             dev_container: false,
             cwd: None,
-        }
+        })
     }
 
     fn make_cli_url_open_request(
         urls: Vec<String>,
         open_behavior: cli::OpenBehavior,
     ) -> CliRequest {
-        CliRequest::Open {
+        CliRequest::Open(cli::OpenRequest {
             paths: vec![],
             urls,
             diff_paths: vec![],
@@ -2294,7 +2299,7 @@ mod tests {
             user_data_dir: None,
             dev_container: false,
             cwd: None,
-        }
+        })
     }
 
     /// Runs the real [`cli::run_cli_response_loop`] on an OS thread against
@@ -2389,6 +2394,171 @@ mod tests {
             "no prompt should be shown when no windows exist"
         );
         assert_eq!(cx.windows().len(), 1);
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn windows_cli_changes_only_the_selected_projects_environment(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let mut projects = Vec::new();
+        let mut windows = Vec::new();
+        for dir in [path!("/project_a"), path!("/project_b")] {
+            app_state
+                .fs
+                .as_fake()
+                .insert_tree(dir, json!({"file.rs": ""}))
+                .await;
+            let result = cx
+                .update(|cx| {
+                    workspace::open_paths(
+                        &[PathBuf::from(dir)],
+                        app_state.clone(),
+                        workspace::OpenOptions {
+                            workspace_matching: workspace::WorkspaceMatching::None,
+                            ..Default::default()
+                        },
+                        cx,
+                    )
+                })
+                .await
+                .unwrap();
+            projects.push(cx.update(|cx| result.workspace.read(cx).project().clone()));
+            windows.push(result.window);
+        }
+        for (change, value, expected) in [
+            (true, Some("developer"), Some("developer")),
+            (false, None, Some("developer")),
+            (true, None, None),
+        ] {
+            let CliRequest::Open(mut open) = make_cli_open_request(
+                vec![path!("/project_a").to_string()],
+                cli::OpenBehavior::Classic,
+            ) else {
+                unreachable!()
+            };
+            open.env = value.map(|v| collections::HashMap::from_iter([("SDK".into(), v.into())]));
+            let request = if change {
+                CliRequest::OpenWithEnvironment(open)
+            } else {
+                CliRequest::Open(open)
+            };
+            let (status, _) = run_cli_with_zed_handler(cx, app_state.clone(), request, None);
+            assert_eq!(status, 0);
+            cx.update(|cx| {
+                let env = projects[0].read(cx).cli_environment(cx);
+                assert_eq!(
+                    env.as_ref().and_then(|e| e.get("SDK")).map(String::as_str),
+                    expected
+                );
+                assert!(projects[1].read(cx).cli_environment(cx).is_none());
+            });
+        }
+
+        let other_env = projects[1].update(cx, |project, cx| {
+            project.set_cli_environment(
+                Some(collections::HashMap::from_iter([(
+                    "SDK".into(),
+                    "other".into(),
+                )])),
+                cx,
+            );
+            project.cli_environment(cx)
+        });
+        let developer_env =
+            collections::HashMap::from_iter([("SDK".to_owned(), "developer".to_owned())]);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/other"), json!({"inherit.py": "", "reload.py": ""}))
+            .await;
+        for (path, env, expected, wait_for_close) in [
+            (
+                path!("/project_a/file.rs"),
+                Some(developer_env.clone()),
+                Some("developer"),
+                true,
+            ),
+            (path!("/project_a/file.rs"), None, None, true),
+            (path!("/other/inherit.py"), Some(developer_env), None, false),
+            (path!("/other/reload.py"), None, None, true),
+        ] {
+            windows[1]
+                .update(cx, |_, window, _| window.activate_window())
+                .unwrap();
+            let app_state = app_state.clone();
+            let selected_sdk = env.as_ref().map(|env| env["SDK"].clone());
+            let mut open = cx.spawn(|mut cx| async move {
+                open_local_workspace(
+                    vec![path.to_owned()],
+                    vec![],
+                    false,
+                    workspace::OpenOptions {
+                        wait: wait_for_close,
+                        change_environment: true,
+                        env,
+                        ..Default::default()
+                    },
+                    None,
+                    &DiscardResponseSink,
+                    &app_state,
+                    &mut cx,
+                )
+                .await
+            });
+            cx.run_until_parked();
+            assert_eq!(
+                poll!(&mut open),
+                if wait_for_close {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(false)
+                }
+            );
+            let display_window = cx.update(|cx| {
+                let env = projects[0].read(cx).cli_environment(cx);
+                assert_eq!(env.as_ref().map(|env| env["SDK"].as_str()), expected);
+                assert_eq!(projects[1].read(cx).cli_environment(cx), other_env);
+                if Path::new(path).starts_with(path!("/other")) {
+                    workspace::workspace_windows_for_location(
+                        &SerializedWorkspaceLocation::Local,
+                        cx,
+                    )
+                    .into_iter()
+                    .find(|window| {
+                        let workspace = window.read(cx).unwrap().workspace().read(cx);
+                        let project = workspace.project();
+                        if projects.contains(project)
+                            || project
+                                .read(cx)
+                                .find_worktree(Path::new(path), cx)
+                                .is_none()
+                        {
+                            return false;
+                        }
+                        let env = project.read(cx).cli_environment(cx);
+                        assert_eq!(env.as_ref().map(|env| &env["SDK"]), selected_sdk.as_ref());
+                        true
+                    })
+                    .expect("the standalone file should have its own project")
+                } else {
+                    windows[1]
+                }
+            });
+            display_window
+                .update(cx, |multi_workspace, window, cx| {
+                    let workspace = multi_workspace.workspace().read(cx);
+                    assert!(workspace.active_item_as::<Editor>(cx).is_some());
+                    workspace.active_pane().clone().update(cx, |pane, cx| {
+                        pane.close_active_item(&Default::default(), window, cx)
+                    })
+                })
+                .unwrap()
+                .await
+                .unwrap();
+            if wait_for_close {
+                assert!(!open.await);
+            }
+        }
     }
 
     #[gpui::test]

@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["tooling/patches/alacritty_terminal"]
 members = [
     "crates/i18n",
     "crates/activity_indicator",
@@ -441,7 +442,8 @@ accesskit_macos = "0.26.0"
 accesskit_unix = "0.22"
 accesskit_windows = "0.34"
 aho-corasick = "1.1"
-alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
+# Pinned zed-industries/alacritty 4c129667 with complete Windows PTY environments.
+alacritty_terminal = { path = "tooling/patches/alacritty_terminal" }
 any_vec = "0.14"
 anyhow = "1.0.86"
 arc-swap = "1.9.0"

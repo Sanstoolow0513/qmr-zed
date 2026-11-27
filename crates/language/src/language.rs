@@ -73,7 +73,7 @@ use semver::Version;
 use serde_json::Value;
 use settings::WorktreeId;
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fmt::Debug,
     hash::Hash,
     iter, mem,
@@ -320,7 +320,13 @@ pub struct PromptResponseContext {
     pub selected_action: lsp::MessageActionItem,
 }
 
-type ServerBinaryCache = futures::lock::Mutex<Option<(bool, LanguageServerBinary)>>;
+/// A managed installation can be shared by projects with different launch environments.
+pub struct CachedServerBinary {
+    pre_release: bool,
+    path: PathBuf,
+    arguments: Vec<OsString>,
+}
+pub type CachedServerBinaryGuard = OwnedMutexGuard<Option<CachedServerBinary>>;
 type DownloadableLanguageServerBinary = LocalBoxFuture<'static, Result<LanguageServerBinary>>;
 pub type LanguageServerBinaryLocations = LocalBoxFuture<
     'static,
@@ -338,7 +344,7 @@ pub struct CachedLspAdapter {
     pub disk_based_diagnostics_progress_token: Option<String>,
     language_ids: HashMap<LanguageName, String>,
     pub adapter: Arc<dyn LspAdapter>,
-    cached_binary: Arc<ServerBinaryCache>,
+    cached_binary: Arc<futures::lock::Mutex<Option<CachedServerBinary>>>,
 }
 
 impl Debug for CachedLspAdapter {
@@ -498,6 +504,7 @@ pub trait LspAdapterDelegate: Send + Sync {
     fn http_client(&self) -> Arc<dyn HttpClient>;
     fn worktree_id(&self) -> WorktreeId;
     fn worktree_root_path(&self) -> &Path;
+    async fn worktree_directory(&self) -> PathBuf;
     fn resolve_relative_path(&self, path: PathBuf) -> PathBuf;
     fn status_source_id(&self) -> EntityId;
     fn update_status(&self, language: LanguageServerName, status: BinaryStatus);
@@ -603,7 +610,7 @@ pub trait LspAdapter: 'static + Send + Sync + DynLspInstaller {
     async fn initialization_options_schema(
         self: Arc<Self>,
         _delegate: &Arc<dyn LspAdapterDelegate>,
-        _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        _cached_binary: CachedServerBinaryGuard,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         None
@@ -615,7 +622,7 @@ pub trait LspAdapter: 'static + Send + Sync + DynLspInstaller {
     async fn settings_schema(
         self: Arc<Self>,
         _delegate: &Arc<dyn LspAdapterDelegate>,
-        _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        _cached_binary: CachedServerBinaryGuard,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         None
@@ -765,7 +772,7 @@ pub trait DynLspInstaller {
         delegate: Arc<dyn LspAdapterDelegate>,
         toolchains: Option<Toolchain>,
         binary_options: LanguageServerBinaryOptions,
-        cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        cached_binary: CachedServerBinaryGuard,
         cx: AsyncApp,
     ) -> LanguageServerBinaryLocations;
 }
@@ -817,7 +824,7 @@ where
         delegate: Arc<dyn LspAdapterDelegate>,
         toolchain: Option<Toolchain>,
         binary_options: LanguageServerBinaryOptions,
-        mut cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        mut cached_binary: CachedServerBinaryGuard,
         mut cx: AsyncApp,
     ) -> LanguageServerBinaryLocations {
         async move {
@@ -847,10 +854,17 @@ where
                 return (Ok(binary), None);
             }
 
-            if let Some((pre_release, cached_binary)) = cached_binary_deref
-                && *pre_release == binary_options.pre_release
+            if let Some(cached) = cached_binary_deref
+                && cached.pre_release == binary_options.pre_release
             {
-                return (Ok(cached_binary.clone()), None);
+                return (
+                    Ok(LanguageServerBinary {
+                        path: cached.path.clone(),
+                        arguments: cached.arguments.clone(),
+                        env: None,
+                    }),
+                    None,
+                );
             }
 
             if !binary_options.allow_binary_download {
@@ -908,7 +922,11 @@ where
                 }
 
                 if let Ok(binary) = &binary {
-                    *cached_binary = Some((binary_options.pre_release, binary.clone()));
+                    *cached_binary = Some(CachedServerBinary {
+                        pre_release: binary_options.pre_release,
+                        path: binary.path.clone(),
+                        arguments: binary.arguments.clone(),
+                    });
                 }
 
                 binary

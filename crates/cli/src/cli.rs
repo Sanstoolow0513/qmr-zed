@@ -53,25 +53,30 @@ pub enum CliBehaviorSetting {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct OpenRequest {
+    pub paths: Vec<String>,
+    pub urls: Vec<String>,
+    pub diff_paths: Vec<[String; 2]>,
+    pub diff_all: bool,
+    pub wsl: Option<String>,
+    pub wait: bool,
+    #[serde(default)]
+    pub open_behavior: OpenBehavior,
+    pub env: Option<HashMap<String, String>>,
+    pub user_data_dir: Option<String>,
+    pub dev_container: bool,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum CliRequest {
-    Open {
-        paths: Vec<String>,
-        urls: Vec<String>,
-        diff_paths: Vec<[String; 2]>,
-        diff_all: bool,
-        wsl: Option<String>,
-        wait: bool,
-        #[serde(default)]
-        open_behavior: OpenBehavior,
-        env: Option<HashMap<String, String>>,
-        user_data_dir: Option<String>,
-        dev_container: bool,
-        #[serde(default)]
-        cwd: Option<PathBuf>,
-    },
+    Open(OpenRequest),
     SetOpenBehavior {
         behavior: CliBehaviorSetting,
     },
+    /// Also apply the selected environment when the target project is already open.
+    OpenWithEnvironment(OpenRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

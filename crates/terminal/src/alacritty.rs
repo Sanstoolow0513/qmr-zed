@@ -167,6 +167,7 @@ pub(super) fn pty_options(
     env: impl IntoIterator<Item = (String, String)>,
     #[cfg(not(windows))] child_signal_mask: Option<tty::SignalMask>,
     #[cfg(windows)] escape_args: bool,
+    #[cfg(windows)] clear_env: bool,
 ) -> tty::Options {
     tty::Options {
         shell: shell.map(|(program, args)| tty::Shell::new(program, args)),
@@ -177,6 +178,8 @@ pub(super) fn pty_options(
         child_signal_mask,
         #[cfg(windows)]
         escape_args,
+        #[cfg(windows)]
+        clear_env,
     }
 }
 

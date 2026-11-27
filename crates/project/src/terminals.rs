@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result};
 use collections::HashMap;
-use gpui::{App, AppContext as _, Context, Entity, Task, WeakEntity};
+use gpui::{App, AppContext as _, BackgroundExecutor, Context, Entity, Task, WeakEntity};
 
 use futures::{FutureExt, future::Shared};
 use itertools::Itertools as _;
@@ -16,12 +16,10 @@ use std::{
 };
 use task::{Shell, ShellBuilder, ShellKind, SpawnInTerminal};
 use terminal::{
-    Terminal, TerminalBuilder, TerminalMode, insert_zed_terminal_env,
+    Terminal, TerminalBuilder, TerminalEnvironment, TerminalMode, insert_zed_terminal_env,
     terminal_settings::TerminalSettings,
 };
-use util::{
-    command::new_std_command, get_default_system_shell, get_system_shell, maybe, rel_path::RelPath,
-};
+use util::{command::new_std_command, get_default_system_shell, maybe, rel_path::RelPath};
 
 use crate::{Project, ProjectPath};
 
@@ -67,6 +65,17 @@ impl Project {
         spawn_task: SpawnInTerminal,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
+        let task = self.create_build_terminal(spawn_task, None, cx);
+        cx.spawn(async move |_, _| Ok(task.await?.0))
+    }
+
+    /// Return the original Cargo arguments and their resolved launch context to the debug locator.
+    pub fn create_build_terminal(
+        &mut self,
+        spawn_task: SpawnInTerminal,
+        launch_overrides: Option<HashMap<String, String>>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(Entity<Terminal>, Option<dap::LocatorBuild>)>> {
         let is_via_remote = self.remote_client.is_some();
 
         let path: Option<Arc<Path>> = if let Some(cwd) = &spawn_task.cwd {
@@ -93,19 +102,20 @@ impl Project {
         let settings = TerminalSettings::get(settings_location, cx).clone();
         let detect_venv = settings.detect_venv.as_option().is_some();
 
-        let terminal_mode = TerminalMode::task(spawn_task.clone());
-
         let local_path = if is_via_remote { None } else { path.clone() };
         let remote_client = self.remote_client.clone();
-        let shell = match &remote_client {
-            Some(remote_client) => remote_client
-                .read(cx)
-                .shell()
-                .unwrap_or_else(get_default_system_shell),
-            None => get_system_shell(),
-        };
+        let shell = remote_client
+            .as_ref()
+            .map(|client| {
+                Shell::Program(
+                    client
+                        .read(cx)
+                        .shell()
+                        .unwrap_or_else(get_default_system_shell),
+                )
+            })
+            .unwrap_or_default();
         let path_style = self.path_style(cx);
-        let shell_kind = ShellKind::new(&shell, path_style.is_windows());
 
         // Prepare a task for resolving the environment
         let env_task =
@@ -132,9 +142,59 @@ impl Project {
             .map(|p| self.active_toolchain(p, LanguageName::new_static("Python"), cx))
             .collect::<Vec<_>>();
         let lang_registry = self.languages.clone();
-        cx.spawn(async move |project, cx| {
+        let executor = cx.background_executor().clone();
+        let task_directory = path.clone();
+        let launch = cx.background_spawn(async move {
             let mut env = env_task.await.unwrap_or_default();
-            env.extend(settings.env);
+            merge_terminal_env(&mut env, settings.env, is_via_remote);
+            let mut spawn_task = spawn_task;
+            merge_terminal_env(&mut env, spawn_task.env.clone(), is_via_remote);
+            let shell = launch_shell_program(
+                &shell,
+                task_directory.as_deref(),
+                &env,
+                is_via_remote,
+                &executor,
+            );
+            let mut locator_command = None;
+            if spawn_task.command_mode != task::TaskCommandMode::Direct {
+                let task_shell = spawn_task.shell.clone();
+                #[cfg(windows)]
+                let task_shell = if is_via_remote {
+                    task_shell
+                } else if task_shell == Shell::System {
+                    Shell::Program(shell.clone())
+                } else {
+                    util::windows_environment::resolve_shell(
+                        &task_shell,
+                        task_directory.as_deref(),
+                        &env,
+                    )?
+                };
+                if cfg!(windows)
+                    && !is_via_remote
+                    && let Some(overrides) = launch_overrides
+                {
+                    locator_command = Some(dap::LocatorBuild {
+                        task: SpawnInTerminal {
+                            cwd: task_directory.as_deref().map(Path::to_owned),
+                            env: overrides,
+                            shell: task_shell.clone(),
+                            ..spawn_task.clone()
+                        },
+                        replay_environment: Some(env.clone()),
+                    });
+                }
+                spawn_task =
+                    task::prepare_task_for_spawn(&spawn_task, &task_shell, path_style.is_windows());
+                spawn_task.shell = task_shell;
+            }
+            anyhow::Ok((env, spawn_task, shell, locator_command))
+        });
+        cx.spawn(async move |project, cx| {
+            let (env, spawn_task, shell, locator_command) = launch.await?;
+            let terminal_mode = TerminalMode::task(spawn_task.clone());
+            let shell_kind = ShellKind::new(&shell, path_style.is_windows());
 
             let activation_script = maybe!(async {
                 for toolchain in toolchains {
@@ -169,7 +229,6 @@ impl Project {
                     let (shell, env) = {
                         let to_run =
                             (!activation_script.is_empty()).then(|| format_to_run(&spawn_task));
-                        env.extend(spawn_task.env);
                         match remote_client {
                             Some(remote_client) => match activation_script.clone() {
                                 activation_script if !activation_script.is_empty() => {
@@ -180,11 +239,6 @@ impl Project {
 
                                     let arg = format!("{activation_script}{separator} {to_run}");
                                     let args = shell_kind.args_for_shell(true, arg);
-                                    let shell = remote_client
-                                        .read(cx)
-                                        .shell()
-                                        .unwrap_or_else(get_default_system_shell);
-
                                     create_remote_shell(
                                         Some((&shell, &args)),
                                         env,
@@ -242,7 +296,7 @@ impl Project {
                         local_path.map(|path| path.to_path_buf()),
                         terminal_mode,
                         shell,
-                        env,
+                        TerminalEnvironment::for_project(env, !is_via_remote),
                         settings.cursor_shape,
                         settings.alternate_scroll,
                         settings.max_scroll_history_lines,
@@ -277,7 +331,7 @@ impl Project {
                 })
                 .detach();
 
-                terminal_handle
+                (terminal_handle, locator_command)
             })
         })
     }
@@ -364,19 +418,23 @@ impl Project {
                         .map(|settings_location| settings_location.worktree_id.to_proto()),
                 })
         });
-        let shell = match &remote_client {
-            Some(remote_client) => remote_client
-                .read(cx)
-                .shell()
-                .unwrap_or_else(get_default_system_shell),
-            None => settings.shell.program(),
-        };
-        let env_shell = match &remote_client {
-            Some(_) => shell.clone(),
-            None => get_system_shell(),
-        };
+        let env_shell = remote_client
+            .as_ref()
+            .map(|client| {
+                Shell::Program(
+                    client
+                        .read(cx)
+                        .shell()
+                        .unwrap_or_else(get_default_system_shell),
+                )
+            })
+            .unwrap_or_default();
 
-        let path_style = self.path_style(cx);
+        let path_style = if force_local {
+            util::paths::PathStyle::local()
+        } else {
+            self.path_style(cx)
+        };
 
         // Prepare a task for resolving the environment
         let env_task =
@@ -400,10 +458,24 @@ impl Project {
             } else {
                 None
             };
-            let shell_program = remote_shell.as_ref().map(Shell::program).unwrap_or(shell);
+            let shell = remote_shell.as_ref().unwrap_or(&settings.shell).clone();
+            let executor = cx.background_executor().clone();
+            let launch_directory = local_path.clone();
+            let (env, shell_program) = cx
+                .background_spawn(async move {
+                    let mut env = env_task.await.unwrap_or_default();
+                    merge_terminal_env(&mut env, settings.env, is_via_remote);
+                    let program = launch_shell_program(
+                        &shell,
+                        launch_directory.as_deref(),
+                        &env,
+                        is_via_remote,
+                        &executor,
+                    );
+                    (env, program)
+                })
+                .await;
             let shell_kind = ShellKind::new(&shell_program, path_style.is_windows());
-            let mut env = env_task.await.unwrap_or_default();
-            env.extend(settings.env);
 
             let activation_script = maybe!(async {
                 for toolchain in toolchains {
@@ -446,7 +518,7 @@ impl Project {
                         local_path.map(|path| path.to_path_buf()),
                         TerminalMode::interactive(),
                         shell,
-                        env,
+                        TerminalEnvironment::for_project(env, !is_via_remote),
                         settings.cursor_shape,
                         settings.alternate_scroll,
                         settings.max_scroll_history_lines,
@@ -503,9 +575,30 @@ impl Project {
             cwd
         };
 
-        let builder = terminal.read(cx).clone_builder(cx, local_path);
-        cx.spawn(async |project, cx| {
-            let terminal = builder.await?;
+        let terminal = terminal.clone();
+        let cwd = terminal.read(cx).working_directory().or(local_path);
+        let refresh = cfg!(windows) && !terminal.read(cx).is_remote();
+        let environment = refresh.then(|| {
+            let settings = self.terminal_settings(&cwd, cx).env.clone();
+            let environment = self.resolve_directory_environment(
+                &Shell::System,
+                cwd.as_deref().map(Arc::from),
+                None,
+                cx,
+            );
+            (environment, settings)
+        });
+        cx.spawn(async move |project, cx| {
+            let env = if let Some((environment, settings)) = environment {
+                let mut env = environment.await.unwrap_or_default();
+                util::extend_environment(&mut env, settings);
+                Some(env)
+            } else {
+                None
+            };
+            let terminal = terminal
+                .read_with(cx, |terminal, cx| terminal.clone_builder(cx, cwd, env))
+                .await?;
             project.update(cx, |project, cx| {
                 let terminal_handle = cx.new(|cx| terminal.subscribe(cx));
 
@@ -564,11 +657,9 @@ impl Project {
             .map(Shell::Program)
             .unwrap_or(Shell::System);
         let is_windows = self.path_style(cx).is_windows();
-        let builder = ShellBuilder::new(&shell, is_windows).non_interactive();
-        let (command, args) = builder.build(Some(command), &Vec::new());
 
         let env_task = self.resolve_directory_environment(
-            &shell.program(),
+            &shell,
             path.as_ref().map(|p| Arc::from(&**p)),
             remote_client.clone(),
             cx,
@@ -576,39 +667,58 @@ impl Project {
 
         cx.spawn(async move |project, cx| {
             let mut env = env_task.await.unwrap_or_default();
-            env.extend(settings.env);
-
-            project.update(cx, move |_, cx| {
-                match remote_client {
-                    Some(remote_client) => {
-                        let command_template = remote_client.read(cx).build_command(
-                            Some(command),
-                            &args,
-                            &env,
-                            None,
-                            None,
-                            Interactive::Yes,
-                        )?;
-                        let mut command = new_std_command(command_template.program);
-                        command.args(command_template.args);
-                        command.envs(command_template.env);
-                        Ok(command)
-                    }
-                    None => {
+            merge_terminal_env(&mut env, settings.env, remote_client.is_some());
+            let mut process = if let Some(remote_client) = remote_client {
+                project.update(cx, move |_, cx| {
+                    let builder = ShellBuilder::new(&shell, is_windows).non_interactive();
+                    let (command, args) = builder.build(Some(command), &[]);
+                    let command_template = remote_client.read(cx).build_command(
+                        Some(command),
+                        &args,
+                        &env,
+                        None,
+                        None,
+                        Interactive::Yes,
+                    )?;
+                    let mut command = new_std_command(command_template.program);
+                    command.args(command_template.args);
+                    command.envs(command_template.env);
+                    anyhow::Ok(command)
+                })??
+            } else {
+                let executor = cx.background_executor().clone();
+                cx.background_spawn(async move {
+                    let shell = Shell::Program(launch_shell_program(
+                        &shell,
+                        path.as_deref(),
+                        &env,
+                        false,
+                        &executor,
+                    ));
+                    let builder = ShellBuilder::new(&shell, is_windows).non_interactive();
+                    let (command, args) = builder.build(Some(command), &[]);
+                    #[cfg(windows)]
+                    let mut command = util::command::new_std_command_with_environment(
+                        command.as_ref(),
+                        path.as_deref(),
+                        &env,
+                    )?;
+                    #[cfg(not(windows))]
+                    let mut command = {
                         let mut command = new_std_command(command);
-                        command.args(args);
                         command.envs(env);
                         if let Some(path) = path {
                             command.current_dir(path);
                         }
-                        Ok(command)
-                    }
-                }
-                .map(|mut process| {
-                    util::set_pre_exec_to_start_new_session(&mut process);
-                    smol::process::Command::from(process)
+                        command
+                    };
+                    command.args(args);
+                    anyhow::Ok(command)
                 })
-            })?
+                .await?
+            };
+            util::set_pre_exec_to_start_new_session(&mut process);
+            Ok(smol::process::Command::from(process))
         })
     }
 
@@ -618,13 +728,20 @@ impl Project {
 
     fn resolve_directory_environment(
         &self,
-        shell: &str,
+        shell: &Shell,
         path: Option<Arc<Path>>,
         remote_client: Option<Entity<RemoteClient>>,
         cx: &mut App,
     ) -> Shared<Task<Option<HashMap<String, String>>>> {
+        #[cfg(windows)]
+        if remote_client.is_none() {
+            return self
+                .environment
+                .read(cx)
+                .windows_environment(&Shell::System, path, cx);
+        }
         if let Some(path) = &path {
-            let shell = Shell::Program(shell.to_string());
+            let shell = Shell::Program(shell.program());
             self.environment
                 .update(cx, |project_env, cx| match &remote_client {
                     Some(remote_client) => project_env.remote_directory_environment(
@@ -638,6 +755,36 @@ impl Project {
         } else {
             Task::ready(None).shared()
         }
+    }
+}
+
+fn launch_shell_program(
+    shell: &Shell,
+    _cwd: Option<&Path>,
+    _env: &HashMap<String, String>,
+    _remote: bool,
+    executor: &BackgroundExecutor,
+) -> String {
+    debug_assert!(
+        !executor.is_main_thread(),
+        "shell discovery can perform filesystem I/O"
+    );
+    #[cfg(windows)]
+    if !_remote && shell == &Shell::System {
+        return util::windows_environment::system_shell(_cwd, _env);
+    }
+    shell.program()
+}
+
+fn merge_terminal_env(
+    env: &mut HashMap<String, String>,
+    layer: HashMap<String, String>,
+    remote: bool,
+) {
+    if remote {
+        env.extend(layer);
+    } else {
+        util::extend_environment(env, layer);
     }
 }
 
@@ -747,7 +894,114 @@ fn quote_cmd_command_arg_for_outer_shell(arg: &str, shell_kind: ShellKind) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use gpui::TestAppContext;
     use pretty_assertions::assert_eq;
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn exec_in_shell_uses_the_project_shell_on_the_background_executor(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+            let settings = settings::SettingsStore::test(cx);
+            cx.set_global(settings);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let root = std::env::var("SystemRoot").unwrap();
+        let expected_shell =
+            Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let env = HashMap::from_iter([
+            ("SystemRoot".into(), root),
+            ("QMR_EXEC_VALUE".into(), "project".into()),
+        ]);
+        let mut command = project
+            .update(cx, |project, cx| {
+                project.set_cli_environment(Some(env), cx);
+                project.exec_in_shell(
+                    "if ($env:QMR_EXEC_VALUE -eq 'project') { exit 37 }".into(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        assert_eq!(Path::new(command.get_program()), expected_shell);
+        assert_eq!(command.status().await.unwrap().code(), Some(37));
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn split_terminal_uses_the_current_project_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+            let mut settings = settings::SettingsStore::test(cx);
+            settings
+                .set_user_settings(
+                    r#"{
+                "terminal": {
+                    "shell": { "with_arguments": {
+                        "program": "cmd.exe",
+                        "args": ["/D", "/Q", "/K", "echo QMR_VALUE=%QMR_TEST_VALUE%"]
+                    }}
+                }
+            }"#,
+                    cx,
+                )
+                .unwrap();
+            cx.set_global(settings);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let directory = tempfile::tempdir().unwrap();
+        let cwd = Some(directory.path().to_owned());
+        let mut env: HashMap<_, _> = std::env::vars().collect();
+        env.insert("QMR_TEST_VALUE".into(), "before".into());
+        let original = project
+            .update(cx, |project, cx| {
+                project.set_cli_environment(Some(env.clone()), cx);
+                project.create_terminal_shell(cwd.clone(), cx)
+            })
+            .await
+            .unwrap();
+        original
+            .condition::<terminal::Event>(cx, |terminal, _| {
+                terminal.get_content().contains("QMR_VALUE=")
+            })
+            .await;
+        assert!(
+            original
+                .read_with(cx, |terminal, _| terminal.get_content())
+                .contains("QMR_VALUE=before")
+        );
+
+        env.insert("QMR_TEST_VALUE".into(), "after".into());
+        let split = project
+            .update(cx, |project, cx| {
+                project.set_cli_environment(Some(env), cx);
+                project.clone_terminal(&original, cx, cwd)
+            })
+            .await
+            .unwrap();
+        split
+            .condition::<terminal::Event>(cx, |terminal, _| {
+                terminal.get_content().contains("QMR_VALUE=")
+            })
+            .await;
+        assert!(
+            split
+                .read_with(cx, |terminal, _| terminal.get_content())
+                .contains("QMR_VALUE=after")
+        );
+        assert!(
+            original
+                .read_with(cx, |terminal, _| terminal.get_content())
+                .contains("QMR_VALUE=before")
+        );
+    }
 
     fn prepared_cmd_task(command_arg: &str) -> SpawnInTerminal {
         SpawnInTerminal {

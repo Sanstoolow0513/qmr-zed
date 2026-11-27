@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use collections::HashMap;
 use dap::{
     Capabilities, DapRegistry, DebugRequest, EvaluateArgumentsContext, StackFrameId,
+    StartDebuggingRequestArguments,
     adapters::{
         DapDelegate, DebugAdapterBinary, DebugAdapterName, DebugTaskDefinition, TcpArguments,
     },
@@ -241,7 +242,7 @@ impl DapStore {
     }
 
     pub fn get_debug_adapter_binary(
-        &mut self,
+        &self,
         definition: DebugTaskDefinition,
         session_id: SessionId,
         worktree: &Entity<Worktree>,
@@ -271,10 +272,9 @@ impl DapStore {
                 let user_args = dap_settings.and_then(|s| s.args.clone());
                 let user_env = dap_settings.and_then(|s| s.env.clone());
 
-                let delegate = self.delegate(worktree, console, cx);
+                let delegate = self.delegate(worktree, console, user_env.as_ref(), cx);
 
-                let worktree = worktree.clone();
-                cx.spawn(async move |this, cx| {
+                cx.spawn(async move |_, cx| {
                     let mut binary = adapter
                         .get_binary(
                             &delegate,
@@ -286,21 +286,9 @@ impl DapStore {
                         )
                         .await?;
 
-                    let env = this
-                        .update(cx, |this, cx| {
-                            this.as_local()
-                                .unwrap()
-                                .environment
-                                .update(cx, |environment, cx| {
-                                    environment.worktree_environment(worktree, cx)
-                                })
-                        })?
-                        .await;
-
-                    if let Some(mut env) = env {
-                        env.extend(std::mem::take(&mut binary.envs));
-                        binary.envs = env;
-                    }
+                    let mut env = delegate.shell_env().await;
+                    util::extend_environment(&mut env, std::mem::take(&mut binary.envs));
+                    binary.envs = env;
 
                     Ok(binary)
                 })
@@ -391,7 +379,7 @@ impl DapStore {
     pub fn run_debug_locator(
         &mut self,
         locator_name: &str,
-        build_command: SpawnInTerminal,
+        build: dap::LocatorBuild,
         cx: &mut Context<Self>,
     ) -> Task<Result<DebugRequest>> {
         match &self.mode {
@@ -403,8 +391,9 @@ impl DapStore {
 
                 if let Some(locator) = locator.cloned() {
                     cx.background_spawn(async move {
+                        let label = build.task.label.clone();
                         let result = locator
-                            .run(build_command.clone(), executor)
+                            .run(build, executor)
                             .await
                             .log_with_level(log::Level::Error);
                         if let Some(result) = result {
@@ -413,20 +402,20 @@ impl DapStore {
 
                         anyhow::bail!(
                             "None of the locators for task `{}` completed successfully",
-                            build_command.label
+                            label
                         )
                     })
                 } else {
                     Task::ready(Err(anyhow!(
                         "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition",
-                        build_command.label
+                        build.task.label
                     )))
                 }
             }
             DapStoreMode::Remote(remote) => {
                 let request = remote.upstream_client.request(proto::RunDebugLocators {
                     project_id: remote.upstream_project_id,
-                    build_command: Some(build_command.to_proto()),
+                    build_command: Some(build.task.to_proto()),
                     locator: locator_name.to_owned(),
                 });
                 cx.background_spawn(async move {
@@ -513,30 +502,62 @@ impl DapStore {
         worktree: Entity<Worktree>,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        let dap_store = cx.weak_entity();
-        let console = session.update(cx, |session, cx| session.console_output(cx));
-        let session_id = session.read(cx).session_id();
+        self.launch_session(session, definition, worktree, None, None, cx)
+    }
 
-        cx.spawn({
-            let session = session.clone();
-            async move |this, cx| {
-                let binary = this
-                    .update(cx, |this, cx| {
-                        this.get_debug_adapter_binary(
-                            definition.clone(),
-                            session_id,
-                            &worktree,
-                            console,
-                            cx,
-                        )
-                    })?
-                    .await?;
-                session
-                    .update(cx, |session, cx| {
-                        session.boot(binary, worktree, dap_store, cx)
-                    })
-                    .await
+    pub fn relaunch_session(
+        &self,
+        session: Entity<Session>,
+        previous: &Entity<Session>,
+        child_request: Option<StartDebuggingRequestArguments>,
+        worktree: Entity<Worktree>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let Some((definition, binary)) = previous.read(cx).launch_configuration() else {
+            return Task::ready(Err(anyhow!(
+                "Previous debug session has no launch configuration"
+            )));
+        };
+        let spawns_process =
+            binary.command.is_some() && (child_request.is_none() || binary.connection.is_none());
+        let resolve_again = cfg!(windows) && self.as_local().is_some() && spawns_process;
+        let cached = (!resolve_again).then(|| binary.clone());
+        self.launch_session(
+            session,
+            definition.clone(),
+            worktree,
+            cached,
+            child_request,
+            cx,
+        )
+    }
+
+    fn launch_session(
+        &self,
+        session: Entity<Session>,
+        definition: DebugTaskDefinition,
+        worktree: Entity<Worktree>,
+        cached: Option<DebugAdapterBinary>,
+        child_request: Option<StartDebuggingRequestArguments>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let binary = if let Some(binary) = cached {
+            Task::ready(Ok(binary))
+        } else {
+            let id = session.read(cx).session_id();
+            let console = session.update(cx, |session, cx| session.console_output(cx));
+            self.get_debug_adapter_binary(definition.clone(), id, &worktree, console, cx)
+        };
+        cx.spawn(async move |dap_store, cx| {
+            let mut binary = binary.await?;
+            if let Some(request) = child_request {
+                binary.request_args = request;
             }
+            session
+                .update(cx, |session, cx| {
+                    session.boot(definition, binary, worktree, dap_store, cx)
+                })
+                .await
         })
     }
 
@@ -597,12 +618,22 @@ impl DapStore {
         &self,
         worktree: &Entity<Worktree>,
         console: UnboundedSender<String>,
+        _overrides: Option<&HashMap<String, String>>,
         cx: &mut App,
     ) -> Arc<dyn DapDelegate> {
         let Some(local_store) = self.as_local() else {
             unimplemented!("Starting session on remote side");
         };
 
+        let env = local_store
+            .environment
+            .update(cx, |env, cx| env.worktree_environment(worktree.clone(), cx));
+        #[cfg(windows)]
+        let env = if let Some(overrides) = _overrides.cloned() {
+            crate::environment::with_launch_overrides(env, overrides, cx)
+        } else {
+            env
+        };
         Arc::new(DapAdapterDelegate::new(
             local_store.fs.clone(),
             worktree.read(cx).snapshot(),
@@ -610,9 +641,7 @@ impl DapStore {
             local_store.node_runtime.clone(),
             local_store.http_client.clone(),
             local_store.toolchain_store.clone(),
-            local_store
-                .environment
-                .update(cx, |env, cx| env.worktree_environment(worktree.clone(), cx)),
+            env,
             local_store.is_headless,
         ))
     }
@@ -815,11 +844,31 @@ impl DapStore {
             .payload
             .build_command
             .context("missing definition")?;
-        let build_task = SpawnInTerminal::from_proto(task);
+        let build = dap::LocatorBuild::from(SpawnInTerminal::from_proto(task));
+        #[cfg(windows)]
+        let build = {
+            // RPC carries only remote task overrides. Resolve them on the host running Cargo.
+            let baseline = this.read_with(&cx, |store, cx| {
+                store.as_local().map(|local| {
+                    local.environment.read(cx).windows_environment(
+                        &task::Shell::System,
+                        build.task.cwd.as_deref().map(Arc::from),
+                        cx,
+                    )
+                })
+            });
+            let mut build = build;
+            if let Some(baseline) = baseline {
+                let mut env = baseline.await.unwrap_or_default();
+                util::extend_environment(&mut env, build.task.env.clone());
+                build.replay_environment = Some(env);
+            }
+            build
+        };
         let locator = envelope.payload.locator;
         let request = this
             .update(&mut cx, |this, cx| {
-                this.run_debug_locator(&locator, build_task, cx)
+                this.run_debug_locator(&locator, build, cx)
             })
             .await?;
 
@@ -1007,11 +1056,11 @@ impl dap::adapters::DapDelegate for DapAdapterDelegate {
 
     #[cfg(target_os = "windows")]
     async fn which(&self, command: &OsStr) -> Option<PathBuf> {
-        // On Windows, `PATH` is handled differently from Unix. Windows generally expects users to modify the `PATH` themselves,
-        // and every program loads it directly from the system at startup.
-        // There's also no concept of a default shell on Windows, and you can't really retrieve one, so trying to get shell environment variables
-        // from a specific directory doesn’t make sense on Windows.
-        which::which(command).ok()
+        let mut directory = self.worktree.abs_path().to_path_buf();
+        if self.fs.is_file(&directory).await {
+            directory.pop();
+        }
+        util::windows_environment::which(command, directory, self.shell_env().await).await
     }
 
     async fn shell_env(&self) -> HashMap<String, String> {

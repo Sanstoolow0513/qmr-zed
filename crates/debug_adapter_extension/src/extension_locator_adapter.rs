@@ -1,10 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use dap::{DapLocator, DebugRequest, adapters::DebugAdapterName};
+use dap::{DapLocator, DebugRequest, LocatorBuild, adapters::DebugAdapterName};
 use extension::Extension;
 use gpui::{BackgroundExecutor, SharedString};
 use std::sync::Arc;
-use task::{DebugScenario, SpawnInTerminal, TaskTemplate};
+use task::{DebugScenario, TaskTemplate};
 
 pub(crate) struct ExtensionLocatorAdapter {
     extension: Arc<dyn Extension>,
@@ -46,11 +46,11 @@ impl DapLocator for ExtensionLocatorAdapter {
 
     async fn run(
         &self,
-        build_config: SpawnInTerminal,
+        build: LocatorBuild,
         _executor: BackgroundExecutor,
     ) -> Result<DebugRequest> {
         self.extension
-            .run_dap_locator(self.locator_name.as_ref().to_owned(), build_config)
+            .run_dap_locator(self.locator_name.as_ref().to_owned(), build.task)
             .await
     }
 }

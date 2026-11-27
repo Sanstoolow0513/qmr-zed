@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use collections::{HashMap, HashSet};
 use extension::{Extension, ExtensionLanguageServerProxy, WorktreeDelegate};
-use futures::{FutureExt, future::join_all, lock::OwnedMutexGuard};
+use futures::{FutureExt, future::join_all};
 use gpui::{App, AppContext, AsyncApp, Task};
 use language::{
     BinaryStatus, CodeLabel, DynLspInstaller, HighlightId, Language, LanguageName,
@@ -171,7 +171,7 @@ impl DynLspInstaller for ExtensionLspAdapter {
         delegate: Arc<dyn LspAdapterDelegate>,
         _: Option<Toolchain>,
         _: LanguageServerBinaryOptions,
-        _: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        _: language::CachedServerBinaryGuard,
         _: AsyncApp,
     ) -> LanguageServerBinaryLocations {
         async move {
@@ -357,7 +357,7 @@ impl LspAdapter for ExtensionLspAdapter {
     async fn initialization_options_schema(
         self: Arc<Self>,
         delegate: &Arc<dyn LspAdapterDelegate>,
-        _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        _cached_binary: language::CachedServerBinaryGuard,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         let language_server_status_source = delegate.status_source_id();
@@ -378,7 +378,7 @@ impl LspAdapter for ExtensionLspAdapter {
     async fn settings_schema(
         self: Arc<Self>,
         delegate: &Arc<dyn LspAdapterDelegate>,
-        _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        _cached_binary: language::CachedServerBinaryGuard,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         let language_server_status_source = delegate.status_source_id();

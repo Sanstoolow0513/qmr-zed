@@ -11,7 +11,7 @@ use std::net::IpAddr;
 pub use dap_types::*;
 use debugger_settings::DebuggerSettings;
 use gpui::App;
-pub use registry::{DapLocator, DapRegistry};
+pub use registry::{DapLocator, DapRegistry, LocatorBuild};
 use serde::Serialize;
 use settings::Settings;
 pub use task::DebugRequest;

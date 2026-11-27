@@ -47,8 +47,8 @@ use serde_json::Value;
 use settings::Settings;
 use stack_frame_list::StackFrameList;
 use task::{
-    BuildTaskDefinition, DebugScenario, SharedTaskContext, Shell, ShellBuilder, SpawnInTerminal,
-    TaskContext, ZedDebugConfig, substitute_variables_in_str,
+    BuildTaskDefinition, DebugScenario, SharedTaskContext, Shell, SpawnInTerminal, TaskContext,
+    ZedDebugConfig, substitute_variables_in_str,
 };
 use terminal_view::TerminalView;
 use ui::{
@@ -1087,7 +1087,6 @@ impl RunningState {
         let task_store = project.read(cx).task_store().downgrade();
         let weak_project = project.downgrade();
         let weak_workspace = workspace.downgrade();
-        let is_windows = project.read(cx).path_style(cx).is_windows();
         let remote_shell = project
             .read(cx)
             .remote_client()
@@ -1205,27 +1204,26 @@ impl RunningState {
                     task.resolved.shell = Shell::Program(remote_shell);
                 }
 
-                let builder = ShellBuilder::new(&task.resolved.shell, is_windows);
-                let command_label = builder.command_label(task.resolved.command.as_deref().unwrap_or(""));
-                let (command, args) =
-                    builder.build(task.resolved.command.clone(), &task.resolved.args);
-
                 let task_with_shell = SpawnInTerminal {
-                    command_label,
-                    command: Some(command),
-                    args,
+                    command_mode: task::TaskCommandMode::ShellWithQuotedArgs,
                     ..task.resolved.clone()
                 };
 
                 Workspace::save_for_task(&weak_workspace, task_with_shell.save, cx).await;
 
-                let terminal = project
+                let launch_overrides = if cfg!(windows) && locator_name.is_some() {
+                    Some(
+                        task::substitute_variables_in_map(&task_template.env, &task_context)
+                            .context("Could not resolve environment overrides for the debug target")?,
+                    )
+                } else {
+                    None
+                };
+                let (terminal, locator_command) = project
                     .update(cx, |project, cx| {
-                        project.create_terminal_task(
-                            task_with_shell.clone(),
-                            cx,
-                        )
-                    }).await?;
+                        project.create_build_terminal(task_with_shell, launch_overrides, cx)
+                    })
+                    .await?;
 
                 let terminal_view = cx.new_window_entity(|window, cx| {
                     TerminalView::new(
@@ -1255,7 +1253,11 @@ impl RunningState {
                 if !exit_status.success() {
                     anyhow::bail!("Build failed");
                 }
-                Some((task.resolved.clone(), locator_name, extra_config))
+                Some((
+                    locator_command.unwrap_or_else(|| task.resolved.into()),
+                    locator_name,
+                    extra_config,
+                ))
             } else {
                 None
             };
@@ -1371,6 +1373,7 @@ impl RunningState {
             .or_else(|| command.clone())
             .unwrap_or_else(|| "Debug terminal".to_string());
         let kind = task::SpawnInTerminal {
+            command_mode: Default::default(),
             id: task::TaskId("debug".to_string()),
             full_label: title.clone(),
             label: title.clone(),

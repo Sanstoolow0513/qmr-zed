@@ -274,6 +274,7 @@ impl TaskTemplate {
             original_task: self.clone(),
             resolved_label: full_label.clone(),
             resolved: SpawnInTerminal {
+                command_mode: Default::default(),
                 id,
                 cwd,
                 full_label,

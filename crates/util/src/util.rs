@@ -27,6 +27,19 @@ pub mod size;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 pub mod time;
+#[cfg(windows)]
+pub mod windows_environment;
+
+/// Merge overrides into an environment for a process on this machine.
+pub fn extend_environment(
+    environment: &mut collections::HashMap<String, String>,
+    overrides: impl IntoIterator<Item = (String, String)>,
+) {
+    #[cfg(windows)]
+    windows_environment::extend(environment, overrides);
+    #[cfg(not(windows))]
+    environment.extend(overrides);
+}
 
 use anyhow::Result;
 use itertools::Either;

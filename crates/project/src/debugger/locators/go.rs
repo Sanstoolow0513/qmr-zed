@@ -1,10 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use collections::HashMap;
-use dap::{DapLocator, DebugRequest, adapters::DebugAdapterName};
+use dap::{DapLocator, DebugRequest, LocatorBuild, adapters::DebugAdapterName};
 use gpui::{BackgroundExecutor, SharedString};
 use serde::{Deserialize, Serialize};
-use task::{DebugScenario, SpawnInTerminal, TaskTemplate};
+use task::{DebugScenario, TaskTemplate};
 
 pub struct GoLocator;
 
@@ -239,7 +239,7 @@ impl DapLocator for GoLocator {
 
     async fn run(
         &self,
-        _build_config: SpawnInTerminal,
+        _build: LocatorBuild,
         _executor: BackgroundExecutor,
     ) -> Result<DebugRequest> {
         unreachable!()

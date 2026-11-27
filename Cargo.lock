@@ -171,7 +171,6 @@ dependencies = [
 [[package]]
 name = "alacritty_terminal"
 version = "0.26.1-dev"
-source = "git+https://github.com/zed-industries/alacritty?rev=4c129667ce56611becdc82de6e28218c80e2e88f#4c129667ce56611becdc82de6e28218c80e2e88f"
 dependencies = [
  "base64 0.22.1",
  "bitflags 2.13.1",
@@ -3867,6 +3866,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "async_zip",
  "collections",
  "dap",
  "dotenvy",
@@ -17844,6 +17844,7 @@ dependencies = [
  "walkdir",
  "which",
  "windows 0.62.2",
+ "windows-registry 0.6.1",
 ]
 
 [[package]]

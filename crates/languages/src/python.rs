@@ -3,7 +3,6 @@ use anyhow::{Context as _, ensure};
 use async_trait::async_trait;
 use collections::HashMap;
 use futures::future::BoxFuture;
-use futures::lock::OwnedMutexGuard;
 use futures::{AsyncBufReadExt, StreamExt as _};
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 use http_client::github::{AssetKind, GitHubLspBinaryVersion, latest_github_release};
@@ -816,9 +815,8 @@ impl LspInstaller for PyrightLspAdapter {
         &self,
         _latest_version: Self::BinaryVersion,
         container_dir: PathBuf,
-        delegate: &Arc<dyn LspAdapterDelegate>,
+        _: &Arc<dyn LspAdapterDelegate>,
     ) -> impl Send + Future<Output = Result<LanguageServerBinary>> + use<> {
-        let delegate = delegate.clone();
         let node = self.node.clone();
 
         async move {
@@ -826,10 +824,9 @@ impl LspInstaller for PyrightLspAdapter {
             node.npm_install_latest_packages(&container_dir, &[Self::SERVER_NAME.as_ref()])
                 .await?;
 
-            let env = delegate.shell_env().await;
             Ok(LanguageServerBinary {
                 path: node.binary_path().await?,
-                env: Some(env),
+                env: None,
                 arguments: vec![server_path.into(), "--stdio".into()],
             })
         }
@@ -839,9 +836,8 @@ impl LspInstaller for PyrightLspAdapter {
         &self,
         version: &Self::BinaryVersion,
         container_dir: &PathBuf,
-        delegate: &Arc<dyn LspAdapterDelegate>,
+        _: &Arc<dyn LspAdapterDelegate>,
     ) -> impl Send + Future<Output = Option<LanguageServerBinary>> + use<> {
-        let delegate = delegate.clone();
         let node = self.node.clone();
         let version = version.clone();
         let container_dir = container_dir.clone();
@@ -861,10 +857,9 @@ impl LspInstaller for PyrightLspAdapter {
             if should_install_language_server {
                 None
             } else {
-                let env = delegate.shell_env().await;
                 Some(LanguageServerBinary {
                     path: node.binary_path().await.ok()?,
-                    env: Some(env),
+                    env: None,
                     arguments: vec![server_path.into(), "--stdio".into()],
                 })
             }
@@ -874,11 +869,9 @@ impl LspInstaller for PyrightLspAdapter {
     async fn cached_server_binary(
         &self,
         container_dir: PathBuf,
-        delegate: &dyn LspAdapterDelegate,
+        _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        let mut binary = Self::get_cached_server_binary(container_dir, &self.node).await?;
-        binary.env = Some(delegate.shell_env().await);
-        Some(binary)
+        Self::get_cached_server_binary(container_dir, &self.node).await
     }
 }
 
@@ -2260,9 +2253,8 @@ impl LspInstaller for BasedPyrightLspAdapter {
         &self,
         _latest_version: Self::BinaryVersion,
         container_dir: PathBuf,
-        delegate: &Arc<dyn LspAdapterDelegate>,
+        _: &Arc<dyn LspAdapterDelegate>,
     ) -> impl Send + Future<Output = Result<LanguageServerBinary>> + use<> {
-        let delegate = delegate.clone();
         let node = self.node.clone();
 
         async move {
@@ -2270,10 +2262,9 @@ impl LspInstaller for BasedPyrightLspAdapter {
             node.npm_install_latest_packages(&container_dir, &[Self::SERVER_NAME.as_ref()])
                 .await?;
 
-            let env = delegate.shell_env().await;
             Ok(LanguageServerBinary {
                 path: node.binary_path().await?,
-                env: Some(env),
+                env: None,
                 arguments: vec![server_path.into(), "--stdio".into()],
             })
         }
@@ -2283,9 +2274,8 @@ impl LspInstaller for BasedPyrightLspAdapter {
         &self,
         version: &Self::BinaryVersion,
         container_dir: &PathBuf,
-        delegate: &Arc<dyn LspAdapterDelegate>,
+        _: &Arc<dyn LspAdapterDelegate>,
     ) -> impl Send + Future<Output = Option<LanguageServerBinary>> + use<> {
-        let delegate = delegate.clone();
         let node = self.node.clone();
         let version = version.clone();
         let container_dir = container_dir.clone();
@@ -2305,10 +2295,9 @@ impl LspInstaller for BasedPyrightLspAdapter {
             if should_install_language_server {
                 None
             } else {
-                let env = delegate.shell_env().await;
                 Some(LanguageServerBinary {
                     path: node.binary_path().await.ok()?,
-                    env: Some(env),
+                    env: None,
                     arguments: vec![server_path.into(), "--stdio".into()],
                 })
             }
@@ -2318,11 +2307,9 @@ impl LspInstaller for BasedPyrightLspAdapter {
     async fn cached_server_binary(
         &self,
         container_dir: PathBuf,
-        delegate: &dyn LspAdapterDelegate,
+        _: &dyn LspAdapterDelegate,
     ) -> Option<LanguageServerBinary> {
-        let mut binary = Self::get_cached_server_binary(container_dir, &self.node).await?;
-        binary.env = Some(delegate.shell_env().await);
-        Some(binary)
+        Self::get_cached_server_binary(container_dir, &self.node).await
     }
 }
 
@@ -2499,7 +2486,7 @@ impl LspAdapter for RuffLspAdapter {
     async fn initialization_options_schema(
         self: Arc<Self>,
         delegate: &Arc<dyn LspAdapterDelegate>,
-        cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        cached_binary: language::CachedServerBinaryGuard,
         cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         let binary = self
