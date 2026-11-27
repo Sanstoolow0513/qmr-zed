@@ -2,7 +2,6 @@ use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use collections::HashMap;
 use futures::StreamExt;
-use futures::lock::OwnedMutexGuard;
 use gpui::{App, AppContext, AsyncApp, Entity, SharedString, Task};
 use http_client::github::AssetKind;
 use http_client::github::{GitHubLspBinaryVersion, latest_github_release};
@@ -79,6 +78,40 @@ enum LibcType {
 }
 
 impl RustLspAdapter {
+    async fn read_config_schema(
+        delegate: &dyn LspAdapterDelegate,
+        binary: LanguageServerBinary,
+    ) -> Option<serde_json::Value> {
+        let mut env = delegate.shell_env().await;
+        util::extend_environment(&mut env, binary.env.unwrap_or_default());
+        let directory = delegate.worktree_directory().await;
+        let output = util::command::output_with_environment(
+            &binary.path,
+            &directory,
+            Some(env),
+            ["--print-config-schema"],
+        )
+        .await
+        .map_err(|error| {
+            log::debug!(
+                "failed to read config schema from {:?}: {error}",
+                binary.path
+            )
+        })
+        .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        let raw_schema: serde_json::Value = serde_json::from_slice(output.stdout.as_slice())
+            .map_err(|e| log::debug!("failed to parse rust-analyzer's JSON schema output: {e}"))
+            .ok()?;
+
+        // Convert rust-analyzer's array-based schema format to nested JSON Schema
+        let converted_schema = Self::convert_rust_analyzer_schema(&raw_schema);
+        Some(converted_schema)
+    }
+
     fn convert_rust_analyzer_schema(raw_schema: &serde_json::Value) -> serde_json::Value {
         let Some(schema_array) = raw_schema.as_array() else {
             return raw_schema.clone();
@@ -601,7 +634,7 @@ impl LspAdapter for RustLspAdapter {
     async fn initialization_options_schema(
         self: Arc<Self>,
         delegate: &Arc<dyn LspAdapterDelegate>,
-        cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
+        cached_binary: language::CachedServerBinaryGuard,
         cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
         let binary = self
@@ -620,38 +653,7 @@ impl LspAdapter for RustLspAdapter {
             .0
             .ok()?;
 
-        let mut env = delegate.shell_env().await;
-        util::extend_environment(&mut env, binary.env.unwrap_or_default());
-        let mut command = util::command::new_command_with_environment(
-            &binary.path,
-            delegate.worktree_root_path(),
-            Some(&env),
-        )
-        .log_err()?;
-        command
-            .arg("--print-config-schema")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let cmd = command
-            .spawn()
-            .map_err(|e| log::debug!("failed to start {:?} for config schema: {e}", binary.path))
-            .ok()?;
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| log::debug!("failed to read config schema from {:?}: {e}", binary.path))
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-
-        let raw_schema: serde_json::Value = serde_json::from_slice(output.stdout.as_slice())
-            .map_err(|e| log::debug!("failed to parse rust-analyzer's JSON schema output: {e}"))
-            .ok()?;
-
-        // Convert rust-analyzer's array-based schema format to nested JSON Schema
-        let converted_schema = Self::convert_rust_analyzer_schema(&raw_schema);
-        Some(converted_schema)
+        Self::read_config_schema(delegate.as_ref(), binary).await
     }
 
     async fn label_for_symbol(
@@ -2462,6 +2464,72 @@ path = "src/nested/main.rs"
             "--bin=x",
         );
         check([], "/project/src/main.rs", "--");
+    }
+
+    #[gpui::test]
+    async fn rust_analyzer_schema_uses_worktree_directory(cx: &mut TestAppContext) {
+        use project::{Project, lsp_store::LocalLspAdapterDelegate};
+
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            let settings = SettingsStore::test(cx);
+            cx.set_global(settings);
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("main.rs");
+        std::fs::write(&file, "fn main() {}").unwrap();
+        std::fs::write(
+            directory.path().join("schema.json"),
+            r#"[{"properties":{"rust-analyzer.cargo.features":{"type":"array"}}}]"#,
+        )
+        .unwrap();
+        #[cfg(windows)]
+        let probe = {
+            let path = directory.path().join("schema.cmd");
+            std::fs::write(&path, "@echo off\r\nif not \"%~1\"==\"--print-config-schema\" exit /b 1\r\ntype schema.json\r\n").unwrap();
+            path
+        };
+        #[cfg(unix)]
+        let probe = {
+            use std::os::unix::fs::PermissionsExt as _;
+            let path = directory.path().join("schema");
+            std::fs::write(
+                &path,
+                "#!/bin/sh\ntest \"$1\" = --print-config-schema && cat schema.json\n",
+            )
+            .unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+        let fs = ::fs::FakeFs::new(cx.executor());
+        fs.insert_tree(
+            directory.path(),
+            serde_json::json!({"main.rs": "fn main() {}"}),
+        )
+        .await;
+        for root in [directory.path(), &file] {
+            let project = Project::test(fs.clone(), [root], cx).await;
+            let (worktree, store) = project.read_with(cx, |project, cx| {
+                (project.worktrees(cx).next().unwrap(), project.lsp_store())
+            });
+            let delegate = store.update(cx, |store, cx| {
+                LocalLspAdapterDelegate::from_local_lsp(store.as_local().unwrap(), &worktree, cx)
+            });
+            let schema = RustLspAdapter::read_config_schema(
+                delegate.as_ref(),
+                LanguageServerBinary {
+                    path: probe.clone(),
+                    arguments: vec![],
+                    env: None,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                schema.pointer("/properties/cargo/properties/features/type"),
+                Some(&json!("array"))
+            );
+        }
     }
 
     #[test]

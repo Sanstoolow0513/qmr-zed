@@ -52,6 +52,31 @@ pub fn new_command_with_environment(
     Ok(command)
 }
 
+/// Resolve and spawn on an I/O worker, then read the child's pipes asynchronously.
+pub async fn output_with_environment(
+    program: impl AsRef<OsStr>,
+    directory: &Path,
+    environment: Option<collections::HashMap<String, String>>,
+    arguments: impl IntoIterator<Item = impl Into<std::ffi::OsString>>,
+) -> anyhow::Result<std::process::Output> {
+    let program = program.as_ref().to_owned();
+    let directory = directory.to_owned();
+    let arguments: Vec<_> = arguments.into_iter().map(Into::into).collect();
+    let child = smol::unblock(move || {
+        let mut command = new_command_with_environment(program, &directory, environment.as_ref())?;
+        anyhow::Ok(
+            command
+                .args(arguments)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?,
+        )
+    })
+    .await?;
+    Ok(child.output().await?)
+}
+
 #[cfg(all(test, windows))]
 #[test]
 fn project_commands_use_the_supplied_search_path_and_environment() -> anyhow::Result<()> {

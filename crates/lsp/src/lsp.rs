@@ -513,7 +513,7 @@ pub const SEMANTIC_TOKEN_MODIFIERS: &[SemanticTokenModifier] = &[
 impl LanguageServer {
     /// Starts a language server process.
     /// A request_timeout of zero or Duration::MAX indicates an indefinite timeout.
-    pub fn new(
+    pub async fn new(
         stderr_capture: Arc<Mutex<Option<String>>>,
         server_id: LanguageServerId,
         server_name: LanguageServerName,
@@ -523,35 +523,40 @@ impl LanguageServer {
         workspace_folders: Option<Arc<Mutex<BTreeSet<Uri>>>>,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
-        let working_dir = if root_path.is_dir() {
-            root_path
-        } else {
-            root_path.parent().unwrap_or_else(|| Path::new("/"))
-        };
-        let root_uri = Uri::from_file_path(&working_dir)
-            .map_err(|()| anyhow!("{working_dir:?} is not a valid URI"))?;
-        log::info!(
-            "starting language server process. binary path: \
-            {:?}, working directory: {:?}, args: {:?}",
-            binary.path,
-            working_dir,
-            binary.arguments
-        );
-        let mut command = util::command::new_command_with_environment(
-            &binary.path,
-            working_dir,
-            binary.env.as_ref(),
-        )?;
-        command
-            .args(&binary.arguments)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        let root_path = root_path.to_owned();
+        let (mut server, root_uri, binary) = cx
+            .background_spawn(async move {
+                let working_dir = if root_path.is_dir() {
+                    root_path.as_path()
+                } else {
+                    root_path.parent().unwrap_or_else(|| Path::new("/"))
+                };
+                let root_uri = Uri::from_file_path(working_dir)
+                    .map_err(|()| anyhow!("{working_dir:?} is not a valid URI"))?;
+                log::info!(
+                    "starting language server process. binary path: {:?}, working directory: {:?}, args: {:?}",
+                    binary.path,
+                    working_dir,
+                    binary.arguments
+                );
+                let mut command = util::command::new_command_with_environment(
+                    &binary.path,
+                    working_dir,
+                    binary.env.as_ref(),
+                )?;
+                command
+                    .args(&binary.arguments)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .kill_on_drop(true);
 
-        let mut server = command
-            .spawn()
-            .with_context(|| format!("failed to spawn language server {:?}", binary.path))?;
+                let server = command.spawn().with_context(|| {
+                    format!("failed to spawn language server {:?}", binary.path)
+                })?;
+                anyhow::Ok((server, root_uri, binary))
+            })
+            .await?;
 
         let stdin = server.stdin.take().unwrap();
         let stdout = server.stdout.take().unwrap();
@@ -2213,6 +2218,7 @@ mod tests {
                 None,
                 &mut cx.to_async(),
             )
+            .await
             .unwrap();
             let mut child = server.server.lock().take().unwrap();
             assert_eq!(child.status().await.unwrap().code(), Some(sdk_version));

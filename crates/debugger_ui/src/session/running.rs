@@ -1211,10 +1211,10 @@ impl RunningState {
 
                 Workspace::save_for_task(&weak_workspace, task_with_shell.save, cx).await;
 
-                let terminal = project
+                let (terminal, locator_command) = project
                     .update(cx, |project, cx| {
-                        project.create_terminal_task(
-                            task_with_shell.clone(),
+                        project.create_build_terminal(
+                            task_with_shell, locator_name.is_some(),
                             cx,
                         )
                     }).await?;
@@ -1247,7 +1247,7 @@ impl RunningState {
                 if !exit_status.success() {
                     anyhow::bail!("Build failed");
                 }
-                Some((task.resolved.clone(), locator_name, extra_config))
+                Some((locator_command.unwrap_or(task.resolved), locator_name, extra_config))
             } else {
                 None
             };

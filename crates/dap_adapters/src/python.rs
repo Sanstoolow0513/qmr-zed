@@ -20,7 +20,7 @@ use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
 };
-use util::command::new_command_with_environment;
+use util::command::output_with_environment;
 use util::{ResultExt, paths::PathStyle, rel_path::RelPath};
 
 enum DebugpyLaunchMode<'a> {
@@ -186,21 +186,20 @@ impl PythonDebugAdapter {
         std::fs::create_dir_all(&download_dir)?;
         let venv_python = self.base_venv_path(toolchain, delegate).await?;
 
-        let installation_succeeded = new_command_with_environment(
+        let installation_succeeded = output_with_environment(
             venv_python.as_ref(),
             &download_dir,
-            Some(&delegate.shell_env().await),
-        )?
-        .args([
-            "-m",
-            "pip",
-            "download",
-            "debugpy",
-            "--only-binary=:all:",
-            "-d",
-            download_dir.to_string_lossy().as_ref(),
-        ])
-        .output()
+            Some(delegate.shell_env().await),
+            [
+                "-m",
+                "pip",
+                "download",
+                "debugpy",
+                "--only-binary=:all:",
+                "-d",
+                download_dir.to_string_lossy().as_ref(),
+            ],
+        )
         .await
         .context("spawn system python")?
         .status
@@ -339,9 +338,8 @@ impl PythonDebugAdapter {
                 };
 
                 let debug_adapter_path = paths::debug_adapters_dir().join(Self::DEBUG_ADAPTER_NAME.as_ref());
-                let output = new_command_with_environment(&base_python, &debug_adapter_path, Some(&delegate.shell_env().await))?
-                    .args(["-m", "venv", "zed_base_venv"])
-                    .output()
+                let output = output_with_environment(&base_python, &debug_adapter_path, Some(delegate.shell_env().await),
+                    ["-m", "venv", "zed_base_venv"])
                     .await?;
 
                 if !output.status.success() {
@@ -372,6 +370,12 @@ impl PythonDebugAdapter {
         let mut name = None;
 
         let env = delegate.shell_env().await;
+        let root = delegate.worktree_root_path();
+        let directory = if delegate.fs().is_file(root).await {
+            root.parent()?
+        } else {
+            root
+        };
         for cmd in BINARY_NAMES {
             let Some(path) = delegate.which(OsStr::new(cmd)).await else {
                 continue;
@@ -379,12 +383,14 @@ impl PythonDebugAdapter {
             // Try to detect situations where `python3` exists but is not a real Python interpreter.
             // Notably, on fresh Windows installs, `python3` is a shim that opens the Microsoft Store app
             // when run with no arguments, and just fails otherwise.
-            let Ok(mut command) =
-                new_command_with_environment(&path, delegate.worktree_root_path(), Some(&env))
+            let Ok(output) = output_with_environment(
+                &path,
+                directory,
+                Some(env.clone()),
+                ["-c", "print(1 + 2)"],
+            )
+            .await
             else {
-                continue;
-            };
-            let Some(output) = command.args(["-c", "print(1 + 2)"]).output().await.ok() else {
                 continue;
             };
             if output.stdout.trim_ascii() != b"3" {

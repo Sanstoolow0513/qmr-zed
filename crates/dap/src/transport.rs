@@ -90,28 +90,36 @@ async fn start(
         }
     }
 
-    let command = binary
-        .command
-        .as_ref()
-        .map(|program| {
-            let mut command = adapter_command(program, binary, replace_environment)?;
-            command.args(&binary.arguments);
-            anyhow::Ok(command)
-        })
-        .transpose()?;
+    let process = if let Some(program) = binary.command.clone() {
+        let binary = binary.clone();
+        Some(
+            cx.background_spawn(async move {
+                let mut command = adapter_command(&program, &binary, replace_environment)?;
+                command.args(&binary.arguments);
+                let stdin = if binary.connection.is_some() {
+                    Stdio::null()
+                } else {
+                    Stdio::piped()
+                };
+                Child::spawn(command, stdin, Stdio::piped(), Stdio::piped())
+                    .context("failed to start debug adapter")
+            })
+            .await?,
+        )
+    } else {
+        None
+    };
+
     if binary.connection.is_some() {
         Ok(Box::new(
-            TcpTransport::start(binary, command, log_handlers, cx).await?,
+            TcpTransport::start(binary, process, log_handlers, cx).await?,
         ))
     } else {
-        Ok(Box::new(
-            StdioTransport::start(
-                command.context("stdio debug adapters require an executable")?,
-                log_handlers,
-                cx,
-            )
-            .await?,
-        ))
+        Ok(Box::new(StdioTransport::start(
+            process.context("stdio debug adapters require an executable")?,
+            log_handlers,
+            cx,
+        )))
     }
 }
 
@@ -592,7 +600,7 @@ impl TcpTransport {
 
     async fn start(
         binary: &DebugAdapterBinary,
-        command: Option<std::process::Command>,
+        mut process: Option<Child>,
         log_handlers: LogHandlers,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
@@ -604,14 +612,10 @@ impl TcpTransport {
         let host = connection_args.host;
         let port = connection_args.port;
 
-        let mut process = None;
         let mut stdout_task = None;
         let mut stderr_task = None;
 
-        if let Some(command) = command {
-            let mut p = Child::spawn(command, Stdio::null(), Stdio::piped(), Stdio::piped())
-                .with_context(|| "failed to start debug adapter.")?;
-
+        if let Some(p) = process.as_mut() {
             stdout_task = p.stdout.take().map(|stdout| {
                 cx.background_executor()
                     .spawn(TransportDelegate::handle_adapter_log(
@@ -628,7 +632,6 @@ impl TcpTransport {
                         log_handlers,
                     ))
             });
-            process = Some(p);
         };
 
         let timeout = connection_args
@@ -739,13 +742,7 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     // #[allow(dead_code, reason = "This is used in non test builds of Zed")]
-    async fn start(
-        command: std::process::Command,
-        log_handlers: LogHandlers,
-        cx: &mut AsyncApp,
-    ) -> Result<Self> {
-        let mut process = Child::spawn(command, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
-
+    fn start(mut process: Child, log_handlers: LogHandlers, cx: &mut AsyncApp) -> Self {
         let _stderr_task = process.stderr.take().map(|stderr| {
             cx.background_spawn(TransportDelegate::handle_adapter_log(
                 stderr,
@@ -756,10 +753,10 @@ impl StdioTransport {
 
         let process = Mutex::new(process);
 
-        Ok(Self {
+        Self {
             process,
             _stderr_task,
-        })
+        }
     }
 }
 

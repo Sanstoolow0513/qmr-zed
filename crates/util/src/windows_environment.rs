@@ -3,21 +3,33 @@ use collections::HashMap;
 use std::{
     env,
     ffi::OsStr,
+    os::windows::{
+        ffi::OsStringExt,
+        io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    },
     path::{Path, PathBuf},
 };
 use windows::Win32::{
-    Foundation::{ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, ERROR_PATH_NOT_FOUND},
+    Foundation::{
+        ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_ITEMS, ERROR_PATH_NOT_FOUND,
+        HANDLE,
+    },
     Globalization::{CSTR_EQUAL, CompareStringOrdinal},
+    Security::TOKEN_QUERY,
     Storage::FileSystem::GetBinaryTypeW,
     System::{
         Registry::{HKEY, RegEnumValueW},
         RemoteDesktop::ProcessIdToSessionId,
+        SystemInformation::GetSystemDirectoryW,
+        Threading::{GetCurrentProcess, OpenProcessToken},
     },
+    UI::Shell::GetUserProfileDirectoryW,
 };
 use windows::core::{HSTRING, PWSTR};
 use windows_registry::{CURRENT_USER, Key, LOCAL_MACHINE, Type};
 
 type Environment = HashMap<String, String>;
+type RegistryValue = (String, String, bool);
 
 fn same_name(left: &str, right: &str) -> bool {
     if left.is_ascii() && right.is_ascii() {
@@ -76,7 +88,6 @@ pub fn fresh() -> Result<Environment> {
         "HOMEDRIVE",
         "HOMESHARE",
         "HOMEPATH",
-        "USERPROFILE",
         "APPDATA",
         "LOCALAPPDATA",
     ] {
@@ -113,21 +124,49 @@ pub fn fresh() -> Result<Environment> {
 
     let mut session = 0;
     unsafe { ProcessIdToSessionId(std::process::id(), &mut session)? };
-    for (root, path) in [
-        (
-            LOCAL_MACHINE,
-            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
-        ),
-        (CURRENT_USER, "Environment"),
-        (CURRENT_USER, "Volatile Environment"),
-        (CURRENT_USER, &format!(r"Volatile Environment\{session}")),
-    ] {
-        read_layer(root, path, &mut env).with_context(|| format!("reading Windows {path}"))?;
-    }
+    let read = |root: &Key, path: &str| {
+        read_layer(root, path).with_context(|| format!("reading Windows {path}"))
+    };
+    let machine = read(
+        LOCAL_MACHINE,
+        r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+    )?;
+    let user = read(CURRENT_USER, "Environment")?;
+    let logon = read(CURRENT_USER, "Volatile Environment")?;
+    let session = read(CURRENT_USER, &format!(r"Volatile Environment\{session}"))?;
+    let profile = match session
+        .iter()
+        .chain(&logon)
+        .find(|(name, _, _)| same_name(name, "USERPROFILE"))
+    {
+        Some((_, value, false)) => value.clone(),
+        _ => token_profile_directory()?,
+    };
+    insert(&mut env, "USERPROFILE".into(), profile);
+    apply_layer(&mut env, machine)?;
+    apply_account_layers(&mut env, user, logon, session)?;
     Ok(env)
 }
 
-fn read_layer(root: &Key, path: &str, env: &mut Environment) -> Result<()> {
+fn token_profile_directory() -> Result<String> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)? };
+    let token = unsafe { OwnedHandle::from_raw_handle(token.0) };
+    let handle = HANDLE(token.as_raw_handle());
+    let mut length = 0;
+    if let Err(error) = unsafe { GetUserProfileDirectoryW(handle, None, &mut length) }
+        && error.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult()
+    {
+        return Err(error.into());
+    }
+    let mut buffer = vec![0; length as usize];
+    unsafe { GetUserProfileDirectoryW(handle, Some(PWSTR(buffer.as_mut_ptr())), &mut length)? };
+    Ok(String::from_utf16(
+        buffer.strip_suffix(&[0]).unwrap_or(&buffer),
+    )?)
+}
+
+fn read_layer(root: &Key, path: &str) -> Result<Vec<RegistryValue>> {
     let key = match root.open(path) {
         Ok(key) => key,
         Err(error)
@@ -135,7 +174,7 @@ fn read_layer(root: &Key, path: &str, env: &mut Environment) -> Result<()> {
                 .iter()
                 .any(|code| error.code() == code.to_hresult()) =>
         {
-            return Ok(());
+            return Ok(Vec::new());
         }
         Err(error) => return Err(error.into()),
     };
@@ -174,10 +213,63 @@ fn read_layer(root: &Key, path: &str, env: &mut Environment) -> Result<()> {
             values.push((name, value, ty == Type::ExpandString));
         }
     }
-    apply_layer(env, values)
+    Ok(values)
 }
 
-fn apply_layer(env: &mut Environment, values: Vec<(String, String, bool)>) -> Result<()> {
+fn apply_account_layers(
+    env: &mut Environment,
+    user: Vec<RegistryValue>,
+    logon: Vec<RegistryValue>,
+    session: Vec<RegistryValue>,
+) -> Result<()> {
+    // An earlier REG_EXPAND_SZ can depend on an identity supplied at sign-in.
+    // Resolve those references without installing a later layer's values or PATH twice.
+    let account = [&user, &logon, &session];
+    for (index, values) in account.iter().enumerate() {
+        let mut upcoming: Vec<&RegistryValue> = Vec::new();
+        for entry in account[index + 1..]
+            .iter()
+            .rev()
+            .flat_map(|layer| layer.iter())
+        {
+            if !same_name(&entry.0, "PATH")
+                && !upcoming.iter().any(|other| same_name(&other.0, &entry.0))
+            {
+                upcoming.push(entry);
+            }
+        }
+        if upcoming.is_empty() {
+            apply_layer(env, values.to_vec())?;
+            continue;
+        }
+        let mut projected = env.clone();
+        apply_layer(env, values.to_vec())?;
+
+        let mut definitions = Vec::new();
+        let mut resolved_names = Vec::new();
+        for entry in values.iter() {
+            if upcoming.iter().any(|other| same_name(&other.0, &entry.0)) {
+                // A sign-in variable can itself reference the previous value of its name.
+                if let Some(value) = get(env, &entry.0) {
+                    insert(&mut projected, entry.0.clone(), value.into());
+                }
+            } else {
+                resolved_names.push(&entry.0);
+                definitions.push(entry.clone());
+            }
+        }
+        definitions.extend(upcoming.into_iter().cloned());
+        apply_layer(&mut projected, definitions)?;
+        for name in resolved_names {
+            if let Some(value) = get(&projected, name) {
+                insert(env, name.clone(), value.into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn apply_layer(env: &mut Environment, values: Vec<RegistryValue>) -> Result<()> {
     let mut expandable = Vec::new();
     for (name, value, expand) in values {
         if expand || name.eq_ignore_ascii_case("PATH") {
@@ -257,6 +349,15 @@ pub fn resolve_program(program: &OsStr, cwd: Option<&Path>, env: &Environment) -
     resolve_with_extensions(program, cwd, env, |_| true)
 }
 
+pub async fn which(
+    program: &OsStr,
+    directory: PathBuf,
+    environment: Environment,
+) -> Option<PathBuf> {
+    let program = program.to_owned();
+    smol::unblock(move || resolve_program(&program, Some(&directory), &environment).ok()).await
+}
+
 /// Select an executable or command script which can be launched without a file
 /// association. PATHEXT can also include documents or interpreter-specific scripts.
 pub fn resolve_native_program(
@@ -309,11 +410,13 @@ fn resolve_with_extensions(
     let found = if explicit_path {
         find(cwd.join(path))
     } else {
-        get(env, "PATH")
-            .into_iter()
-            .flat_map(env::split_paths)
-            .filter(|directory| !directory.as_os_str().is_empty())
-            .find_map(|directory| find(cwd.join(directory).join(path)))
+        find(system_directory()?.join(path)).or_else(|| {
+            get(env, "PATH")
+                .into_iter()
+                .flat_map(env::split_paths)
+                .filter(|directory| !directory.as_os_str().is_empty())
+                .find_map(|directory| find(cwd.join(directory).join(path)))
+        })
     };
     match found {
         Some(executable) => Ok(std::path::absolute(executable)?),
@@ -321,6 +424,20 @@ fn resolve_with_extensions(
             "could not find {} in the launch environment",
             path.display()
         ),
+    }
+}
+
+fn system_directory() -> Result<PathBuf> {
+    let mut buffer = vec![0; 260];
+    loop {
+        let length = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
+        if length == 0 {
+            return Err(windows::core::Error::from_thread().into());
+        }
+        if length < buffer.len() {
+            return Ok(std::ffi::OsString::from_wide(&buffer[..length]).into());
+        }
+        buffer.resize(length + 1, 0);
     }
 }
 
@@ -376,6 +493,81 @@ pub fn resolve_shell(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expands_user_values_with_final_sign_in_identity() -> Result<()> {
+        let mut env = Environment::from_iter([
+            ("USERPROFILE".into(), r"C:\launcher".into()),
+            ("PATH".into(), "machine".into()),
+        ]);
+        apply_account_layers(
+            &mut env,
+            vec![
+                ("TEMP".into(), r"%UserProfile%\Temp".into(), true),
+                ("Path".into(), r"%SDK%\bin".into(), true),
+            ],
+            vec![
+                ("USERPROFILE".into(), r"C:\profile".into(), false),
+                ("SDK".into(), r"%USERPROFILE%\sdk".into(), true),
+            ],
+            vec![
+                ("userprofile".into(), r"D:\session".into(), false),
+                ("Path".into(), "session-bin".into(), false),
+            ],
+        )?;
+        assert_eq!(get(&env, "TEMP"), Some(r"D:\session\Temp"));
+        assert_eq!(
+            get(&env, "PATH"),
+            Some(r"machine;D:\session\sdk\bin;session-bin")
+        );
+        assert!(Path::new(&token_profile_directory()?).is_absolute());
+        Ok(())
+    }
+
+    #[test]
+    fn system_directory_precedes_project_path_for_bare_programs() -> Result<()> {
+        let sdk = tempfile::tempdir()?;
+        let system_cmd = system_directory()?.join("cmd.exe");
+        let sdk_cmd = sdk.path().join("cmd.exe");
+        std::fs::copy(&system_cmd, &sdk_cmd)?;
+        let env = Environment::from_iter([("PATH".into(), sdk.path().display().to_string())]);
+        assert_eq!(
+            resolve_native_program("cmd.exe".as_ref(), Some(sdk.path()), &env)?,
+            system_cmd
+        );
+        assert_eq!(resolve_program("cmd.exe".as_ref(), None, &env)?, system_cmd);
+        assert_eq!(
+            resolve_native_program(r".\cmd.exe".as_ref(), Some(sdk.path()), &env)?,
+            sdk_cmd
+        );
+        assert_eq!(
+            resolve_native_program("cmd.exe".as_ref(), None, &Environment::default())?,
+            system_cmd
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sign_in_expansion_preserves_each_layers_path_and_previous_value() -> Result<()> {
+        let mut env = Environment::from_iter([("PATH".into(), "machine".into())]);
+        apply_account_layers(
+            &mut env,
+            vec![
+                ("Path".into(), "user".into(), false),
+                ("SDK".into(), "base".into(), false),
+            ],
+            vec![
+                ("Path".into(), "logon".into(), false),
+                ("SDK".into(), "%SDK%-login".into(), true),
+                ("AT_LOGON".into(), "%PATH%".into(), true),
+            ],
+            vec![("Path".into(), "session".into(), false)],
+        )?;
+        assert_eq!(get(&env, "SDK"), Some("base-login"));
+        assert_eq!(get(&env, "AT_LOGON"), Some("machine;user;logon"));
+        assert_eq!(get(&env, "PATH"), Some("machine;user;logon;session"));
+        Ok(())
+    }
 
     #[test]
     fn merges_registry_layers_and_expands_against_the_child_environment() -> Result<()> {

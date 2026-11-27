@@ -65,6 +65,17 @@ impl Project {
         spawn_task: SpawnInTerminal,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
+        let task = self.create_build_terminal(spawn_task, false, cx);
+        cx.spawn(async move |_, _| Ok(task.await?.0))
+    }
+
+    /// Return the original Cargo arguments and their resolved launch context to the debug locator.
+    pub fn create_build_terminal(
+        &mut self,
+        spawn_task: SpawnInTerminal,
+        capture_locator_command: bool,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(Entity<Terminal>, Option<SpawnInTerminal>)>> {
         let is_via_remote = self.remote_client.is_some();
 
         let path: Option<Arc<Path>> = if let Some(cwd) = &spawn_task.cwd {
@@ -132,7 +143,6 @@ impl Project {
             .collect::<Vec<_>>();
         let lang_registry = self.languages.clone();
         let executor = cx.background_executor().clone();
-        #[cfg(windows)]
         let task_directory = path.clone();
         let launch = cx.background_spawn(async move {
             let mut env = env_task.await.unwrap_or_default();
@@ -140,6 +150,7 @@ impl Project {
             let mut spawn_task = spawn_task;
             merge_terminal_env(&mut env, spawn_task.env.clone(), is_via_remote);
             let shell = launch_shell_program(&shell, &env, is_via_remote, &executor);
+            let mut locator_command = None;
             if spawn_task.command_mode != task::TaskCommandMode::Direct {
                 let task_shell = spawn_task.shell.clone();
                 #[cfg(windows)]
@@ -154,14 +165,22 @@ impl Project {
                         &env,
                     )?
                 };
+                if capture_locator_command && cfg!(windows) && !is_via_remote {
+                    locator_command = Some(SpawnInTerminal {
+                        cwd: task_directory.as_deref().map(Path::to_owned),
+                        env: env.clone(),
+                        shell: task_shell.clone(),
+                        ..spawn_task.clone()
+                    });
+                }
                 spawn_task =
                     task::prepare_task_for_spawn(&spawn_task, &task_shell, path_style.is_windows());
                 spawn_task.shell = task_shell;
             }
-            anyhow::Ok((env, spawn_task, shell))
+            anyhow::Ok((env, spawn_task, shell, locator_command))
         });
         cx.spawn(async move |project, cx| {
-            let (env, spawn_task, shell) = launch.await?;
+            let (env, spawn_task, shell, locator_command) = launch.await?;
             let terminal_mode = TerminalMode::task(spawn_task.clone());
             let shell_kind = ShellKind::new(&shell, path_style.is_windows());
 
@@ -300,7 +319,7 @@ impl Project {
                 })
                 .detach();
 
-                terminal_handle
+                (terminal_handle, locator_command)
             })
         })
     }

@@ -382,28 +382,14 @@ impl DapStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<DebugRequest>> {
         match &self.mode {
-            DapStoreMode::Local(_local) => {
+            DapStoreMode::Local(_) => {
                 // Pre-resolve args with existing environment.
                 let locators = DapRegistry::global(cx).locators();
                 let locator = locators.get(locator_name);
                 let executor = cx.background_executor().clone();
 
                 if let Some(locator) = locator.cloned() {
-                    #[cfg(windows)]
-                    let environment = _local.environment.read(cx).windows_environment(
-                        &task::Shell::System,
-                        build_command.cwd.as_deref().map(Arc::from),
-                        cx,
-                    );
                     cx.background_spawn(async move {
-                        #[cfg(windows)]
-                        let build_command = {
-                            let mut build_command = build_command;
-                            let mut env = environment.await.unwrap_or_default();
-                            util::extend_environment(&mut env, build_command.env);
-                            build_command.env = env;
-                            build_command
-                        };
                         let result = locator
                             .run(build_command.clone(), executor)
                             .await
@@ -825,6 +811,26 @@ impl DapStore {
             .build_command
             .context("missing definition")?;
         let build_task = SpawnInTerminal::from_proto(task);
+        #[cfg(windows)]
+        let build_task = {
+            // RPC carries only remote task overrides. Resolve them on the host running Cargo.
+            let baseline = this.read_with(&cx, |store, cx| {
+                store.as_local().map(|local| {
+                    local.environment.read(cx).windows_environment(
+                        &task::Shell::System,
+                        build_task.cwd.as_deref().map(Arc::from),
+                        cx,
+                    )
+                })
+            });
+            let mut build_task = build_task;
+            if let Some(baseline) = baseline {
+                let mut env = baseline.await.unwrap_or_default();
+                util::extend_environment(&mut env, build_task.env);
+                build_task.env = env;
+            }
+            build_task
+        };
         let locator = envelope.payload.locator;
         let request = this
             .update(&mut cx, |this, cx| {
@@ -1016,12 +1022,11 @@ impl dap::adapters::DapDelegate for DapAdapterDelegate {
 
     #[cfg(target_os = "windows")]
     async fn which(&self, command: &OsStr) -> Option<PathBuf> {
-        util::windows_environment::resolve_program(
-            command,
-            Some(self.worktree.abs_path()),
-            &self.shell_env().await,
-        )
-        .ok()
+        let mut directory = self.worktree.abs_path().to_path_buf();
+        if self.fs.is_file(&directory).await {
+            directory.pop();
+        }
+        util::windows_environment::which(command, directory, self.shell_env().await).await
     }
 
     async fn shell_env(&self) -> HashMap<String, String> {

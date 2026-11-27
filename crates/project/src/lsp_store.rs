@@ -639,6 +639,7 @@ impl LocalLspStore {
                     Some(pending_workspace_folders),
                     cx,
                 )
+                .await
             }
         });
 
@@ -2862,30 +2863,39 @@ impl LocalLspStore {
             Some(worktree_path)
         });
 
-        use util::command::Stdio;
-        let mut child = util::command::new_command_with_environment(
-            command,
-            working_dir_path
-                .as_deref()
-                .unwrap_or_else(|| Path::new(".")),
-            buffer.env.as_ref(),
-        )?;
-
-        if let Some(arguments) = arguments {
-            child.args(arguments.iter().map(|arg| {
-                if let Some(buffer_abs_path) = buffer.abs_path.as_ref() {
-                    arg.replace("{buffer_path}", &buffer_abs_path.to_string_lossy())
-                } else {
-                    arg.replace("{buffer_path}", "Untitled")
-                }
-            }));
-        }
-
-        let mut child = child
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        let program = command.to_owned();
+        let env = buffer.env.clone();
+        let buffer_path = buffer.abs_path.as_deref().map(Path::to_string_lossy);
+        let arguments: Vec<_> = arguments
+            .unwrap_or_default()
+            .iter()
+            .map(|argument| {
+                argument.replace(
+                    "{buffer_path}",
+                    buffer_path.as_deref().unwrap_or("Untitled"),
+                )
+            })
+            .collect();
+        let mut child = cx
+            .background_spawn(async move {
+                use util::command::Stdio;
+                let mut command = util::command::new_command_with_environment(
+                    program,
+                    working_dir_path
+                        .as_deref()
+                        .unwrap_or_else(|| Path::new(".")),
+                    env.as_ref(),
+                )?;
+                anyhow::Ok(
+                    command
+                        .args(arguments)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()?,
+                )
+            })
+            .await?;
 
         let stdin = child.stdin.as_mut().context("failed to acquire stdin")?;
         let text = buffer
@@ -17084,6 +17094,14 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         self.worktree.abs_path().as_ref()
     }
 
+    async fn worktree_directory(&self) -> PathBuf {
+        let mut directory = self.worktree_root_path().to_owned();
+        if self.fs.is_file(&directory).await {
+            directory.pop();
+        }
+        directory
+    }
+
     fn resolve_relative_path(&self, path: PathBuf) -> PathBuf {
         self.worktree.resolve_relative_path(path)
     }
@@ -17097,7 +17115,7 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         &self,
         package_name: &str,
     ) -> Result<Option<(PathBuf, Version)>> {
-        let local_package_directory = self.worktree_root_path();
+        let local_package_directory = self.worktree_directory().await;
         let node_modules_directory = local_package_directory.join("node_modules");
 
         if let Some(version) =
@@ -17114,11 +17132,13 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         };
 
         let env = self.shell_env().await;
-        let output =
-            util::command::new_command_with_environment(&npm, local_package_directory, Some(&env))?
-                .args(["root", "-g"])
-                .output()
-                .await?;
+        let output = util::command::output_with_environment(
+            npm,
+            &local_package_directory,
+            Some(env),
+            ["root", "-g"],
+        )
+        .await?;
         let global_node_modules =
             PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
 
@@ -17131,25 +17151,18 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
     }
 
     async fn which(&self, command: &OsStr) -> Option<PathBuf> {
-        let mut worktree_abs_path = self.worktree_root_path().to_path_buf();
-        if self.fs.is_file(&worktree_abs_path).await {
-            worktree_abs_path.pop();
-        }
+        let worktree_abs_path = self.worktree_directory().await;
 
         let env = self.shell_env().await;
 
         #[cfg(windows)]
-        return util::windows_environment::resolve_program(command, Some(&worktree_abs_path), &env)
-            .ok();
+        return util::windows_environment::which(command, worktree_abs_path, env).await;
         #[cfg(not(windows))]
         which::which_in(command, env.get("PATH"), worktree_abs_path).ok()
     }
 
     async fn try_exec(&self, command: LanguageServerBinary) -> Result<()> {
-        let mut working_dir = self.worktree_root_path().to_path_buf();
-        if self.fs.is_file(&working_dir).await {
-            working_dir.pop();
-        }
+        let working_dir = self.worktree_directory().await;
         #[cfg(windows)]
         let env = {
             let mut env = self.shell_env().await;
@@ -17158,11 +17171,13 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         };
         #[cfg(not(windows))]
         let env = command.env;
-        let output =
-            util::command::new_command_with_environment(&command.path, &working_dir, env.as_ref())?
-                .args(command.arguments)
-                .output()
-                .await?;
+        let output = util::command::output_with_environment(
+            command.path,
+            &working_dir,
+            env,
+            command.arguments,
+        )
+        .await?;
 
         anyhow::ensure!(
             output.status.success(),
@@ -17567,6 +17582,146 @@ mod tests {
     use gpui::TestAppContext;
     use settings::SettingsStore;
     use text::Point;
+
+    #[gpui::test]
+    async fn managed_lsp_cache_uses_each_projects_launch_environment(cx: &mut TestAppContext) {
+        struct ManagedProbe(AtomicUsize);
+
+        #[async_trait(?Send)]
+        impl LspAdapter for ManagedProbe {
+            fn name(&self) -> LanguageServerName {
+                LanguageServerName::new_static("managed-probe")
+            }
+
+            // Exercise managed discovery instead of the test harness's fake-server shortcut.
+            fn is_extension(&self) -> bool {
+                true
+            }
+        }
+
+        impl LspInstaller for ManagedProbe {
+            type BinaryVersion = ();
+
+            async fn fetch_latest_server_version(
+                &self,
+                _: &Arc<dyn LspAdapterDelegate>,
+                _: bool,
+                _: &mut AsyncApp,
+            ) -> Result<()> {
+                Ok(())
+            }
+
+            fn fetch_server_binary(
+                &self,
+                _: (),
+                _: PathBuf,
+                delegate: &Arc<dyn LspAdapterDelegate>,
+            ) -> impl Send + Future<Output = Result<LanguageServerBinary>> + use<> {
+                self.0.fetch_add(1, atomic::Ordering::SeqCst);
+                let delegate = delegate.clone();
+                async move {
+                    Ok(LanguageServerBinary {
+                        path: "managed-probe".into(),
+                        arguments: vec!["--stdio".into()],
+                        env: Some(delegate.shell_env().await),
+                    })
+                }
+            }
+
+            async fn cached_server_binary(
+                &self,
+                _: PathBuf,
+                _: &dyn LspAdapterDelegate,
+            ) -> Option<LanguageServerBinary> {
+                None
+            }
+        }
+
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            let settings = SettingsStore::test(cx);
+            cx.set_global(settings);
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let mut registry = LanguageRegistry::test(cx.executor());
+        registry.set_language_server_download_dir(directory.path());
+        let registry = Arc::new(registry);
+        let probe = Arc::new(ManagedProbe(AtomicUsize::new(0)));
+        let adapter = CachedLspAdapter::new(probe.clone());
+        let fs = FakeFs::new(cx.executor());
+        let mut projects = Vec::new();
+        for name in ["project-a", "project-b"] {
+            let root = directory.path().join(name);
+            fs.insert_tree(&root, serde_json::json!({})).await;
+            projects.push(Project::test(fs.clone(), [root.as_path()], cx).await);
+        }
+        for (project, sdk, marker) in [
+            (&projects[0], Some("sdk-a"), Some("a-only")),
+            (&projects[1], Some("sdk-b"), None),
+            (&projects[0], None, None),
+        ] {
+            let worktree =
+                project.read_with(cx, |project, cx| project.worktrees(cx).next().unwrap());
+            let store = project.read_with(cx, |project, _| project.lsp_store());
+            let mut env = HashMap::from_iter([("SERVER_SETTING".into(), "from-project".into())]);
+            if let Some(sdk) = sdk {
+                env.insert("SDK".into(), sdk.into());
+            }
+            if let Some(marker) = marker {
+                env.insert("PROJECT_MARKER".into(), marker.into());
+            }
+            #[cfg(windows)]
+            project.update(cx, |project, cx| {
+                project.set_cli_environment(sdk.map(|_| env.clone()), cx);
+            });
+            let binary = store
+                .update(cx, |store, cx| {
+                    let local = store.as_local().unwrap();
+                    let mut delegate =
+                        LocalLspAdapterDelegate::from_local_lsp(local, &worktree, cx);
+                    let inner = Arc::make_mut(&mut delegate);
+                    inner.language_registry = registry.clone();
+                    #[cfg(not(windows))]
+                    {
+                        inner.load_shell_env_task = Task::ready(Some(env.clone())).shared();
+                    }
+                    local.get_language_server_binary(
+                        worktree.read(cx).abs_path(),
+                        adapter.clone(),
+                        Arc::new(LspSettings {
+                            binary: Some(BinarySettings {
+                                env: Some(BTreeMap::from_iter([(
+                                    "SERVER_SETTING".into(),
+                                    "explicit".into(),
+                                )])),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        None,
+                        delegate,
+                        true,
+                        None,
+                        cx,
+                    )
+                })
+                .await
+                .unwrap();
+            let launch = binary.env.unwrap();
+            assert_eq!(launch.get("SDK").map(String::as_str), sdk);
+            assert_eq!(launch.get("PROJECT_MARKER").map(String::as_str), marker);
+            assert_eq!(
+                launch.get("SERVER_SETTING").map(String::as_str),
+                Some("explicit")
+            );
+            #[cfg(windows)]
+            assert_eq!(
+                launch["ZED_ENVIRONMENT"],
+                if sdk.is_some() { "cli" } else { "windows" }
+            );
+        }
+        assert_eq!(probe.0.load(atomic::Ordering::SeqCst), 1);
+    }
 
     #[gpui::test]
     fn test_inlay_hint_server_removal_retires_ids_and_resolves(cx: &mut TestAppContext) {

@@ -324,4 +324,98 @@ mod tests {
             &cache.update(original, &DirenvSettings::Disabled)
         ));
     }
+
+    #[gpui::test]
+    async fn cargo_locator_replays_the_build_environment(cx: &mut TestAppContext) {
+        use gpui::BorrowAppContext as _;
+        use settings::SettingsStore;
+
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            cx.set_global(terminal::HeadlessTerminal(true));
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+            let settings = SettingsStore::test(cx);
+            cx.set_global(settings);
+            dap::DapRegistry::global(cx)
+                .add_locator(Arc::new(crate::debugger::locators::cargo::CargoLocator));
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        let project = crate::Project::test(fs, [], cx).await;
+        let directory = tempfile::tempdir().unwrap();
+        for sdk in ["a", "b"] {
+            let bin = directory.path().join(sdk);
+            std::fs::create_dir(&bin).unwrap();
+            std::fs::write(bin.join("cargo.cmd"), format!(
+                "@echo off\r\n>>calls.txt echo {sdk} %* %TASK_MARKER%\r\necho {{\"executable\":\"{sdk}.exe\"}}\r\n"
+            )).unwrap();
+        }
+        let system32 = Path::new(&std::env::var_os("SystemRoot").unwrap()).join("System32");
+        let set_sdk = |cx: &mut TestAppContext, sdk: &str| {
+            let settings = serde_json::json!({"terminal": {"env": {
+                "Path": directory.path().join(sdk), "PATHEXT": ".EXE;.CMD", "ComSpec": system32.join("cmd.exe"),
+                "TASK_MARKER": "from-settings",
+            }}});
+            cx.update(|cx| {
+                cx.update_global::<SettingsStore, _>(|store, cx| {
+                    store.set_user_settings(&settings.to_string(), cx).unwrap();
+                })
+            });
+        };
+        let mut task = task::TaskTemplate {
+            command: "cargo".into(),
+            args: vec!["build".into()],
+            label: "build with SDK".into(),
+            cwd: Some(directory.path().display().to_string()),
+            shell: Shell::WithArguments {
+                program: system32
+                    .join(r"WindowsPowerShell\v1.0\powershell.exe")
+                    .display()
+                    .to_string(),
+                args: vec!["-NoProfile".into()],
+                title_override: None,
+            },
+            env: Environment::from_iter([("TASK_MARKER".into(), "from-task".into())]),
+            ..Default::default()
+        }
+        .resolve_task("build", &Default::default())
+        .unwrap()
+        .resolved;
+        task.command_mode = task::TaskCommandMode::ShellWithQuotedArgs;
+        set_sdk(cx, "a");
+        for sdk in ["a", "b"] {
+            let (terminal, locator) = project
+                .update(cx, |project, cx| {
+                    project.create_build_terminal(task.clone(), true, cx)
+                })
+                .await
+                .unwrap();
+            set_sdk(cx, "b");
+            let status = terminal
+                .read_with(cx, |terminal, cx| terminal.wait_for_completed_task(cx))
+                .await
+                .unwrap();
+            assert!(status.success());
+            let dap = project.read_with(cx, |project, _| project.dap_store());
+            let result = dap
+                .update(cx, |dap, cx| {
+                    dap.run_debug_locator("rust-cargo-locator", locator.unwrap(), cx)
+                })
+                .await
+                .unwrap();
+            let dap::DebugRequest::Launch(launch) = result else {
+                panic!("expected a launch")
+            };
+            assert_eq!(launch.program, format!("{sdk}.exe"));
+        }
+        let calls = std::fs::read_to_string(directory.path().join("calls.txt")).unwrap();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            [
+                "a build from-task",
+                "a build --message-format=json from-task",
+                "b build from-task",
+                "b build --message-format=json from-task",
+            ]
+        );
+    }
 }

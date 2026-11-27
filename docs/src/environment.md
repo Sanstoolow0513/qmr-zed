@@ -28,6 +28,10 @@ your user `Path`, open a new terminal or split the current one to use it.
 Processes that are already running keep their own environment. Project and
 tool-specific settings such as `terminal.env` still apply.
 
+When QMR Zed looks up a program by name, it searches the Windows system
+directory (System32) first, then the project's `PATH`. Set an explicit
+executable path to select a different program with the same name.
+
 To use a developer shell's temporary SDK variables or activated virtual
 environment, open the project from that shell with `qmrzed --inherit-env .`.
 Use `qmrzed --reload-env .` to resume reading the Windows environment. Both

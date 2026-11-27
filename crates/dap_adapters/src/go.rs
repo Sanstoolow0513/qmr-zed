@@ -9,7 +9,7 @@ use dap::{
 };
 use fs::Fs;
 use futures::StreamExt;
-use gpui::{AsyncApp, SharedString};
+use gpui::{AppContext as _, AsyncApp, SharedString};
 use language::LanguageName;
 use log::warn;
 use serde_json::{Map, Value};
@@ -443,7 +443,7 @@ impl DebugAdapter for GoDebugAdapter {
         user_installed_path: Option<PathBuf>,
         user_args: Option<Vec<String>>,
         user_env: Option<HashMap<String, String>>,
-        _cx: &mut AsyncApp,
+        cx: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         let adapter_path = paths::debug_adapters_dir().join(&Self::ADAPTER_NAME);
         let dlv_binary = format!("dlv{}", consts::EXE_SUFFIX);
@@ -469,16 +469,23 @@ impl DebugAdapter for GoDebugAdapter {
                 .await
                 .context("Go not found in path. Please install Go first, then Dlv will be installed automatically.")?;
 
-            let install_output = util::command::new_command_with_environment(
-                &go,
-                worktree_directory,
-                Some(&delegate.shell_env().await),
-            )?
-            .env("GO111MODULE", "on")
-            .env("GOBIN", &adapter_path)
-            .args(&["install", "github.com/go-delve/delve/cmd/dlv@latest"])
-            .output()
-            .await?;
+            let env = delegate.shell_env().await;
+            let directory = worktree_directory.to_owned();
+            let install_dir = adapter_path.clone();
+            let install_output = cx
+                .background_spawn(async move {
+                    let mut command =
+                        util::command::new_command_with_environment(go, &directory, Some(&env))?;
+                    anyhow::Ok(
+                        command
+                            .env("GO111MODULE", "on")
+                            .env("GOBIN", install_dir)
+                            .args(["install", "github.com/go-delve/delve/cmd/dlv@latest"])
+                            .output()
+                            .await?,
+                    )
+                })
+                .await?;
 
             if !install_output.status.success() {
                 bail!(
