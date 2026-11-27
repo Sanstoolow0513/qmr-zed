@@ -388,6 +388,56 @@ async fn test_handle_successful_run_in_terminal_reverse_request(
 
 #[cfg(windows)]
 #[gpui::test]
+async fn gdb_restart_after_reload_uses_the_windows_environment(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/project"), json!({"main.rs": ""}))
+        .await;
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let _sessions = project::debugger::test::intercept_debug_sessions(cx, |_| {});
+    project.update(cx, |project, cx| {
+        project.set_cli_environment(
+            Some(collections::HashMap::from_iter([
+                ("PATH".into(), "old-sdk".into()),
+                ("OLD_SDK_ONLY".into(), "old".into()),
+            ])),
+            cx,
+        );
+    });
+    let target_env = json!({"DEBUG_TARGET": "explicit"});
+    let definition = DebugTaskDefinition {
+        adapter: "GDB".into(),
+        label: "GDB reload".into(),
+        config: json!({
+            "request": "launch",
+            "program": "target.exe",
+            "gdb_path": "gdb.exe",
+            "env": target_env,
+        }),
+        tcp_connection: None,
+    };
+    let session = start_debug_session_with(&workspace, cx, definition, |_| {}).unwrap();
+    let first = session.read_with(cx, |session, _| session.adapter_client().unwrap());
+    assert_eq!(first.binary().envs["PATH"], "old-sdk");
+
+    project.update(cx, |project, cx| project.set_cli_environment(None, cx));
+    session.update(cx, |session, cx| session.restart(None, cx));
+    cx.run_until_parked();
+    let restarted = active_debug_session_panel(workspace, cx).read_with(cx, |panel, cx| {
+        panel.session(cx).read(cx).adapter_client().unwrap()
+    });
+    assert_ne!(first.id(), restarted.id());
+    let binary = restarted.binary();
+    assert_eq!(binary.envs["ZED_ENVIRONMENT"], "windows");
+    assert_ne!(binary.envs["PATH"], "old-sdk");
+    assert!(!binary.envs.contains_key("OLD_SDK_ONLY"));
+    assert_eq!(binary.envs["DEBUG_TARGET"], "explicit");
+    assert_eq!(binary.request_args.configuration["env"], target_env);
+}
+
+#[cfg(windows)]
+#[gpui::test]
 async fn replacement_debug_adapter_uses_current_project_environment(cx: &mut TestAppContext) {
     use gpui::UpdateGlobal as _;
     init_test(cx);

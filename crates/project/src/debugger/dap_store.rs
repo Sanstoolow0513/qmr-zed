@@ -379,7 +379,7 @@ impl DapStore {
     pub fn run_debug_locator(
         &mut self,
         locator_name: &str,
-        build_command: SpawnInTerminal,
+        build: dap::LocatorBuild,
         cx: &mut Context<Self>,
     ) -> Task<Result<DebugRequest>> {
         match &self.mode {
@@ -391,8 +391,9 @@ impl DapStore {
 
                 if let Some(locator) = locator.cloned() {
                     cx.background_spawn(async move {
+                        let label = build.task.label.clone();
                         let result = locator
-                            .run(build_command.clone(), executor)
+                            .run(build, executor)
                             .await
                             .log_with_level(log::Level::Error);
                         if let Some(result) = result {
@@ -401,20 +402,20 @@ impl DapStore {
 
                         anyhow::bail!(
                             "None of the locators for task `{}` completed successfully",
-                            build_command.label
+                            label
                         )
                     })
                 } else {
                     Task::ready(Err(anyhow!(
                         "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition",
-                        build_command.label
+                        build.task.label
                     )))
                 }
             }
             DapStoreMode::Remote(remote) => {
                 let request = remote.upstream_client.request(proto::RunDebugLocators {
                     project_id: remote.upstream_project_id,
-                    build_command: Some(build_command.to_proto()),
+                    build_command: Some(build.task.to_proto()),
                     locator: locator_name.to_owned(),
                 });
                 cx.background_spawn(async move {
@@ -843,31 +844,31 @@ impl DapStore {
             .payload
             .build_command
             .context("missing definition")?;
-        let build_task = SpawnInTerminal::from_proto(task);
+        let build = dap::LocatorBuild::from(SpawnInTerminal::from_proto(task));
         #[cfg(windows)]
-        let build_task = {
+        let build = {
             // RPC carries only remote task overrides. Resolve them on the host running Cargo.
             let baseline = this.read_with(&cx, |store, cx| {
                 store.as_local().map(|local| {
                     local.environment.read(cx).windows_environment(
                         &task::Shell::System,
-                        build_task.cwd.as_deref().map(Arc::from),
+                        build.task.cwd.as_deref().map(Arc::from),
                         cx,
                     )
                 })
             });
-            let mut build_task = build_task;
+            let mut build = build;
             if let Some(baseline) = baseline {
                 let mut env = baseline.await.unwrap_or_default();
-                util::extend_environment(&mut env, build_task.env);
-                build_task.env = env;
+                util::extend_environment(&mut env, build.task.env.clone());
+                build.replay_environment = Some(env);
             }
-            build_task
+            build
         };
         let locator = envelope.payload.locator;
         let request = this
             .update(&mut cx, |this, cx| {
-                this.run_debug_locator(&locator, build_task, cx)
+                this.run_debug_locator(&locator, build, cx)
             })
             .await?;
 

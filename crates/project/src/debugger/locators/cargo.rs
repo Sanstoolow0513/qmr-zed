@@ -1,11 +1,12 @@
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
-use dap::{DapLocator, DebugRequest, adapters::DebugAdapterName};
+use collections::HashMap;
+use dap::{DapLocator, DebugRequest, LocatorBuild, adapters::DebugAdapterName};
 use gpui::{BackgroundExecutor, SharedString};
 use serde_json::{Value, json};
 use smol::{io::AsyncReadExt, process::Stdio as SmolStdio};
-use std::time::Duration;
-use task::{BuildTaskDefinition, DebugScenario, ShellBuilder, SpawnInTerminal, TaskTemplate};
+use std::{path::Path, time::Duration};
+use task::{BuildTaskDefinition, DebugScenario, ShellBuilder, TaskTemplate};
 use util::command::{Stdio, new_command};
 
 pub(crate) struct CargoLocator;
@@ -14,7 +15,8 @@ async fn find_best_executable(
     executables: &[String],
     test_name: &str,
     executor: BackgroundExecutor,
-    build: &SpawnInTerminal,
+    cwd: &Path,
+    _build_env: &HashMap<String, String>,
 ) -> Option<String> {
     if executables.len() == 1 {
         return executables.first().cloned();
@@ -22,10 +24,8 @@ async fn find_best_executable(
     for executable in executables {
         let mut command = new_command(executable);
         #[cfg(windows)]
-        command.env_clear().envs(&build.env);
-        if let Some(cwd) = &build.cwd {
-            command.current_dir(cwd);
-        }
+        command.env_clear().envs(_build_env);
+        command.current_dir(cwd);
         let Some(mut child) = command.arg("--list").stdout(Stdio::piped()).spawn().ok() else {
             continue;
         };
@@ -115,19 +115,19 @@ impl DapLocator for CargoLocator {
         })
     }
 
-    async fn run(
-        &self,
-        build_config: SpawnInTerminal,
-        executor: BackgroundExecutor,
-    ) -> Result<DebugRequest> {
+    async fn run(&self, build: LocatorBuild, executor: BackgroundExecutor) -> Result<DebugRequest> {
+        let build_config = build.task;
+        let build_env = build
+            .replay_environment
+            .as_ref()
+            .unwrap_or(&build_config.env);
         let cwd = build_config
             .cwd
-            .clone()
+            .as_deref()
             .context("Couldn't get cwd from debug config which is needed for locators")?;
         let shell = &build_config.shell;
         #[cfg(windows)]
-        let shell =
-            &util::windows_environment::resolve_shell(shell, Some(&cwd), &build_config.env)?;
+        let shell = &util::windows_environment::resolve_shell(shell, Some(cwd), build_env)?;
         let builder = ShellBuilder::new(shell, cfg!(windows)).non_interactive();
         let mut command = builder.build_smol_command(
             Some("cargo".into()),
@@ -142,7 +142,7 @@ impl DapLocator for CargoLocator {
         #[cfg(windows)]
         command.env_clear();
         let mut child = command
-            .envs(&build_config.env)
+            .envs(build_env)
             .current_dir(cwd)
             .stdout(SmolStdio::piped())
             .spawn()?;
@@ -203,10 +203,10 @@ impl DapLocator for CargoLocator {
         let executable = {
             if let Some(name) = test_name.as_ref().and_then(|name| {
                 name.strip_prefix('$')
-                    .map(|name| build_config.env.get(name))
+                    .map(|name| build_env.get(name))
                     .unwrap_or(Some(name))
             }) {
-                find_best_executable(&executables, name, executor, &build_config).await
+                find_best_executable(&executables, name, executor, cwd, build_env).await
             } else {
                 None
             }

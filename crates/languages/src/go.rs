@@ -132,9 +132,17 @@ impl LspInstaller for GoLspAdapter {
         let delegate = delegate.clone();
 
         async move {
-            let go = delegate.which("go".as_ref()).await.unwrap_or("go".into());
-            let go_version_output = util::command::new_command(&go)
-                .args(["version"])
+            let go = delegate
+                .which("go".as_ref())
+                .await
+                .context("could not find go in the project environment")?;
+            let directory = delegate.worktree_directory().await;
+            let env = delegate.shell_env().await;
+            let command = |program: &Path| {
+                util::command::new_command_with_environment(program, &directory, Some(&env))
+            };
+            let go_version_output = command(&go)?
+                .arg("version")
                 .output()
                 .await
                 .context("failed to get go version via `go version` command`")?;
@@ -162,7 +170,7 @@ impl LspInstaller for GoLspAdapter {
 
             let gobin_dir = container_dir.join("gobin");
             fs::create_dir_all(&gobin_dir).await?;
-            let install_output = util::command::new_command(go)
+            let install_output = command(&go)?
                 .env("GO111MODULE", "on")
                 .env("GOBIN", &gobin_dir)
                 .args(["install", "golang.org/x/tools/gopls@latest"])
@@ -181,7 +189,7 @@ impl LspInstaller for GoLspAdapter {
             }
 
             let installed_binary_path = gobin_dir.join(BINARY);
-            let version_output = util::command::new_command(&installed_binary_path)
+            let version_output = command(&installed_binary_path)?
                 .arg("version")
                 .output()
                 .await
@@ -971,6 +979,72 @@ mod tests {
                 .unwrap()
                 .with_context_provider(Some(Arc::new(GoContextProvider))),
         )
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    async fn gopls_installer_uses_the_environment_that_located_go(cx: &mut TestAppContext) {
+        use project::{Project, lsp_store::LocalLspAdapterDelegate};
+        use settings::SettingsStore;
+
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            let settings = SettingsStore::test(cx);
+            cx.set_global(settings);
+        });
+        let project_dir = tempfile::tempdir().unwrap();
+        let sdk = project_dir.path().join("sdk");
+        std::fs::create_dir(&sdk).unwrap();
+        // As the installed gopls, sort.exe reads its "version" argument from the working directory.
+        std::fs::write(project_dir.path().join("version"), "gopls v0.18.1\r\n").unwrap();
+        std::fs::write(
+            sdk.join("go.cmd"),
+            concat!(
+                "@echo off\r\n",
+                "if not \"%GOROOT%\"==\"project-go\" exit /b 1\r\n",
+                "if not \"%GOPROXY%\"==\"project-proxy\" exit /b 2\r\n",
+                "if \"%1\"==\"version\" (\r\n",
+                "  if not \"%GOBIN%\"==\"project-bin\" exit /b 3\r\n",
+                "  if not \"%GO111MODULE%\"==\"off\" exit /b 4\r\n",
+                "  echo go version go1.25.3 windows/amd64\r\n",
+                "  exit /b 0\r\n",
+                ")\r\n",
+                "if not \"%1\"==\"install\" exit /b 5\r\n",
+                "if not \"%GO111MODULE%\"==\"on\" exit /b 6\r\n",
+                "copy /y \"%SystemRoot%\\System32\\sort.exe\" \"%GOBIN%\\gopls.exe\" >nul\r\n",
+            ),
+        )
+        .unwrap();
+        let fs = ::fs::FakeFs::new(cx.executor());
+        fs.insert_tree(project_dir.path(), json!({"main.go": ""}))
+            .await;
+        let file = project_dir.path().join("main.go");
+        let project = Project::test(fs, [file.as_path()], cx).await;
+        let delegate: Arc<dyn LspAdapterDelegate> = project.update(cx, |project, cx| {
+            project.set_cli_environment(
+                Some(HashMap::from_iter([
+                    ("PATH".into(), sdk.display().to_string()),
+                    ("PATHEXT".into(), ".EXE;.CMD".into()),
+                    ("SystemRoot".into(), std::env::var("SystemRoot").unwrap()),
+                    ("GOROOT".into(), "project-go".into()),
+                    ("GOPROXY".into(), "project-proxy".into()),
+                    ("GOBIN".into(), "project-bin".into()),
+                    ("GO111MODULE".into(), "off".into()),
+                ])),
+                cx,
+            );
+            let worktree = project.worktrees(cx).next().unwrap();
+            project.lsp_store().update(cx, |store, cx| {
+                LocalLspAdapterDelegate::from_local_lsp(store.as_local().unwrap(), &worktree, cx)
+            })
+        });
+        let downloads = project_dir.path().join("downloads");
+        let installed = GoLspAdapter
+            .fetch_server_binary(Some("0.18.1".into()), downloads.clone(), &delegate)
+            .await
+            .unwrap();
+        assert_eq!(installed.path, downloads.join("gopls_0.18.1_go_1.25.3"));
+        assert!(installed.path.is_file());
     }
 
     #[test]

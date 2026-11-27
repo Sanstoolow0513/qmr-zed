@@ -11208,6 +11208,7 @@ pub async fn find_existing_workspace(
                             existing = Some((window, workspace.clone()));
                             best_match = m;
                         } else if best_match.is_none()
+                            && !open_options.change_environment
                             && open_options.workspace_matching
                                 == WorkspaceMatching::MatchSubdirectory
                         {
@@ -11484,7 +11485,10 @@ pub fn open_paths(
 
         // Fallback: if no workspace contains the paths and all paths are files,
         // prefer an existing local workspace window (active window first).
-        if open_options.should_reuse_existing_window() && existing.is_none() {
+        if open_options.should_reuse_existing_window()
+            && existing.is_none()
+            && !open_options.change_environment
+        {
             let all_paths = abs_paths.iter().map(|path| app_state.fs.metadata(path));
             let all_metadatas = futures::future::join_all(all_paths)
                 .await

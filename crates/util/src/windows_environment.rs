@@ -15,9 +15,10 @@ use windows::Win32::{
         HANDLE,
     },
     Globalization::{CSTR_EQUAL, CompareStringOrdinal},
-    Security::TOKEN_QUERY,
+    Security::{TOKEN_DUPLICATE, TOKEN_QUERY},
     Storage::FileSystem::GetBinaryTypeW,
     System::{
+        Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock},
         Registry::{HKEY, RegEnumValueW},
         RemoteDesktop::ProcessIdToSessionId,
         SystemInformation::GetSystemDirectoryW,
@@ -25,7 +26,7 @@ use windows::Win32::{
     },
     UI::Shell::GetUserProfileDirectoryW,
 };
-use windows::core::{HSTRING, PWSTR};
+use windows::core::{HSTRING, PCWSTR, PWSTR};
 use windows_registry::{CURRENT_USER, Key, LOCAL_MACHINE, Type};
 
 type Environment = HashMap<String, String>;
@@ -72,29 +73,9 @@ pub(crate) fn extend(env: &mut Environment, overrides: impl IntoIterator<Item = 
 /// Read a fresh environment for a process in the current logon session.
 /// This is synchronous registry I/O; callers should use a background executor.
 pub fn fresh() -> Result<Environment> {
-    let mut env = Environment::default();
-    // These identity/profile values belong to the logon session. Importing all of
-    // vars_os() here would also resurrect persistent variables the user deleted.
-    for name in [
-        "SystemRoot",
-        "SystemDrive",
-        "ALLUSERSPROFILE",
-        "PUBLIC",
-        "ProgramData",
-        "COMPUTERNAME",
-        "USERNAME",
-        "USERDOMAIN",
-        "USERDNSDOMAIN",
-        "HOMEDRIVE",
-        "HOMESHARE",
-        "HOMEPATH",
-        "APPDATA",
-        "LOCALAPPDATA",
-    ] {
-        if let Ok(value) = env::var(name) {
-            env.insert(name.to_owned(), value);
-        }
-    }
+    let token = current_user_token()?;
+    let handle = HANDLE(token.as_raw_handle());
+    let mut env = token_identity_environment(handle)?;
 
     let program_dirs = LOCAL_MACHINE.open(r"Software\Microsoft\Windows\CurrentVersion")?;
     for (value_name, name) in [
@@ -140,7 +121,7 @@ pub fn fresh() -> Result<Environment> {
         .find(|(name, _, _)| same_name(name, "USERPROFILE"))
     {
         Some((_, value, false)) => value.clone(),
-        _ => token_profile_directory()?,
+        _ => token_profile_directory(handle)?,
     };
     insert(&mut env, "USERPROFILE".into(), profile);
     apply_layer(&mut env, machine)?;
@@ -148,11 +129,66 @@ pub fn fresh() -> Result<Environment> {
     Ok(env)
 }
 
-fn token_profile_directory() -> Result<String> {
+fn current_user_token() -> Result<OwnedHandle> {
     let mut token = HANDLE::default();
-    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)? };
-    let token = unsafe { OwnedHandle::from_raw_handle(token.0) };
-    let handle = HANDLE(token.as_raw_handle());
+    unsafe {
+        OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_QUERY | TOKEN_DUPLICATE,
+            &mut token,
+        )?
+    };
+    Ok(unsafe { OwnedHandle::from_raw_handle(token.0) })
+}
+
+fn token_identity_environment(handle: HANDLE) -> Result<Environment> {
+    // Seeding the entire token block would apply registry settings such as PATH twice.
+    const IDENTITY_NAMES: &[&str] = &[
+        "SystemRoot",
+        "SystemDrive",
+        "ALLUSERSPROFILE",
+        "PUBLIC",
+        "ProgramData",
+        "COMPUTERNAME",
+        "USERNAME",
+        "USERDOMAIN",
+        "USERDNSDOMAIN",
+        "HOMEDRIVE",
+        "HOMESHARE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+    ];
+    let mut block = std::ptr::null_mut();
+    unsafe { CreateEnvironmentBlock(&mut block, Some(handle), false) }?;
+    let _release = gpui_util::defer(|| {
+        if let Err(error) = unsafe { DestroyEnvironmentBlock(block) } {
+            log::error!("Failed to release the user environment block: {error}");
+        }
+    });
+    let mut env = Environment::default();
+    let mut cursor = PCWSTR(block.cast());
+    loop {
+        // CreateEnvironmentBlock returns NUL-terminated UTF-16 entries followed by an empty entry.
+        let entry = unsafe { cursor.as_wide() };
+        if entry.is_empty() {
+            break;
+        }
+        if let Some(separator) = entry.iter().position(|ch| *ch == u16::from(b'=')) {
+            let key = String::from_utf16_lossy(&entry[..separator]);
+            if let Some(&name) = IDENTITY_NAMES
+                .iter()
+                .find(|name| name.eq_ignore_ascii_case(&key))
+            {
+                env.insert(name.into(), String::from_utf16(&entry[separator + 1..])?);
+            }
+        }
+        cursor = PCWSTR(unsafe { cursor.0.add(entry.len() + 1) });
+    }
+    Ok(env)
+}
+
+fn token_profile_directory(handle: HANDLE) -> Result<String> {
     let mut length = 0;
     if let Err(error) = unsafe { GetUserProfileDirectoryW(handle, None, &mut length) }
         && error.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult()
@@ -450,10 +486,10 @@ fn is_windows_binary(path: &Path) -> bool {
     unsafe { GetBinaryTypeW(&HSTRING::from(path.as_os_str()), &mut binary_type).is_ok() }
 }
 
-pub fn system_shell(env: &Environment) -> String {
+pub fn system_shell(cwd: Option<&Path>, env: &Environment) -> String {
     gpui_util::find_powershell(
         |key| get(env, key).map(PathBuf::from),
-        |name| resolve_native_program(OsStr::new(name), None, env).ok(),
+        |name| resolve_native_program(OsStr::new(name), cwd, env).ok(),
     )
     .unwrap_or_else(|| {
         Path::new(get(env, "SystemRoot").unwrap_or(r"C:\Windows"))
@@ -471,7 +507,7 @@ pub fn resolve_shell(
 ) -> Result<crate::shell::Shell> {
     use crate::shell::Shell;
     let program = match shell {
-        Shell::System => system_shell(env),
+        Shell::System => system_shell(cwd, env),
         Shell::Program(program) | Shell::WithArguments { program, .. } => program.clone(),
     };
     let program = resolve_native_program(OsStr::new(&program), cwd, env)?
@@ -522,7 +558,8 @@ mod tests {
             get(&env, "PATH"),
             Some(r"machine;D:\session\sdk\bin;session-bin")
         );
-        assert!(Path::new(&token_profile_directory()?).is_absolute());
+        let token = current_user_token()?;
+        assert!(Path::new(&token_profile_directory(HANDLE(token.as_raw_handle()))?).is_absolute());
         Ok(())
     }
 
@@ -623,6 +660,21 @@ mod tests {
     }
 
     #[test]
+    fn default_powershell_uses_the_launch_directory_for_relative_path_entries() -> Result<()> {
+        let project = tempfile::tempdir()?;
+        let tools = project.path().join("portable tools");
+        std::fs::create_dir(&tools)?;
+        let pwsh = tools.join("pwsh.exe");
+        std::fs::write(&pwsh, [])?;
+        let env = Environment::from_iter([("PATH".into(), "portable tools".into())]);
+        assert_eq!(
+            resolve_shell(&crate::shell::Shell::System, Some(project.path()), &env)?,
+            crate::shell::Shell::Program(pwsh.display().to_string()),
+        );
+        Ok(())
+    }
+
+    #[test]
     fn resolves_an_executable_using_the_supplied_directory_path_and_extensions() -> Result<()> {
         let directory = tempfile::tempdir()?;
         let bin = directory.path().join("tool bin");
@@ -715,6 +767,40 @@ mod tests {
             assert_eq!(resolve_native_program(name, None, &env)?, program);
             assert_eq!(launch(name, &["/d", "/c", "exit 42"])?, Some(42));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_identity_paths_ignore_launcher_overrides() -> Result<()> {
+        const PROBE: &str = "ZED_TEST_IDENTITY_PATHS";
+        let env = fresh()?;
+        let names = ["ProgramData", "PUBLIC", "ALLUSERSPROFILE"];
+        if std::env::var_os(PROBE).is_some() {
+            for name in names {
+                let expected = std::env::var(format!("{PROBE}_{name}"))?;
+                assert_eq!(get(&env, name), Some(expected.as_str()));
+            }
+            return Ok(());
+        }
+        let mut command = gpui_util::new_std_command(std::env::current_exe()?);
+        command.args([
+            "--exact",
+            "windows_environment::tests::fresh_identity_paths_ignore_launcher_overrides",
+        ]);
+        command.env(PROBE, "1");
+        for name in names {
+            command.env(
+                format!("{PROBE}_{name}"),
+                get(&env, name).context("missing identity path")?,
+            );
+            command.env(name, r"X:\launcher-only");
+        }
+        let output = command.output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
         Ok(())
     }
 

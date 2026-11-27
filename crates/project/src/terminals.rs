@@ -65,7 +65,7 @@ impl Project {
         spawn_task: SpawnInTerminal,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
-        let task = self.create_build_terminal(spawn_task, false, cx);
+        let task = self.create_build_terminal(spawn_task, None, cx);
         cx.spawn(async move |_, _| Ok(task.await?.0))
     }
 
@@ -73,9 +73,9 @@ impl Project {
     pub fn create_build_terminal(
         &mut self,
         spawn_task: SpawnInTerminal,
-        capture_locator_command: bool,
+        launch_overrides: Option<HashMap<String, String>>,
         cx: &mut Context<Self>,
-    ) -> Task<Result<(Entity<Terminal>, Option<SpawnInTerminal>)>> {
+    ) -> Task<Result<(Entity<Terminal>, Option<dap::LocatorBuild>)>> {
         let is_via_remote = self.remote_client.is_some();
 
         let path: Option<Arc<Path>> = if let Some(cwd) = &spawn_task.cwd {
@@ -149,7 +149,13 @@ impl Project {
             merge_terminal_env(&mut env, settings.env, is_via_remote);
             let mut spawn_task = spawn_task;
             merge_terminal_env(&mut env, spawn_task.env.clone(), is_via_remote);
-            let shell = launch_shell_program(&shell, &env, is_via_remote, &executor);
+            let shell = launch_shell_program(
+                &shell,
+                task_directory.as_deref(),
+                &env,
+                is_via_remote,
+                &executor,
+            );
             let mut locator_command = None;
             if spawn_task.command_mode != task::TaskCommandMode::Direct {
                 let task_shell = spawn_task.shell.clone();
@@ -165,12 +171,18 @@ impl Project {
                         &env,
                     )?
                 };
-                if capture_locator_command && cfg!(windows) && !is_via_remote {
-                    locator_command = Some(SpawnInTerminal {
-                        cwd: task_directory.as_deref().map(Path::to_owned),
-                        env: env.clone(),
-                        shell: task_shell.clone(),
-                        ..spawn_task.clone()
+                if cfg!(windows)
+                    && !is_via_remote
+                    && let Some(overrides) = launch_overrides
+                {
+                    locator_command = Some(dap::LocatorBuild {
+                        task: SpawnInTerminal {
+                            cwd: task_directory.as_deref().map(Path::to_owned),
+                            env: overrides,
+                            shell: task_shell.clone(),
+                            ..spawn_task.clone()
+                        },
+                        replay_environment: Some(env.clone()),
                     });
                 }
                 spawn_task =
@@ -448,11 +460,18 @@ impl Project {
             };
             let shell = remote_shell.as_ref().unwrap_or(&settings.shell).clone();
             let executor = cx.background_executor().clone();
+            let launch_directory = local_path.clone();
             let (env, shell_program) = cx
                 .background_spawn(async move {
                     let mut env = env_task.await.unwrap_or_default();
                     merge_terminal_env(&mut env, settings.env, is_via_remote);
-                    let program = launch_shell_program(&shell, &env, is_via_remote, &executor);
+                    let program = launch_shell_program(
+                        &shell,
+                        launch_directory.as_deref(),
+                        &env,
+                        is_via_remote,
+                        &executor,
+                    );
                     (env, program)
                 })
                 .await;
@@ -669,8 +688,13 @@ impl Project {
             } else {
                 let executor = cx.background_executor().clone();
                 cx.background_spawn(async move {
-                    let shell =
-                        Shell::Program(launch_shell_program(&shell, &env, false, &executor));
+                    let shell = Shell::Program(launch_shell_program(
+                        &shell,
+                        path.as_deref(),
+                        &env,
+                        false,
+                        &executor,
+                    ));
                     let builder = ShellBuilder::new(&shell, is_windows).non_interactive();
                     let (command, args) = builder.build(Some(command), &[]);
                     #[cfg(windows)]
@@ -736,6 +760,7 @@ impl Project {
 
 fn launch_shell_program(
     shell: &Shell,
+    _cwd: Option<&Path>,
     _env: &HashMap<String, String>,
     _remote: bool,
     executor: &BackgroundExecutor,
@@ -746,7 +771,7 @@ fn launch_shell_program(
     );
     #[cfg(windows)]
     if !_remote && shell == &Shell::System {
-        return util::windows_environment::system_shell(_env);
+        return util::windows_environment::system_shell(_cwd, _env);
     }
     shell.program()
 }

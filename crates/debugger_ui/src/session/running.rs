@@ -1211,13 +1211,19 @@ impl RunningState {
 
                 Workspace::save_for_task(&weak_workspace, task_with_shell.save, cx).await;
 
+                let launch_overrides = if cfg!(windows) && locator_name.is_some() {
+                    Some(
+                        task::substitute_variables_in_map(&task_template.env, &task_context)
+                            .context("Could not resolve environment overrides for the debug target")?,
+                    )
+                } else {
+                    None
+                };
                 let (terminal, locator_command) = project
                     .update(cx, |project, cx| {
-                        project.create_build_terminal(
-                            task_with_shell, locator_name.is_some(),
-                            cx,
-                        )
-                    }).await?;
+                        project.create_build_terminal(task_with_shell, launch_overrides, cx)
+                    })
+                    .await?;
 
                 let terminal_view = cx.new_window_entity(|window, cx| {
                     TerminalView::new(
@@ -1247,7 +1253,11 @@ impl RunningState {
                 if !exit_status.success() {
                     anyhow::bail!("Build failed");
                 }
-                Some((locator_command.unwrap_or(task.resolved), locator_name, extra_config))
+                Some((
+                    locator_command.unwrap_or_else(|| task.resolved.into()),
+                    locator_name,
+                    extra_config,
+                ))
             } else {
                 None
             };

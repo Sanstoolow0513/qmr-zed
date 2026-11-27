@@ -416,7 +416,10 @@ async fn load_directory_shell_environment(
     #[cfg(windows)]
     let captured = {
         let (program, args) = match &shell {
-            Shell::System => (util::windows_environment::system_shell(baseline), &[][..]),
+            Shell::System => (
+                util::windows_environment::system_shell(Some(&dir), baseline),
+                &[][..],
+            ),
             shell => shell.program_and_args(),
         };
         util::shell_env::capture_windows(Path::new(&program), args, &dir, Some(baseline)).await

@@ -2464,27 +2464,36 @@ mod tests {
             );
             project.cli_environment(cx)
         });
-        let developer_env = collections::HashMap::from_iter([("SDK".into(), "developer".into())]);
-        for (path, env, expected) in [
+        let developer_env =
+            collections::HashMap::from_iter([("SDK".to_owned(), "developer".to_owned())]);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/other"), json!({"inherit.py": "", "reload.py": ""}))
+            .await;
+        for (path, env, expected, wait_for_close) in [
             (
                 path!("/project_a/file.rs"),
                 Some(developer_env.clone()),
                 Some("developer"),
+                true,
             ),
-            (path!("/project_a/file.rs"), None, None),
-            (path!("/unmatched.rs"), Some(developer_env), None),
+            (path!("/project_a/file.rs"), None, None, true),
+            (path!("/other/inherit.py"), Some(developer_env), None, false),
+            (path!("/other/reload.py"), None, None, true),
         ] {
             windows[1]
                 .update(cx, |_, window, _| window.activate_window())
                 .unwrap();
             let app_state = app_state.clone();
-            let mut wait = cx.spawn(|mut cx| async move {
+            let selected_sdk = env.as_ref().map(|env| env["SDK"].clone());
+            let mut open = cx.spawn(|mut cx| async move {
                 open_local_workspace(
                     vec![path.to_owned()],
                     vec![],
                     false,
                     workspace::OpenOptions {
-                        wait: true,
+                        wait: wait_for_close,
                         change_environment: true,
                         env,
                         ..Default::default()
@@ -2497,13 +2506,45 @@ mod tests {
                 .await
             });
             cx.run_until_parked();
-            assert!(matches!(poll!(&mut wait), Poll::Pending));
-            cx.update(|cx| {
+            assert_eq!(
+                poll!(&mut open),
+                if wait_for_close {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(false)
+                }
+            );
+            let display_window = cx.update(|cx| {
                 let env = projects[0].read(cx).cli_environment(cx);
                 assert_eq!(env.as_ref().map(|env| env["SDK"].as_str()), expected);
                 assert_eq!(projects[1].read(cx).cli_environment(cx), other_env);
+                if Path::new(path).starts_with(path!("/other")) {
+                    workspace::workspace_windows_for_location(
+                        &SerializedWorkspaceLocation::Local,
+                        cx,
+                    )
+                    .into_iter()
+                    .find(|window| {
+                        let workspace = window.read(cx).unwrap().workspace().read(cx);
+                        let project = workspace.project();
+                        if projects.contains(project)
+                            || project
+                                .read(cx)
+                                .find_worktree(Path::new(path), cx)
+                                .is_none()
+                        {
+                            return false;
+                        }
+                        let env = project.read(cx).cli_environment(cx);
+                        assert_eq!(env.as_ref().map(|env| &env["SDK"]), selected_sdk.as_ref());
+                        true
+                    })
+                    .expect("the standalone file should have its own project")
+                } else {
+                    windows[1]
+                }
             });
-            windows[1]
+            display_window
                 .update(cx, |multi_workspace, window, cx| {
                     let workspace = multi_workspace.workspace().read(cx);
                     assert!(workspace.active_item_as::<Editor>(cx).is_some());
@@ -2514,7 +2555,9 @@ mod tests {
                 .unwrap()
                 .await
                 .unwrap();
-            assert!(!wait.await);
+            if wait_for_close {
+                assert!(!open.await);
+            }
         }
     }
 

@@ -346,7 +346,7 @@ mod tests {
             let bin = directory.path().join(sdk);
             std::fs::create_dir(&bin).unwrap();
             std::fs::write(bin.join("cargo.cmd"), format!(
-                "@echo off\r\n>>calls.txt echo {sdk} %* %TASK_MARKER%\r\necho {{\"executable\":\"{sdk}.exe\"}}\r\n"
+                "@echo off\r\n>>calls.txt echo {sdk} %* %TASK_MARKER% %BUILD_ONLY_MARKER%\r\necho {{\"executable\":\"{sdk}.exe\"}}\r\n"
             )).unwrap();
         }
         let system32 = Path::new(&std::env::var_os("SystemRoot").unwrap()).join("System32");
@@ -354,6 +354,7 @@ mod tests {
             let settings = serde_json::json!({"terminal": {"env": {
                 "Path": directory.path().join(sdk), "PATHEXT": ".EXE;.CMD", "ComSpec": system32.join("cmd.exe"),
                 "TASK_MARKER": "from-settings",
+                "BUILD_ONLY_MARKER": sdk,
             }}});
             cx.update(|cx| {
                 cx.update_global::<SettingsStore, _>(|store, cx| {
@@ -361,7 +362,7 @@ mod tests {
                 })
             });
         };
-        let mut task = task::TaskTemplate {
+        let template = task::TaskTemplate {
             command: "cargo".into(),
             args: vec!["build".into()],
             label: "build with SDK".into(),
@@ -374,18 +375,23 @@ mod tests {
                 args: vec!["-NoProfile".into()],
                 title_override: None,
             },
-            env: Environment::from_iter([("TASK_MARKER".into(), "from-task".into())]),
+            env: Environment::from_iter([("TASK_MARKER".into(), "$ZED_SYMBOL".into())]),
             ..Default::default()
-        }
-        .resolve_task("build", &Default::default())
-        .unwrap()
-        .resolved;
+        };
+        let context = task::TaskContext {
+            task_variables: [(task::VariableName::Symbol, "from-task".into())]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        };
+        let mut task = template.resolve_task("build", &context).unwrap().resolved;
+        let overrides = task::substitute_variables_in_map(&template.env, &context).unwrap();
         task.command_mode = task::TaskCommandMode::ShellWithQuotedArgs;
         set_sdk(cx, "a");
         for sdk in ["a", "b"] {
             let (terminal, locator) = project
                 .update(cx, |project, cx| {
-                    project.create_build_terminal(task.clone(), true, cx)
+                    project.create_build_terminal(task.clone(), Some(overrides.clone()), cx)
                 })
                 .await
                 .unwrap();
@@ -406,15 +412,21 @@ mod tests {
                 panic!("expected a launch")
             };
             assert_eq!(launch.program, format!("{sdk}.exe"));
+            assert!(!launch.env.contains_key("BUILD_ONLY_MARKER"));
+            assert_eq!(
+                launch.env.get("TASK_MARKER").map(String::as_str),
+                Some("from-task")
+            );
+            assert_eq!(launch.env.len(), 1);
         }
         let calls = std::fs::read_to_string(directory.path().join("calls.txt")).unwrap();
         assert_eq!(
             calls.lines().collect::<Vec<_>>(),
             [
-                "a build from-task",
-                "a build --message-format=json from-task",
-                "b build from-task",
-                "b build --message-format=json from-task",
+                "a build from-task a",
+                "a build --message-format=json from-task a",
+                "b build from-task b",
+                "b build --message-format=json from-task b",
             ]
         );
     }
