@@ -38,18 +38,68 @@ pub fn new_command_with_environment(
     directory: &Path,
     environment: Option<&collections::HashMap<String, String>>,
 ) -> anyhow::Result<Command> {
-    let program = program.as_ref();
-    #[cfg(windows)]
-    if let Some(env) = environment {
-        let command = new_std_command_with_environment(program, Some(directory), env)?;
-        return Ok(Command(smol::process::Command::from(command)));
+    ChildSignalMask::default().command_with_environment(program, directory, environment)
+}
+
+/// The calling thread's signal mask to pass to children spawned on a worker.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ChildSignalMask {
+    #[cfg(unix)]
+    mask: Option<nix::sys::signal::SigSet>,
+}
+
+impl ChildSignalMask {
+    pub fn capture() -> std::io::Result<Self> {
+        Ok(Self {
+            #[cfg(unix)]
+            mask: Some(nix::sys::signal::SigSet::thread_get_mask()?),
+        })
     }
-    let mut command = new_command(program);
-    command.current_dir(directory);
-    if let Some(env) = environment {
-        command.envs(env);
+
+    pub fn apply_to_std(self, _command: &mut std::process::Command) {
+        #[cfg(unix)]
+        if let Some(mask) = self.mask {
+            use nix::sys::signal::{SigmaskHow, sigprocmask};
+            use std::os::unix::process::CommandExt as _;
+            // SAFETY: sigprocmask is async-signal-safe and runs only in the forked child.
+            unsafe {
+                _command.pre_exec(move || {
+                    sigprocmask(SigmaskHow::SIG_SETMASK, Some(&mask), None).map_err(Into::into)
+                });
+            }
+        }
     }
-    Ok(command)
+
+    pub fn command_with_environment(
+        self,
+        program: impl AsRef<OsStr>,
+        directory: &Path,
+        environment: Option<&collections::HashMap<String, String>>,
+    ) -> anyhow::Result<Command> {
+        let program = program.as_ref();
+        #[cfg(windows)]
+        if let Some(env) = environment {
+            let command = new_std_command_with_environment(program, Some(directory), env)?;
+            return Ok(Command(smol::process::Command::from(command)));
+        }
+        #[cfg(not(target_os = "macos"))]
+        let mut command = {
+            let mut command = new_std_command(program);
+            self.apply_to_std(&mut command);
+            Command(smol::process::Command::from(command))
+        };
+        #[cfg(target_os = "macos")]
+        let mut command = {
+            let mut command = new_command(program);
+            command.child_signal_mask = self.mask;
+            command
+        };
+        command.current_dir(directory);
+        if let Some(env) = environment {
+            command.envs(env);
+        }
+        Ok(command)
+    }
 }
 
 /// Resolve and spawn on an I/O worker, then read the child's pipes asynchronously.
@@ -62,8 +112,10 @@ pub async fn output_with_environment(
     let program = program.as_ref().to_owned();
     let directory = directory.to_owned();
     let arguments: Vec<_> = arguments.into_iter().map(Into::into).collect();
+    let signal_mask = ChildSignalMask::capture()?;
     let child = smol::unblock(move || {
-        let mut command = new_command_with_environment(program, &directory, environment.as_ref())?;
+        let mut command =
+            signal_mask.command_with_environment(program, &directory, environment.as_ref())?;
         anyhow::Ok(
             command
                 .args(arguments)
@@ -112,6 +164,62 @@ fn project_commands_use_the_supplied_search_path_and_environment() -> anyhow::Re
     assert!(output.status.success());
     assert_eq!(String::from_utf8(output.stdout)?.trim(), "active");
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn worker_children_use_the_callers_signal_mask() -> anyhow::Result<()> {
+    use nix::sys::signal::{self, SigHandler, SigSet, Signal};
+    use std::os::unix::process::ExitStatusExt as _;
+
+    const PROBE: &str = "ZED_TEST_CHILD_SIGNAL_MASK";
+    if std::env::var_os(PROBE).is_some() {
+        let mask = SigSet::thread_get_mask()?;
+        assert!(mask.contains(Signal::SIGUSR1));
+        assert!(!mask.contains(Signal::SIGINT));
+        // SAFETY: only the probe subprocess changes its SIGINT disposition.
+        unsafe { signal::signal(Signal::SIGINT, SigHandler::SigDfl)? };
+        signal::raise(Signal::SIGINT)?;
+        anyhow::bail!("SIGINT did not terminate the probe");
+    }
+
+    let captured = std::thread::spawn(|| -> anyhow::Result<_> {
+        let mut mask = SigSet::thread_get_mask()?;
+        mask.add(Signal::SIGUSR1);
+        mask.remove(Signal::SIGINT);
+        mask.thread_set_mask()?;
+        Ok(ChildSignalMask::capture()?)
+    })
+    .join()
+    .unwrap()?;
+
+    std::thread::spawn(move || -> anyhow::Result<()> {
+        let mut mask = SigSet::thread_get_mask()?;
+        mask.remove(Signal::SIGUSR1);
+        mask.add(Signal::SIGINT);
+        mask.thread_set_mask()?;
+        let program = std::env::current_exe()?;
+        let args = [
+            "--exact",
+            "command::worker_children_use_the_callers_signal_mask",
+        ];
+        let mut command = new_std_command(&program);
+        captured.apply_to_std(&mut command);
+        command.args(args).env(PROBE, "1");
+        use std::process::Stdio;
+        let adapter =
+            crate::process::Child::spawn(command, Stdio::null(), Stdio::piped(), Stdio::piped())?;
+        let output = smol::block_on(adapter.output())?;
+        assert_eq!(output.status.signal(), Some(libc::SIGINT), "{output:?}");
+
+        let mut command = captured.command_with_environment(program, Path::new("."), None)?;
+        let output = smol::block_on(command.args(args).env(PROBE, "1").output())?;
+        assert_eq!(output.status.signal(), Some(libc::SIGINT), "{output:?}");
+        assert!(SigSet::thread_get_mask()?.contains(Signal::SIGINT));
+        Ok(())
+    })
+    .join()
+    .unwrap()
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -92,9 +92,11 @@ async fn start(
 
     let process = if let Some(program) = binary.command.clone() {
         let binary = binary.clone();
+        let signal_mask = util::command::ChildSignalMask::capture()?;
         Some(
             cx.background_spawn(async move {
                 let mut command = adapter_command(&program, &binary, replace_environment)?;
+                signal_mask.apply_to_std(&mut command);
                 command.args(&binary.arguments);
                 let stdin = if binary.connection.is_some() {
                     Stdio::null()

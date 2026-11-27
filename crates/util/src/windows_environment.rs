@@ -349,13 +349,15 @@ pub fn resolve_program(program: &OsStr, cwd: Option<&Path>, env: &Environment) -
     resolve_with_extensions(program, cwd, env, |_| true)
 }
 
+/// Locate a program that an adapter can launch directly in its project environment.
 pub async fn which(
     program: &OsStr,
     directory: PathBuf,
     environment: Environment,
 ) -> Option<PathBuf> {
     let program = program.to_owned();
-    smol::unblock(move || resolve_program(&program, Some(&directory), &environment).ok()).await
+    smol::unblock(move || resolve_native_program(&program, Some(&directory), &environment).ok())
+        .await
 }
 
 /// Select an executable or command script which can be launched without a file
@@ -676,13 +678,18 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let program = directory.path().join("npm");
         let batch = program.with_extension("cmd");
+        let powershell = program.with_extension("ps1");
         let root = env::var("SystemRoot")?;
         let env = Environment::from_iter([
             ("SystemRoot".into(), root.clone()),
             ("PATH".into(), directory.path().display().to_string()),
-            ("PATHEXT".into(), ".cmd;.exe".into()),
+            ("PATHEXT".into(), ".ps1;.cmd;.exe".into()),
         ]);
         std::fs::write(&program, "#!/bin/sh\nexit 1\n")?;
+        std::fs::write(&powershell, "exit 1\n")?;
+        let discover =
+            || smol::block_on(which("npm".as_ref(), directory.path().into(), env.clone()));
+        assert!(discover().is_none());
         std::fs::write(&batch, "@exit /b 37\r\n")?;
         let launch = |name: &OsStr, args: &[&str]| -> Result<_> {
             Ok(crate::command::new_std_command_with_environment(
@@ -694,7 +701,13 @@ mod tests {
             .status()?
             .code())
         };
-        assert_eq!(resolve_program(program.as_os_str(), None, &env)?, batch);
+        assert_eq!(
+            resolve_program(program.as_os_str(), None, &env)?,
+            powershell
+        );
+        let discovered = discover().context("expected a launchable npm shim")?;
+        assert_eq!(discovered, batch);
+        assert_eq!(launch(discovered.as_os_str(), &[])?, Some(37));
         assert_eq!(launch(program.as_os_str(), &[])?, Some(37));
 
         std::fs::copy(Path::new(&root).join(r"System32\cmd.exe"), &program)?;

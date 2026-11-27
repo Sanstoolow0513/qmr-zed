@@ -38,10 +38,11 @@ task.workspace = true
 util.workspace = true
 
 [dev-dependencies]
+async_zip.workspace = true
 dap = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
-http_client.workspace = true
+http_client = { workspace = true, features = ["test-support"] }
 node_runtime.workspace = true
 settings = { workspace = true, features = ["test-support"] }
 task = { workspace = true, features = ["test-support"] }

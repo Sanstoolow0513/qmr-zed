@@ -472,10 +472,11 @@ impl DebugAdapter for GoDebugAdapter {
             let env = delegate.shell_env().await;
             let directory = worktree_directory.to_owned();
             let install_dir = adapter_path.clone();
+            let signal_mask = util::command::ChildSignalMask::capture()?;
             let install_output = cx
                 .background_spawn(async move {
                     let mut command =
-                        util::command::new_command_with_environment(go, &directory, Some(&env))?;
+                        signal_mask.command_with_environment(go, &directory, Some(&env))?;
                     anyhow::Ok(
                         command
                             .env("GO111MODULE", "on")
@@ -675,6 +676,7 @@ mod tests {
                 root.to_path_buf(),
                 fs.clone(),
                 HashMap::from_iter([("go".into(), go.clone())]),
+                None,
             );
             let mut config = json!({"request": "launch"});
             if let Some(cwd) = explicit_cwd {

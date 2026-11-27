@@ -48,6 +48,7 @@ mod test_mocks {
     pub(crate) struct MockDelegate {
         worktree_root: PathBuf,
         fs: Option<Arc<dyn fs::Fs>>,
+        http_client: Option<Arc<dyn http_client::HttpClient>>,
         programs: collections::HashMap<std::ffi::OsString, PathBuf>,
     }
 
@@ -56,6 +57,7 @@ mod test_mocks {
             Arc::new(Self {
                 worktree_root: PathBuf::from("/tmp/test"),
                 fs: None,
+                http_client: None,
                 programs: Default::default(),
             })
         }
@@ -64,10 +66,12 @@ mod test_mocks {
             worktree_root: PathBuf,
             fs: Arc<dyn fs::Fs>,
             programs: collections::HashMap<std::ffi::OsString, PathBuf>,
+            http_client: Option<Arc<dyn http_client::HttpClient>>,
         ) -> Arc<dyn adapters::DapDelegate> {
             Arc::new(Self {
                 worktree_root,
                 fs: Some(fs),
+                http_client,
                 programs,
             })
         }
@@ -84,7 +88,9 @@ mod test_mocks {
         }
 
         fn http_client(&self) -> Arc<dyn http_client::HttpClient> {
-            unimplemented!("Not needed for tests")
+            self.http_client
+                .clone()
+                .expect("mock HTTP client is required")
         }
 
         fn node_runtime(&self) -> node_runtime::NodeRuntime {

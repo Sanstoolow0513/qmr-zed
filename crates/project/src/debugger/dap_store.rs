@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use collections::HashMap;
 use dap::{
     Capabilities, DapRegistry, DebugRequest, EvaluateArgumentsContext, StackFrameId,
+    StartDebuggingRequestArguments,
     adapters::{
         DapDelegate, DebugAdapterBinary, DebugAdapterName, DebugTaskDefinition, TcpArguments,
     },
@@ -241,7 +242,7 @@ impl DapStore {
     }
 
     pub fn get_debug_adapter_binary(
-        &mut self,
+        &self,
         definition: DebugTaskDefinition,
         session_id: SessionId,
         worktree: &Entity<Worktree>,
@@ -500,30 +501,62 @@ impl DapStore {
         worktree: Entity<Worktree>,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        let dap_store = cx.weak_entity();
-        let console = session.update(cx, |session, cx| session.console_output(cx));
-        let session_id = session.read(cx).session_id();
+        self.launch_session(session, definition, worktree, None, None, cx)
+    }
 
-        cx.spawn({
-            let session = session.clone();
-            async move |this, cx| {
-                let binary = this
-                    .update(cx, |this, cx| {
-                        this.get_debug_adapter_binary(
-                            definition.clone(),
-                            session_id,
-                            &worktree,
-                            console,
-                            cx,
-                        )
-                    })?
-                    .await?;
-                session
-                    .update(cx, |session, cx| {
-                        session.boot(binary, worktree, dap_store, cx)
-                    })
-                    .await
+    pub fn relaunch_session(
+        &self,
+        session: Entity<Session>,
+        previous: &Entity<Session>,
+        child_request: Option<StartDebuggingRequestArguments>,
+        worktree: Entity<Worktree>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let Some((definition, binary)) = previous.read(cx).launch_configuration() else {
+            return Task::ready(Err(anyhow!(
+                "Previous debug session has no launch configuration"
+            )));
+        };
+        let spawns_process =
+            binary.command.is_some() && (child_request.is_none() || binary.connection.is_none());
+        let resolve_again = cfg!(windows) && self.as_local().is_some() && spawns_process;
+        let cached = (!resolve_again).then(|| binary.clone());
+        self.launch_session(
+            session,
+            definition.clone(),
+            worktree,
+            cached,
+            child_request,
+            cx,
+        )
+    }
+
+    fn launch_session(
+        &self,
+        session: Entity<Session>,
+        definition: DebugTaskDefinition,
+        worktree: Entity<Worktree>,
+        cached: Option<DebugAdapterBinary>,
+        child_request: Option<StartDebuggingRequestArguments>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let binary = if let Some(binary) = cached {
+            Task::ready(Ok(binary))
+        } else {
+            let id = session.read(cx).session_id();
+            let console = session.update(cx, |session, cx| session.console_output(cx));
+            self.get_debug_adapter_binary(definition.clone(), id, &worktree, console, cx)
+        };
+        cx.spawn(async move |dap_store, cx| {
+            let mut binary = binary.await?;
+            if let Some(request) = child_request {
+                binary.request_args = request;
             }
+            session
+                .update(cx, |session, cx| {
+                    session.boot(definition, binary, worktree, dap_store, cx)
+                })
+                .await
         })
     }
 

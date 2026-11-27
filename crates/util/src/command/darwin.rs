@@ -72,6 +72,7 @@ pub struct Command {
     stdout_cfg: Option<Stdio>,
     stderr_cfg: Option<Stdio>,
     kill_on_drop: bool,
+    pub(super) child_signal_mask: Option<nix::sys::signal::SigSet>,
 }
 
 impl Command {
@@ -86,6 +87,7 @@ impl Command {
             stdout_cfg: None,
             stderr_cfg: None,
             kill_on_drop: false,
+            child_signal_mask: None,
         }
     }
 
@@ -205,6 +207,7 @@ impl Command {
             self.stdout_cfg.unwrap_or_default(),
             self.stderr_cfg.unwrap_or_default(),
             self.kill_on_drop,
+            self.child_signal_mask,
         )
     }
 
@@ -299,6 +302,7 @@ fn spawn_posix_spawn(
     stdout_cfg: Stdio,
     stderr_cfg: Stdio,
     kill_on_drop: bool,
+    child_signal_mask: Option<nix::sys::signal::SigSet>,
 ) -> io::Result<Child> {
     // posix_spawnp resolves programs against the parent's cwd/PATH, not the child's.
     let resolved_program = if program.as_bytes().contains(&b'/') {
@@ -399,8 +403,7 @@ fn spawn_posix_spawn(
         // The Rust runtime sets SIGPIPE to SIG_IGN before `main`, and ignored
         // dispositions survive exec, so without this children would never die
         // from writing to a closed pipe. Reset it to SIG_DFL, like std does
-        // (rust-lang/rust#101077). Like std, we don't touch the signal mask,
-        // so deliberately blocked signals (e.g. via `nohup`) stay blocked.
+        // (rust-lang/rust#101077).
         let mut default_set: libc::sigset_t = std::mem::zeroed();
         if libc::sigemptyset(&mut default_set) == -1 {
             return Err(io::Error::last_os_error());
@@ -410,9 +413,14 @@ fn spawn_posix_spawn(
         }
         cvt_nz(libc::posix_spawnattr_setsigdefault(&mut attr, &default_set))?;
 
+        let mut flags = libc::POSIX_SPAWN_CLOEXEC_DEFAULT | libc::POSIX_SPAWN_SETSIGDEF;
+        if let Some(mask) = child_signal_mask {
+            cvt_nz(libc::posix_spawnattr_setsigmask(&mut attr, mask.as_ref()))?;
+            flags |= libc::POSIX_SPAWN_SETSIGMASK;
+        }
         cvt_nz(libc::posix_spawnattr_setflags(
             &mut attr,
-            (libc::POSIX_SPAWN_CLOEXEC_DEFAULT | libc::POSIX_SPAWN_SETSIGDEF) as libc::c_short,
+            flags as libc::c_short,
         ))?;
 
         cvt_nz(posix_spawnattr_setexceptionports_np(

@@ -92,10 +92,7 @@ impl DebugAdapterClient {
                 request_args: binary.request_args,
             }
         } else if self.replace_environment {
-            DebugAdapterBinary {
-                envs: binary.envs,
-                ..self.binary.clone()
-            }
+            binary
         } else {
             self.binary.clone()
         };

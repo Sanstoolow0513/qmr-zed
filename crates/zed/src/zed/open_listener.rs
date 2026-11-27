@@ -1875,7 +1875,7 @@ mod tests {
             &mut cx.to_async(),
         )
         .await
-        .0
+        .target
         .unwrap()
         .0;
 
@@ -2401,8 +2401,13 @@ mod tests {
     async fn windows_cli_changes_only_the_selected_projects_environment(cx: &mut TestAppContext) {
         let app_state = init_test(cx);
         let mut projects = Vec::new();
+        let mut windows = Vec::new();
         for dir in [path!("/project_a"), path!("/project_b")] {
-            app_state.fs.as_fake().insert_tree(dir, json!({})).await;
+            app_state
+                .fs
+                .as_fake()
+                .insert_tree(dir, json!({"file.rs": ""}))
+                .await;
             let result = cx
                 .update(|cx| {
                     workspace::open_paths(
@@ -2418,6 +2423,7 @@ mod tests {
                 .await
                 .unwrap();
             projects.push(cx.update(|cx| result.workspace.read(cx).project().clone()));
+            windows.push(result.window);
         }
         for (change, value, expected) in [
             (true, Some("developer"), Some("developer")),
@@ -2446,6 +2452,69 @@ mod tests {
                 );
                 assert!(projects[1].read(cx).cli_environment(cx).is_none());
             });
+        }
+
+        let other_env = projects[1].update(cx, |project, cx| {
+            project.set_cli_environment(
+                Some(collections::HashMap::from_iter([(
+                    "SDK".into(),
+                    "other".into(),
+                )])),
+                cx,
+            );
+            project.cli_environment(cx)
+        });
+        let developer_env = collections::HashMap::from_iter([("SDK".into(), "developer".into())]);
+        for (path, env, expected) in [
+            (
+                path!("/project_a/file.rs"),
+                Some(developer_env.clone()),
+                Some("developer"),
+            ),
+            (path!("/project_a/file.rs"), None, None),
+            (path!("/unmatched.rs"), Some(developer_env), None),
+        ] {
+            windows[1]
+                .update(cx, |_, window, _| window.activate_window())
+                .unwrap();
+            let app_state = app_state.clone();
+            let mut wait = cx.spawn(|mut cx| async move {
+                open_local_workspace(
+                    vec![path.to_owned()],
+                    vec![],
+                    false,
+                    workspace::OpenOptions {
+                        wait: true,
+                        change_environment: true,
+                        env,
+                        ..Default::default()
+                    },
+                    None,
+                    &DiscardResponseSink,
+                    &app_state,
+                    &mut cx,
+                )
+                .await
+            });
+            cx.run_until_parked();
+            assert!(matches!(poll!(&mut wait), Poll::Pending));
+            cx.update(|cx| {
+                let env = projects[0].read(cx).cli_environment(cx);
+                assert_eq!(env.as_ref().map(|env| env["SDK"].as_str()), expected);
+                assert_eq!(projects[1].read(cx).cli_environment(cx), other_env);
+            });
+            windows[1]
+                .update(cx, |multi_workspace, window, cx| {
+                    let workspace = multi_workspace.workspace().read(cx);
+                    assert!(workspace.active_item_as::<Editor>(cx).is_some());
+                    workspace.active_pane().clone().update(cx, |pane, cx| {
+                        pane.close_active_item(&Default::default(), window, cx)
+                    })
+                })
+                .unwrap()
+                .await
+                .unwrap();
+            assert!(!wait.await);
         }
     }
 

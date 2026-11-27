@@ -390,7 +390,6 @@ impl DebugPanel {
         let label = curr_session.read(cx).label();
         let quirks = curr_session.read(cx).quirks();
         let adapter = curr_session.read(cx).adapter();
-        let binary = curr_session.read(cx).binary().cloned().unwrap();
         let task_context = curr_session.read(cx).task_context().clone();
 
         let curr_session_id = curr_session.read(cx).session_id();
@@ -406,9 +405,8 @@ impl DebugPanel {
             let (session, task) = dap_store_handle.update(cx, |dap_store, cx| {
                 let session = dap_store.new_session(label, adapter, task_context, None, quirks, cx);
 
-                let task = session.update(cx, |session, cx| {
-                    session.boot(binary, worktree, dap_store_handle.downgrade(), cx)
-                });
+                let task =
+                    dap_store.relaunch_session(session.clone(), &curr_session, None, worktree, cx);
                 (session, task)
             });
             Self::register_session(this.clone(), session.clone(), true, cx).await?;
@@ -451,12 +449,8 @@ impl DebugPanel {
         let label = self.label_for_child_session(&parent_session, request, cx);
         let adapter = parent_session.read(cx).adapter();
         let quirks = parent_session.read(cx).quirks();
-        let Some(mut binary) = parent_session.read(cx).binary().cloned() else {
-            log::error!("Attempted to start a child-session without a binary");
-            return;
-        };
         let task_context = parent_session.read(cx).task_context().clone();
-        binary.request_args = request.clone();
+        let request = request.clone();
         cx.spawn_in(window, async move |this, cx| {
             let (session, task) = dap_store_handle.update(cx, |dap_store, cx| {
                 let session = dap_store.new_session(
@@ -468,9 +462,13 @@ impl DebugPanel {
                     cx,
                 );
 
-                let task = session.update(cx, |session, cx| {
-                    session.boot(binary, worktree, dap_store_handle.downgrade(), cx)
-                });
+                let task = dap_store.relaunch_session(
+                    session.clone(),
+                    &parent_session,
+                    Some(request),
+                    worktree,
+                    cx,
+                );
                 (session, task)
             });
             // Focus child sessions if the parent has never emitted a stopped event;

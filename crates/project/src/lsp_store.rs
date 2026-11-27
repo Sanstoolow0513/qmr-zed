@@ -2876,10 +2876,11 @@ impl LocalLspStore {
                 )
             })
             .collect();
+        let signal_mask = util::command::ChildSignalMask::capture()?;
         let mut child = cx
             .background_spawn(async move {
                 use util::command::Stdio;
-                let mut command = util::command::new_command_with_environment(
+                let mut command = signal_mask.command_with_environment(
                     program,
                     working_dir_path
                         .as_deref()

@@ -11163,18 +11163,23 @@ pub fn workspace_windows_for_location(
         .collect()
 }
 
+pub struct WorkspaceMatch {
+    pub target: Option<(WindowHandle<MultiWorkspace>, Entity<Workspace>)>,
+    pub open_visible: OpenVisible,
+    /// The project whose worktree matched, before any display-window fallback.
+    pub matched_project: Option<Entity<Project>>,
+}
+
 pub async fn find_existing_workspace(
     abs_paths: &[PathBuf],
     open_options: &OpenOptions,
     location: &SerializedWorkspaceLocation,
     cx: &mut AsyncApp,
-) -> (
-    Option<(WindowHandle<MultiWorkspace>, Entity<Workspace>)>,
-    OpenVisible,
-) {
+) -> WorkspaceMatch {
     let mut existing: Option<(WindowHandle<MultiWorkspace>, Entity<Workspace>)> = None;
     let mut open_visible = OpenVisible::All;
     let mut best_match = None;
+    let mut matched_project = None;
 
     if open_options.workspace_matching != WorkspaceMatching::None {
         cx.update(|cx| {
@@ -11199,6 +11204,7 @@ pub async fn find_existing_workspace(
                             }
                         };
                         if m > best_match {
+                            matched_project = Some(workspace.read(cx).project.clone());
                             existing = Some((window, workspace.clone()));
                             best_match = m;
                         } else if best_match.is_none()
@@ -11254,7 +11260,11 @@ pub async fn find_existing_workspace(
             });
         }
     }
-    (existing, open_visible)
+    WorkspaceMatch {
+        target: existing,
+        open_visible,
+        matched_project,
+    }
 }
 
 /// Controls whether to reuse an existing workspace whose worktrees contain the
@@ -11458,7 +11468,13 @@ pub fn open_paths(
         .find_map(|p| util::paths::WslPath::from_path(p));
 
     cx.spawn(async move |cx| {
-        let (mut existing, mut open_visible) = find_existing_workspace(
+        let WorkspaceMatch {
+            target: mut existing,
+            mut open_visible,
+            #[cfg(windows)]
+            matched_project,
+            ..
+        } = find_existing_workspace(
             &abs_paths,
             &open_options,
             &SerializedWorkspaceLocation::Local,
@@ -11553,13 +11569,16 @@ pub fn open_paths(
                 .update(cx, |multi_workspace, window, cx| {
                     window.activate_window();
                     multi_workspace.activate(target_workspace.clone(), None, window, cx);
+                    #[cfg(windows)]
+                    if open_options.change_environment
+                        && let Some(project) = matched_project
+                        && project.read(cx).is_local()
+                    {
+                        project.update(cx, |project, cx| {
+                            project.set_cli_environment(open_options.env.take(), cx);
+                        });
+                    }
                     target_workspace.update(cx, |workspace, cx| {
-                        #[cfg(windows)]
-                        if open_options.change_environment && workspace.project.read(cx).is_local() {
-                            workspace.project.update(cx, |project, cx| {
-                                project.set_cli_environment(open_options.env.take(), cx);
-                            });
-                        }
                         if open_in_dev_container {
                             workspace.set_open_in_dev_container(true);
                         }

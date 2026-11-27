@@ -524,6 +524,7 @@ impl LanguageServer {
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let root_path = root_path.to_owned();
+        let signal_mask = util::command::ChildSignalMask::capture()?;
         let (mut server, root_uri, binary) = cx
             .background_spawn(async move {
                 let working_dir = if root_path.is_dir() {
@@ -539,7 +540,7 @@ impl LanguageServer {
                     working_dir,
                     binary.arguments
                 );
-                let mut command = util::command::new_command_with_environment(
+                let mut command = signal_mask.command_with_environment(
                     &binary.path,
                     working_dir,
                     binary.env.as_ref(),
